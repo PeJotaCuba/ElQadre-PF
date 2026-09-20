@@ -404,7 +404,7 @@ object QJornadaExporter {
         root.put("archivo", fileName)
         root.put("identificador_archivo", "Q_ADMIN")
         root.put("codigoNegocio", formattedCode)
-        root.put("urlAdmin", com.example.licensing.SuperAdminBusinessManager.buildUrlAdmin(formattedCode))
+        root.put("urlAdmin", com.example.licensing.BusinessCodeHelper.buildUrlAdmin(formattedCode))
         root.put("timestamp_ms", calc.closedAt)
         root.put("version", calc.closedAt.toString())
         root.put("fechaHoraCierre", fechaCierreStr)

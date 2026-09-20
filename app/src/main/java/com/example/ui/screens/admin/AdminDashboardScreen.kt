@@ -1,17 +1,21 @@
 package com.example.ui.screens.admin
 
-import androidx.activity.compose.BackHandler
-
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ExitToApp
@@ -25,36 +29,26 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.data.local.model.*
+import com.example.data.local.model.User
+import com.example.data.local.model.UserRole
+import com.example.ui.components.AppVersionSettingsCard
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.MainUiState
 import com.example.ui.viewmodel.MainViewModel
-import java.text.SimpleDateFormat
-import java.util.*
-import kotlinx.coroutines.launch
+import com.example.util.AccountProvisioningHelper
+import com.example.util.toSha256
 
-enum class AdminTab(val title: String, val icon: ImageVector) {
-    INICIO("INICIO", Icons.Filled.Home),
-    GESTION("GESTIÓN", Icons.Outlined.ManageAccounts),
-    CATALOGO("CATÁLOGO", Icons.Outlined.LocalOffer),
-    USUARIOS("USUARIOS", Icons.Outlined.Group),
-    AJUSTES("AJUSTES", Icons.Outlined.Settings)
-}
-
-enum class AdminModule(val title: String, val icon: ImageVector) {
-    PRODUCCION("Producción", Icons.Outlined.SoupKitchen),
-    MERCADERIAS("Mercaderías", Icons.Outlined.ShoppingCart),
-    GASTOS_CORRIENTES("Gastos corrientes", Icons.Outlined.ReceiptLong),
-    INVERSIONES("Inversiones", Icons.Outlined.TrendingUp),
-    ALMACEN("Almacén", Icons.Outlined.Inventory2),
-    REPORTES("Reportes", Icons.Outlined.Leaderboard)
-}
-
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AdminDashboardScreen(
     uiState: MainUiState,
@@ -62,597 +56,1246 @@ fun AdminDashboardScreen(
     onLogout: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var selectedTab by remember { mutableStateOf(AdminTab.INICIO) }
-    var activeModuleDialog by remember { mutableStateOf<AdminModule?>(null) }
-    var showOpenJornadaDialog by remember { mutableStateOf(false) }
-    var showCloseJornadaDialog by remember { mutableStateOf(false) }
-    var showNotificationDialog by remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
-    val isAnyAdminModalOpen = activeModuleDialog != null ||
-            showOpenJornadaDialog ||
-            showCloseJornadaDialog ||
-            showNotificationDialog
+    var showCreateDialog by remember { mutableStateOf(false) }
+    var selectedUserForEdit by remember { mutableStateOf<User?>(null) }
+    var selectedUserForDelete by remember { mutableStateOf<User?>(null) }
+    var showAdminPasswordDialog by remember { mutableStateOf(false) }
+    
+    // State for SMS Delivery Dialog
+    var generatedSmsData by remember { mutableStateOf<GeneratedSmsInfo?>(null) }
 
-    BackHandler(enabled = isAnyAdminModalOpen || selectedTab != AdminTab.INICIO) {
-        when {
-            activeModuleDialog != null -> activeModuleDialog = null
-            showOpenJornadaDialog -> showOpenJornadaDialog = false
-            showCloseJornadaDialog -> showCloseJornadaDialog = false
-            showNotificationDialog -> showNotificationDialog = false
-            selectedTab != AdminTab.INICIO -> selectedTab = AdminTab.INICIO
-        }
-    }
+    val businessName = uiState.businessConfig?.nombreNegocio?.ifBlank { uiState.businessName } ?: uiState.businessName
+    val businessCode = uiState.businessConfig?.codigoNegocio?.ifBlank { "001" } ?: "001"
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        containerColor = ElQadreBackground,
+        containerColor = Color(0xFFF8FAFC),
         topBar = {
-            AdminTopBar(
-                businessName = uiState.businessName,
-                notificationCount = 3,
-                onMenuClick = { /* Menu */ },
-                onNotificationClick = { showNotificationDialog = true },
-                onLogoutClick = onLogout
-            )
-        },
-        bottomBar = {
-            AdminBottomNavigation(
-                selectedTab = selectedTab,
-                onTabSelected = { selectedTab = it }
-            )
+            Surface(
+                color = ElQadreNavy,
+                shadowElevation = 4.dp
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = businessName.ifBlank { "ElQadre" },
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = ElQadreGold.copy(alpha = 0.25f),
+                                modifier = Modifier.padding(top = 2.dp)
+                            ) {
+                                Text(
+                                    text = "ADMINISTRADOR",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = ElQadreGold,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Creación y Gestión de Usuarios",
+                                fontSize = 12.sp,
+                                color = Slate300
+                            )
+                        }
+                    }
+
+                    // Botón grande y visible de Cerrar Sesión para probar cuentas
+                    Button(
+                        onClick = onLogout,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFEF4444),
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                        modifier = Modifier.testTag("admin_logout_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Outlined.ExitToApp,
+                            contentDescription = "Cerrar Sesión",
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Salir / Probar",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
         }
     ) { paddingValues ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            when (selectedTab) {
-                AdminTab.INICIO -> {
-                    AdminHomeContent(
-                        uiState = uiState,
-                        onModuleClick = { activeModuleDialog = it },
-                        onOpenJornadaClick = { showOpenJornadaDialog = true },
-                        onCloseJornadaClick = { showCloseJornadaDialog = true }
+            // Tarjeta de Bienvenida y Acción Principal
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = BorderStroke(1.dp, Slate200),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .background(ElQadreNavy.copy(alpha = 0.1f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.ManageAccounts,
+                                contentDescription = null,
+                                tint = ElQadreNavy,
+                                modifier = Modifier.size(26.dp)
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = "Panel de Usuarios del Negocio",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ElQadreNavy
+                            )
+                            Text(
+                                text = "Crea cuentas, genera el SMS de entrega y pruébalas aquí.",
+                                fontSize = 13.sp,
+                                color = Slate600
+                            )
+                        }
+                    }
+
+                    // Botón Grande para Crear Usuario
+                    Button(
+                        onClick = { showCreateDialog = true },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(54.dp)
+                            .testTag("admin_create_user_btn"),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = ElQadreNavy,
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 3.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.PersonAdd,
+                            contentDescription = null,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = "+ Crear Nuevo Usuario",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+
+            // Resumen de Roles Creados
+            val usersList = uiState.users
+            val duenosCount = usersList.count { it.role == UserRole.DUENO }
+            val dependientesCount = usersList.count { it.role == UserRole.DEPENDIENTE || it.role == UserRole.SALON || it.role == UserRole.BARRA }
+            val cajerosCount = usersList.count { it.role == UserRole.CAJERO }
+            val cocinaCount = usersList.count { it.role == UserRole.COCINA }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                RoleSummaryChip("DUEÑO", duenosCount, Color(0xFFF59E0B), Modifier.weight(1f))
+                RoleSummaryChip("DEPENDIENTE", dependientesCount, Color(0xFF3B82F6), Modifier.weight(1f))
+                RoleSummaryChip("CAJERO", cajerosCount, Color(0xFF10B981), Modifier.weight(1f))
+                RoleSummaryChip("COCINA", cocinaCount, Color(0xFFF97316), Modifier.weight(1f))
+            }
+
+            // Título de la Lista de Usuarios
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Usuarios Registrados (${usersList.size})",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Slate800
+                )
+                Text(
+                    text = "Toca para preparar SMS o editar",
+                    fontSize = 12.sp,
+                    color = Slate500
+                )
+            }
+
+            // Lista de Usuarios
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .weight(1f),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items(usersList, key = { it.username }) { user ->
+                    AdminUserCard(
+                        user = user,
+                        businessName = businessName,
+                        businessCode = businessCode,
+                        onPrepareSms = { plainPassword ->
+                            val roleName = AccountProvisioningHelper.mapRoleToProtocolString(user.role)
+                            val smsText = AccountProvisioningHelper.buildAccountDeliverySms(
+                                numeroNegocio = businessCode.ifBlank { "001" },
+                                nombre = user.fullName,
+                                usuario = user.username,
+                                contrasenaInicial = plainPassword.ifBlank { "1234" },
+                                rol = roleName
+                            )
+                            generatedSmsData = GeneratedSmsInfo(
+                                user = user,
+                                recipientPhone = user.telefono,
+                                smsText = smsText
+                            )
+                        },
+                        onEdit = { selectedUserForEdit = user },
+                        onDelete = { selectedUserForDelete = user }
                     )
                 }
-                AdminTab.GESTION -> {
-                    GestionSubScreen(uiState, viewModel)
-                }
-                AdminTab.CATALOGO -> {
-                    CatalogoSubScreen(uiState, viewModel)
-                }
-                AdminTab.USUARIOS -> {
-                    UsuariosSubScreen(uiState, viewModel)
-                }
-                AdminTab.AJUSTES -> {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(rememberScrollState())
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
+
+                item {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        border = BorderStroke(1.dp, Slate200),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp)
                     ) {
-                        Text(
-                            text = "Ajustes del Sistema",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 20.sp,
-                            color = ElQadreNavy
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(42.dp)
+                                        .background(Color(0xFFEDE9FE), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.LockReset,
+                                        contentDescription = null,
+                                        tint = Color(0xFF6D28D9),
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Seguridad del Administrador",
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Slate900
+                                    )
+                                    Text(
+                                        text = "Usuario: @admin • Acceso local directo sin SMS",
+                                        fontSize = 12.sp,
+                                        color = Slate600
+                                    )
+                                }
+                            }
+
+                            OutlinedButton(
+                                onClick = { showAdminPasswordDialog = true },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(44.dp)
+                                    .testTag("admin_change_password_btn"),
+                                shape = RoundedCornerShape(10.dp),
+                                border = BorderStroke(1.dp, Color(0xFF6D28D9)),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = Color(0xFF6D28D9)
+                                )
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Key,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "CAMBIAR CONTRASEÑA DE ADMINISTRADOR",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+
+                item {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    AppVersionSettingsCard()
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+            }
+        }
+    }
+
+    // Modal Crear / Editar Usuario
+    if (showCreateDialog || selectedUserForEdit != null) {
+        val editingUser = selectedUserForEdit
+        AdminUserFormDialog(
+            userToEdit = editingUser,
+            businessName = businessName,
+            businessCode = businessCode,
+            onDismiss = {
+                showCreateDialog = false
+                selectedUserForEdit = null
+            },
+            onSaveAndGenerateSms = { user, plainPassword ->
+                viewModel.saveUserByAdmin(user) { savedUser ->
+                    if (savedUser.username != "admin") {
+                        val roleName = AccountProvisioningHelper.mapRoleToProtocolString(savedUser.role)
+                        val smsText = AccountProvisioningHelper.buildAccountDeliverySms(
+                            numeroNegocio = businessCode.ifBlank { "001" },
+                            nombre = savedUser.fullName,
+                            usuario = savedUser.username,
+                            contrasenaInicial = plainPassword.ifBlank { "1234" },
+                            rol = roleName
                         )
-                        com.example.ui.components.AppVersionSettingsCard()
-                        com.example.ui.components.InitializeSystemCard(viewModel = viewModel)
+                        generatedSmsData = GeneratedSmsInfo(
+                            user = savedUser,
+                            recipientPhone = savedUser.telefono,
+                            smsText = smsText
+                        )
+                    } else {
+                        Toast.makeText(context, "Cuenta de Administrador actualizada localmente.", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                showCreateDialog = false
+                selectedUserForEdit = null
+            }
+        )
+    }
+
+    // Modal Cambiar Contraseña de Administrador
+    if (showAdminPasswordDialog) {
+        AdminPasswordChangeDialog(
+            onDismiss = { showAdminPasswordDialog = false },
+            onSavePassword = { newPassword ->
+                val currentAdmin = uiState.users.firstOrNull { it.username.equals("admin", ignoreCase = true) }
+                    ?: User(
+                        username = "admin",
+                        fullName = "Administrador Principal",
+                        passwordHash = "admin26".toSha256(),
+                        role = UserRole.ADMIN,
+                        montoPorProducto = 0.0
+                    )
+                val updatedAdmin = currentAdmin.copy(
+                    passwordHash = newPassword.toSha256()
+                )
+                viewModel.saveUserByAdmin(updatedAdmin) {
+                    Toast.makeText(context, "Contraseña de Administrador guardada correctamente.", Toast.LENGTH_LONG).show()
+                }
+                showAdminPasswordDialog = false
+            }
+        )
+    }
+
+    // Modal SMS Generado
+    generatedSmsData?.let { smsInfo ->
+        AdminSmsPreviewDialog(
+            smsInfo = smsInfo,
+            onDismiss = { generatedSmsData = null },
+            onLogoutToTest = {
+                generatedSmsData = null
+                onLogout()
+            }
+        )
+    }
+
+    // Diálogo de Confirmación de Eliminación
+    selectedUserForDelete?.let { userToDelete ->
+        AlertDialog(
+            onDismissRequest = { selectedUserForDelete = null },
+            title = {
+                Text(
+                    text = "Eliminar Usuario",
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFDC2626)
+                )
+            },
+            text = {
+                Text(
+                    text = "¿Está seguro de eliminar al usuario ${userToDelete.fullName} (@${userToDelete.username})? Esta acción no se puede deshacer.",
+                    fontSize = 15.sp,
+                    color = Slate700
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (userToDelete.username != "admin") {
+                            viewModel.deleteUser(userToDelete.username)
+                        } else {
+                            Toast.makeText(context, "No se puede eliminar la cuenta de Administrador principal", Toast.LENGTH_SHORT).show()
+                        }
+                        selectedUserForDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                ) {
+                    Text("Eliminar", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { selectedUserForDelete = null }) {
+                    Text("Cancelar")
+                }
+            }
+        )
+    }
+}
+
+// Data class para transportar información del SMS generado
+data class GeneratedSmsInfo(
+    val user: User,
+    val recipientPhone: String,
+    val smsText: String
+)
+
+@Composable
+fun RoleSummaryChip(
+    roleLabel: String,
+    count: Int,
+    accentColor: Color,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(10.dp),
+        color = accentColor.copy(alpha = 0.12f),
+        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.3f))
+    ) {
+        Column(
+            modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "$count",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = accentColor
+            )
+            Text(
+                text = roleLabel,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Slate700,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+@Composable
+fun AdminUserCard(
+    user: User,
+    businessName: String,
+    businessCode: String,
+    onPrepareSms: (plainPassword: String) -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val (roleBg, roleFg, roleIcon) = when (user.role) {
+        UserRole.ADMIN -> Triple(Color(0xFFEDE9FE), Color(0xFF6D28D9), Icons.Filled.AdminPanelSettings)
+        UserRole.DUENO -> Triple(Color(0xFFFEF3C7), Color(0xFFB45309), Icons.Filled.Shield)
+        UserRole.DEPENDIENTE, UserRole.SALON, UserRole.BARRA -> Triple(Color(0xFFDBEAFE), Color(0xFF1D4ED8), Icons.Filled.Badge)
+        UserRole.CAJERO -> Triple(Color(0xFFD1FAE5), Color(0xFF047857), Icons.Filled.PointOfSale)
+        UserRole.COCINA -> Triple(Color(0xFFFFEDD5), Color(0xFFC2410C), Icons.Filled.SoupKitchen)
+    }
+
+    var showPasswordPromptForSms by remember { mutableStateOf(false) }
+    var inputPasswordForSms by remember { mutableStateOf("1234") }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = BorderStroke(1.dp, Slate200),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp)
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(46.dp)
+                            .background(roleBg, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = roleIcon,
+                            contentDescription = null,
+                            tint = roleFg,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+
+                    Column {
+                        Text(
+                            text = user.fullName,
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Slate900
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "@${user.username}",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Slate600
+                            )
+                            if (user.telefono.isNotBlank()) {
+                                Text(
+                                    text = " • 📱 ${user.telefono}",
+                                    fontSize = 13.sp,
+                                    color = Slate500
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Rol Badge
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = roleBg,
+                    border = BorderStroke(1.dp, roleFg.copy(alpha = 0.3f))
+                ) {
+                    Text(
+                        text = user.role.displayName.uppercase(),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = roleFg,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+
+            // Datos adicionales (Comisión, permisos)
+            if (user.role == UserRole.DEPENDIENTE || user.role == UserRole.SALON || user.role == UserRole.BARRA) {
+                if (user.montoPorProducto > 0) {
+                    Text(
+                        text = "💵 Comisión por producto: $${"%.2f".format(user.montoPorProducto)} CUP",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Emerald700
+                    )
+                }
+            } else if (user.role == UserRole.DUENO) {
+                val perms = mutableListOf<String>()
+                perms.add("Control Negocio")
+                if (user.permisoProduccion) perms.add("Producción")
+                if (user.permisoMercancias) perms.add("Mercaderías")
+                if (user.permisoPersonal) perms.add("Personal")
+                Text(
+                    text = "🛡️ Permisos: ${perms.joinToString(", ")}",
+                    fontSize = 12.sp,
+                    color = Slate600
+                )
+            }
+
+            Divider(color = Slate100, thickness = 1.dp)
+
+            // Botones de acción grandes y cómodos
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (user.username == "admin") {
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(42.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFFEDE9FE),
+                        border = BorderStroke(1.dp, Color(0xFFDDD6FE))
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Key,
+                                contentDescription = null,
+                                tint = Color(0xFF6D28D9),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Acceso Directo Local",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF6D28D9)
+                            )
+                        }
+                    }
+                } else {
+                    // Botón Generar/Preparar SMS
+                    Button(
+                        onClick = { showPasswordPromptForSms = true },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(42.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF0F172A),
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Sms,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Preparar SMS",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                // Botón Editar
+                OutlinedButton(
+                    onClick = onEdit,
+                    modifier = Modifier.height(42.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, Slate300),
+                    contentPadding = PaddingValues(horizontal = 12.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Edit,
+                        contentDescription = "Editar",
+                        tint = Slate700,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(text = "Editar", fontSize = 13.sp, color = Slate700)
+                }
+
+                // Botón Eliminar (no permitido para admin root)
+                if (user.username != "admin") {
+                    IconButton(
+                        onClick = onDelete,
+                        modifier = Modifier.size(42.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Delete,
+                            contentDescription = "Eliminar",
+                            tint = Color(0xFFEF4444),
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
                 }
             }
         }
     }
 
-    // Dialogs
-    if (showOpenJornadaDialog) {
-        OpenJornadaDialog(
-            onDismiss = { showOpenJornadaDialog = false },
-            onConfirm = { initialCash ->
-                viewModel.openJornada(initialCash)
-                showOpenJornadaDialog = false
-            }
-        )
-    }
-
-    if (showCloseJornadaDialog) {
-        CloseJornadaDialog(
-            jornada = uiState.activeJornada,
-            onDismiss = { showCloseJornadaDialog = false },
-            onConfirm = { finalCash, notes ->
-                viewModel.closeJornada(finalCash, notes)
-                showCloseJornadaDialog = false
-            }
-        )
-    }
-
-    if (showNotificationDialog) {
-        val lowStockCount = uiState.products.count { it.stock <= it.minStock }
-        val openOrdersCount = uiState.openOrders.size
+    // Modal para confirmar contraseña antes de generar SMS
+    if (showPasswordPromptForSms) {
         AlertDialog(
-            onDismissRequest = { showNotificationDialog = false },
-            title = { Text("Notificaciones del Sistema", fontWeight = FontWeight.Bold, color = ElQadreNavy) },
+            onDismissRequest = { showPasswordPromptForSms = false },
+            title = {
+                Text(
+                    text = "Contraseña para el SMS",
+                    fontWeight = FontWeight.Bold,
+                    color = ElQadreNavy
+                )
+            },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (lowStockCount > 0) {
-                        Text("• $lowStockCount producto(s) con stock bajo en inventario.", fontSize = 13.sp)
-                    } else {
-                        Text("• Sin alertas de stock bajo en inventario.", fontSize = 13.sp)
-                    }
-                    Text("• Sistema de respaldo local activo.", fontSize = 13.sp)
-                    Text("• $openOrdersCount orden(es) activa(s) en salón.", fontSize = 13.sp)
+                    Text(
+                        text = "Ingresa la contraseña inicial que se incluirá en el SMS de alta para ${user.fullName}:",
+                        fontSize = 14.sp,
+                        color = Slate700
+                    )
+                    OutlinedTextField(
+                        value = inputPasswordForSms,
+                        onValueChange = { inputPasswordForSms = it },
+                        label = { Text("Contraseña inicial") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             },
             confirmButton = {
                 Button(
-                    onClick = { showNotificationDialog = false },
+                    onClick = {
+                        showPasswordPromptForSms = false
+                        onPrepareSms(inputPasswordForSms)
+                    },
                     colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy)
                 ) {
-                    Text("Entendido")
+                    Text("Generar SMS", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPasswordPromptForSms = false }) {
+                    Text("Cancelar")
                 }
             }
         )
     }
-
-    activeModuleDialog?.let { module ->
-        when (module) {
-            AdminModule.PRODUCCION -> {
-                ProductionWorkspaceDialog(
-                    uiState = uiState,
-                    viewModel = viewModel,
-                    onDismiss = { activeModuleDialog = null }
-                )
-            }
-            AdminModule.MERCADERIAS -> {
-                MercaderiasWorkspaceDialog(
-                    uiState = uiState,
-                    viewModel = viewModel,
-                    onDismiss = { activeModuleDialog = null }
-                )
-            }
-            AdminModule.GASTOS_CORRIENTES -> {
-                GastosCorrientesWorkspaceDialog(
-                    uiState = uiState,
-                    viewModel = viewModel,
-                    onDismiss = { activeModuleDialog = null }
-                )
-            }
-            AdminModule.INVERSIONES -> {
-                InversionesWorkspaceDialog(
-                    uiState = uiState,
-                    viewModel = viewModel,
-                    onDismiss = { activeModuleDialog = null }
-                )
-            }
-            else -> {
-                ModuleDetailDialog(
-                    module = module,
-                    uiState = uiState,
-                    viewModel = viewModel,
-                    onDismiss = { activeModuleDialog = null }
-                )
-            }
-        }
-    }
 }
 
 /**
- * Top Bar: Deep Navy background `#161C2C`, white text and icons, golden notification badge.
+ * Formulario para crear o editar usuarios.
+ * Diseñado con campos grandes, botones grandes, tipografía espaciosa y estructura clara:
+ * datos de la persona → credenciales → rol → permisos/datos correspondientes → guardar → generar/preparar SMS.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AdminTopBar(
+fun AdminUserFormDialog(
+    userToEdit: User?,
     businessName: String,
-    notificationCount: Int,
-    onMenuClick: () -> Unit,
-    onNotificationClick: () -> Unit,
-    onLogoutClick: () -> Unit
+    businessCode: String,
+    onDismiss: () -> Unit,
+    onSaveAndGenerateSms: (User, plainPassword: String) -> Unit
 ) {
-    Surface(
-        color = ElQadreNavy,
+    val isEditing = userToEdit != null
+    val isEditingAdmin = isEditing && (userToEdit?.username.equals("admin", ignoreCase = true) || userToEdit?.role == UserRole.ADMIN)
+
+    // 1. Datos de la Persona
+    var fullName by remember { mutableStateOf(userToEdit?.fullName ?: "") }
+    var telefono by remember { mutableStateOf(userToEdit?.telefono ?: "") }
+
+    // 2. Credenciales
+    var username by remember { mutableStateOf(userToEdit?.username ?: "") }
+    var password by remember { mutableStateOf(if (isEditing) "" else "1234") }
+    var showPassword by remember { mutableStateOf(false) }
+
+    // 3. Rol (Roles creables por el Administrador: DUEÑO, DEPENDIENTE, CAJERO, COCINA)
+    var selectedRole by remember {
+        mutableStateOf(
+            when (userToEdit?.role) {
+                UserRole.ADMIN -> UserRole.ADMIN
+                UserRole.DUENO -> UserRole.DUENO
+                UserRole.CAJERO -> UserRole.CAJERO
+                UserRole.COCINA -> UserRole.COCINA
+                UserRole.SALON, UserRole.BARRA, UserRole.DEPENDIENTE -> UserRole.DEPENDIENTE
+                else -> UserRole.CAJERO
+            }
+        )
+    }
+
+    // 4. Permisos / Datos correspondientes
+    var montoPorProductoText by remember {
+        mutableStateOf(if ((userToEdit?.montoPorProducto ?: 0.0) > 0) userToEdit?.montoPorProducto.toString() else "50.0")
+    }
+    var permisoProduccion by remember { mutableStateOf(userToEdit?.permisoProduccion ?: true) }
+    var permisoMercancias by remember { mutableStateOf(userToEdit?.permisoMercancias ?: true) }
+    var permisoPersonal by remember { mutableStateOf(userToEdit?.permisoPersonal ?: true) }
+
+    var validationError by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
         modifier = Modifier
             .fillMaxWidth()
-            .statusBarsPadding()
+            .padding(vertical = 16.dp),
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            // Left: Hamburger Menu
-            IconButton(
-                onClick = onMenuClick,
-                modifier = Modifier.size(36.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Menu,
-                    contentDescription = "Menú",
-                    tint = Color.White,
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-
-            // Center: Business Name
-            Text(
-                text = businessName,
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 17.sp
-                ),
-                color = Color.White,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.weight(1f).padding(horizontal = 8.dp)
-            )
-
-            // Right: Notifications + Exit
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    contentAlignment = Alignment.TopEnd,
-                    modifier = Modifier.size(38.dp)
-                ) {
-                    IconButton(
-                        onClick = onNotificationClick,
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Notifications,
-                            contentDescription = "Notificaciones",
-                            tint = Color.White,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                    if (notificationCount > 0) {
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier = Modifier
-                                .offset(x = 2.dp, y = (-2).dp)
-                                .size(18.dp)
-                                .background(ElQadreGold, CircleShape)
-                        ) {
-                            Text(
-                                text = "$notificationCount",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = ElQadreNavy
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(4.dp))
-
-                IconButton(
-                    onClick = onLogoutClick,
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Outlined.ExitToApp,
-                        contentDescription = "Cerrar sesión",
-                        tint = Color.White,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-            }
-        }
-    }
-}
-
-/**
- * Main Home View: Split Jornada Hero Card + 6-Module Grid
- */
-@Composable
-fun AdminHomeContent(
-    uiState: MainUiState,
-    onModuleClick: (AdminModule) -> Unit,
-    onOpenJornadaClick: () -> Unit,
-    onCloseJornadaClick: () -> Unit
-) {
-    val scrollState = rememberScrollState()
-    val isJornadaOpen = uiState.activeJornada != null
-
-    val dateFormatter = remember { SimpleDateFormat("d 'de' MMMM 'de' yyyy", Locale("es", "ES")) }
-    val currentDateStr = remember { dateFormatter.format(Date()) }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(scrollState)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp)
-    ) {
-        // ============================================================
-        // SPLIT JORNADA HERO CARD (EXACT RECREATION OF REFERENCE)
-        // ============================================================
         Surface(
-            shape = RoundedCornerShape(22.dp),
+            shape = RoundedCornerShape(20.dp),
             color = Color.White,
-            shadowElevation = 4.dp,
             modifier = Modifier
-                .fillMaxWidth()
-                .height(138.dp)
+                .fillMaxWidth(0.94f)
+                .fillMaxHeight(0.92f)
         ) {
-            Row(modifier = Modifier.fillMaxSize()) {
-                // Left Half: Pale Gold/Cream Surface with Sun, Date, and Status Pill
-                Box(
-                    modifier = Modifier
-                        .weight(1.1f)
-                        .fillMaxHeight()
-                        .background(ElQadreGoldSurface)
-                        .padding(12.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.fillMaxSize(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        // Sun Line Icon
-                        Icon(
-                            imageVector = Icons.Outlined.WbSunny,
-                            contentDescription = null,
-                            tint = ElQadreGoldDark,
-                            modifier = Modifier.size(24.dp)
-                        )
-
-                        Spacer(modifier = Modifier.height(4.dp))
-
-                        Text(
-                            text = "JORNADA ACTUAL",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Slate700,
-                            letterSpacing = 0.5.sp
-                        )
-
-                        Text(
-                            text = currentDateStr,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = ElQadreNavy
-                        )
-
-                        Spacer(modifier = Modifier.height(6.dp))
-
-                        // Status Pill Badge (ABIERTA / CERRADA)
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (isJornadaOpen) ElQadreGold else Slate200,
-                            modifier = Modifier.padding(horizontal = 4.dp)
-                        ) {
-                            Text(
-                                text = if (isJornadaOpen) "ABIERTA" else "CERRADA",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = if (isJornadaOpen) ElQadreNavy else Slate600,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 3.dp),
-                                letterSpacing = 0.5.sp
-                            )
-                        }
-                    }
-                }
-
-                // Center Divider Connector Dot
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .width(0.dp)
-                        .fillMaxHeight()
-                ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = Color.White,
-                        shadowElevation = 2.dp,
-                        modifier = Modifier.size(22.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text("o", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Slate400)
-                        }
-                    }
-                }
-
-                // Right Half: Solid Golden Yellow with Action Box Icon & Title
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .background(ElQadreGold)
-                        .clickable {
-                            if (isJornadaOpen) onCloseJornadaClick() else onOpenJornadaClick()
-                        }
-                        .padding(12.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = if (isJornadaOpen) Icons.Outlined.Inventory2 else Icons.Outlined.AllInbox,
-                            contentDescription = null,
-                            tint = ElQadreNavy,
-                            modifier = Modifier.size(34.dp)
-                        )
-
-                        Spacer(modifier = Modifier.height(6.dp))
-
-                        Text(
-                            text = if (isJornadaOpen) "CERRAR\nJORNADA" else "ABRIR\nJORNADA",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = ElQadreNavy,
-                            textAlign = TextAlign.Center,
-                            lineHeight = 15.sp,
-                            letterSpacing = 0.5.sp
-                        )
-                    }
-                }
-            }
-        }
-
-        // ============================================================
-        // 6-MODULE GRID (2 columns x 3 rows)
-        // Fila 1: Producción, Mercancías
-        // Fila 2: Gastos corrientes, Inversiones
-        // Fila 3: Almacén, Reportes
-        // ============================================================
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            val rows = listOf(
-                listOf(AdminModule.PRODUCCION, AdminModule.MERCADERIAS),
-                listOf(AdminModule.GASTOS_CORRIENTES, AdminModule.INVERSIONES),
-                listOf(AdminModule.ALMACEN, AdminModule.REPORTES)
-            )
-            for (row in rows) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(20.dp)
+            ) {
+                // Cabecera del Diálogo
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    for (mod in row) {
-                        Box(modifier = Modifier.weight(1f)) {
-                            ModuleGridCard(
-                                module = mod,
-                                onClick = { onModuleClick(mod) }
+                    Column {
+                        Text(
+                            text = if (isEditing) "Editar Usuario" else "Crear Nuevo Usuario",
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = ElQadreNavy
+                        )
+                        Text(
+                            text = "Completa los datos en los pasos a continuación",
+                            fontSize = 13.sp,
+                            color = Slate500
+                        )
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Filled.Close, contentDescription = "Cerrar", tint = Slate500)
+                    }
+                }
+
+                Divider(color = Slate200, modifier = Modifier.padding(vertical = 12.dp))
+
+                // Contenido desplazable con campos amplios
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    // SECCIÓN 1: DATOS DE LA PERSONA
+                    FormSectionHeader(number = "1", title = "Datos de la Persona", icon = Icons.Filled.Person)
+
+                    OutlinedTextField(
+                        value = fullName,
+                        onValueChange = {
+                            fullName = it
+                            validationError = null
+                        },
+                        label = { Text("Nombre y Apellidos *", fontSize = 15.sp) },
+                        placeholder = { Text("Ej. Pedro Rodríguez", color = Slate400) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = ElQadreNavy,
+                            unfocusedBorderColor = Slate300
+                        )
+                    )
+
+                    OutlinedTextField(
+                        value = telefono,
+                        onValueChange = { telefono = it },
+                        label = { Text("Teléfono Móvil (para SMS)", fontSize = 15.sp) },
+                        placeholder = { Text("Ej. 5351234567", color = Slate400) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        leadingIcon = {
+                            Icon(Icons.Outlined.Phone, contentDescription = null, tint = Slate500)
+                        }
+                    )
+
+                    // SECCIÓN 2: CREDENCIALES
+                    FormSectionHeader(number = "2", title = "Credenciales de Acceso", icon = Icons.Filled.Key)
+
+                    OutlinedTextField(
+                        value = username,
+                        onValueChange = {
+                            username = it.filter { ch -> !ch.isWhitespace() }.lowercase()
+                            validationError = null
+                        },
+                        label = { Text("Nombre de Usuario (@usuario) *", fontSize = 15.sp) },
+                        placeholder = { Text("Ej. pedro", color = Slate400) },
+                        singleLine = true,
+                        enabled = !isEditing,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        leadingIcon = {
+                            Icon(Icons.Outlined.AlternateEmail, contentDescription = null, tint = Slate500)
+                        }
+                    )
+
+                    OutlinedTextField(
+                        value = password,
+                        onValueChange = {
+                            password = it
+                            validationError = null
+                        },
+                        label = {
+                            Text(
+                                if (isEditing) "Nueva Contraseña (dejar vacío para no cambiar)" else "Contraseña Inicial *",
+                                fontSize = 15.sp
+                            )
+                        },
+                        placeholder = { Text("Ej. 1234", color = Slate400) },
+                        singleLine = true,
+                        visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        trailingIcon = {
+                            IconButton(onClick = { showPassword = !showPassword }) {
+                                Icon(
+                                    imageVector = if (showPassword) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                    contentDescription = "Ver contraseña",
+                                    tint = Slate500
+                                )
+                            }
+                        }
+                    )
+
+                    // SECCIÓN 3: ROL DEL USUARIO (DUEÑO, DEPENDIENTE, CAJERO, COCINA)
+                    FormSectionHeader(number = "3", title = "Rol en el Negocio", icon = Icons.Filled.Badge)
+
+                    if (isEditingAdmin) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFFEDE9FE),
+                            border = BorderStroke(1.dp, Color(0xFFDDD6FE)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Filled.AdminPanelSettings,
+                                    contentDescription = null,
+                                    tint = Color(0xFF6D28D9),
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = "ADMINISTRADOR",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 16.sp,
+                                        color = Color(0xFF6D28D9)
+                                    )
+                                    Text(
+                                        text = "Cuenta fija local de la instalación (Acceso directo sin SMS)",
+                                        fontSize = 12.sp,
+                                        color = Slate600
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            val roles = listOf(
+                                Triple(UserRole.DUENO, "DUEÑO", "Administración, control y supervisión total del negocio."),
+                                Triple(UserRole.DEPENDIENTE, "DEPENDIENTE", "Toma de comandas, gestión de mesas y pedidos."),
+                                Triple(UserRole.CAJERO, "CAJERO", "Cobro de cuentas, arqueos y cuadre de caja."),
+                                Triple(UserRole.COCINA, "COCINA", "Visualización y preparación de comandas de cocina.")
+                            )
+
+                            roles.forEach { (role, label, desc) ->
+                                val isSelected = selectedRole == role
+                                Surface(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { selectedRole = role },
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isSelected) ElQadreNavy.copy(alpha = 0.08f) else Color(0xFFF8FAFC),
+                                    border = BorderStroke(
+                                        if (isSelected) 2.dp else 1.dp,
+                                        if (isSelected) ElQadreNavy else Slate200
+                                    )
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(14.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        RadioButton(
+                                            selected = isSelected,
+                                            onClick = { selectedRole = role },
+                                            colors = RadioButtonDefaults.colors(selectedColor = ElQadreNavy)
+                                        )
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Column {
+                                            Text(
+                                                text = label,
+                                                fontSize = 16.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isSelected) ElQadreNavy else Slate900
+                                            )
+                                            Text(
+                                                text = desc,
+                                                fontSize = 12.sp,
+                                                color = Slate600
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // SECCIÓN 4: PERMISOS / DATOS CORRESPONDIENTES
+                    FormSectionHeader(number = "4", title = "Permisos y Datos del Rol", icon = Icons.Filled.Tune)
+
+                    when (selectedRole) {
+                        UserRole.DEPENDIENTE -> {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFFEFF6FF)),
+                                border = BorderStroke(1.dp, Color(0xFFBFDBFE))
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text(
+                                        text = "Configuración de Comisión (Dependiente)",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp,
+                                        color = Color(0xFF1E3A8A)
+                                    )
+                                    Text(
+                                        text = "Monto asignado por cada plato o producto vendido:",
+                                        fontSize = 13.sp,
+                                        color = Slate700
+                                    )
+                                    OutlinedTextField(
+                                        value = montoPorProductoText,
+                                        onValueChange = { montoPorProductoText = it },
+                                        label = { Text("Monto por producto (CUP)") },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(10.dp)
+                                    )
+                                }
+                            }
+                        }
+                        UserRole.DUENO -> {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFFFEF3C7).copy(alpha = 0.5f)),
+                                border = BorderStroke(1.dp, Color(0xFFFDE68A))
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text(
+                                        text = "Permisos de Control (Dueño)",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp,
+                                        color = Color(0xFF92400E)
+                                    )
+                                    
+                                    // Control del Negocio (Obligatorio)
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(Emerald50, RoundedCornerShape(8.dp))
+                                            .padding(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = Emerald600, modifier = Modifier.size(20.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Column {
+                                            Text("Control del Negocio", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Slate800)
+                                            Text("Obligatorio y siempre activo para Dueños", fontSize = 11.sp, color = Slate500)
+                                        }
+                                    }
+
+                                    // Switch Producción
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { permisoProduccion = !permisoProduccion }
+                                            .padding(vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Checkbox(
+                                            checked = permisoProduccion,
+                                            onCheckedChange = { permisoProduccion = it },
+                                            colors = CheckboxDefaults.colors(checkedColor = ElQadreNavy)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Permiso de Producción", fontSize = 14.sp, color = Slate800)
+                                    }
+
+                                    // Switch Mercaderías
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { permisoMercancias = !permisoMercancias }
+                                            .padding(vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Checkbox(
+                                            checked = permisoMercancias,
+                                            onCheckedChange = { permisoMercancias = it },
+                                            colors = CheckboxDefaults.colors(checkedColor = ElQadreNavy)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Permiso de Mercaderías", fontSize = 14.sp, color = Slate800)
+                                    }
+
+                                    // Switch Personal
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { permisoPersonal = !permisoPersonal }
+                                            .padding(vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Checkbox(
+                                            checked = permisoPersonal,
+                                            onCheckedChange = { permisoPersonal = it },
+                                            colors = CheckboxDefaults.colors(checkedColor = ElQadreNavy)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Permiso de Personal", fontSize = 14.sp, color = Slate800)
+                                    }
+                                }
+                            }
+                        }
+                        UserRole.CAJERO, UserRole.COCINA -> {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = Slate100,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Filled.Info, contentDescription = null, tint = Slate600, modifier = Modifier.size(20.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Las funciones operativas para este rol se asignan de forma automática.",
+                                        fontSize = 13.sp,
+                                        color = Slate600
+                                    )
+                                }
+                            }
+                        }
+                        else -> {}
+                    }
+
+                    // Mensaje de Error de Validación
+                    validationError?.let { err ->
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFFFEE2E2),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "⚠️ $err",
+                                color = Color(0xFFDC2626),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(10.dp)
                             )
                         }
                     }
                 }
-            }
-        }
 
-        Spacer(modifier = Modifier.height(10.dp))
-    }
-}
+                Divider(color = Slate200, modifier = Modifier.padding(vertical = 12.dp))
 
-/**
- * Module Card: Crisp White Surface, Soft Shadow, Centered Line Art with Gold Accent & Bold Title.
- */
-@Composable
-fun ModuleGridCard(
-    module: AdminModule,
-    onClick: () -> Unit
-) {
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = Color.White,
-        shadowElevation = 4.dp,
-        modifier = Modifier
-            .fillMaxWidth()
-            .aspectRatio(1.25f)
-            .clickable { onClick() }
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            // Custom Icon with a subtle yellow accent (offset circle) to mimic the dual-tone reference
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier.size(52.dp)
-            ) {
-                // Subtle yellow accent mimicking the reference's yellow parts of the icon
-                Box(
-                    modifier = Modifier
-                        .size(24.dp)
-                        .offset(x = 8.dp, y = 8.dp)
-                        .background(ElQadreGold.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
-                )
-                Icon(
-                    imageVector = module.icon,
-                    contentDescription = module.title,
-                    tint = ElQadreNavy,
-                    modifier = Modifier.size(32.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            Text(
-                text = module.title,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = ElQadreNavy,
-                textAlign = TextAlign.Center,
-                letterSpacing = 0.3.sp
-            )
-        }
-    }
-}
-
-/**
- * Floating Bottom Navigation Bar: Pure White with Yellow Selected Item.
- */
-@Composable
-fun AdminBottomNavigation(
-    selectedTab: AdminTab,
-    onTabSelected: (AdminTab) -> Unit
-) {
-    Surface(
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-        color = Color.White,
-        shadowElevation = 12.dp,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.navigationBars)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 4.dp)
-                    .height(64.dp),
-                horizontalArrangement = Arrangement.SpaceAround,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                AdminTab.values().forEach { tab ->
-                    val isSelected = selectedTab == tab
-                    Box(
+                // Botones de Guardar
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onDismiss,
                         modifier = Modifier
                             .weight(1f)
-                            .fillMaxHeight()
-                            .clickable { onTabSelected(tab) },
-                        contentAlignment = Alignment.Center
+                            .height(52.dp),
+                        shape = RoundedCornerShape(12.dp)
                     ) {
-                        if (isSelected) {
-                            Box(
-                                modifier = Modifier
-                                    .align(Alignment.TopCenter)
-                                    .width(36.dp)
-                                    .height(3.dp)
-                                    .background(ElQadreGold, RoundedCornerShape(bottomStart = 2.dp, bottomEnd = 2.dp))
-                            )
-                        }
+                        Text("Cancelar", fontSize = 16.sp, color = Slate700)
+                    }
 
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            Icon(
-                                imageVector = tab.icon,
-                                contentDescription = tab.title,
-                                tint = if (isSelected) ElQadreGold else Slate400,
-                                modifier = Modifier.size(24.dp)
+                    Button(
+                        onClick = {
+                            if (fullName.isBlank()) {
+                                validationError = "Por favor ingrese el nombre completo."
+                                return@Button
+                            }
+                            if (username.isBlank()) {
+                                validationError = "Por favor ingrese el nombre de usuario."
+                                return@Button
+                            }
+                            if (!isEditing && password.isBlank()) {
+                                validationError = "Por favor ingrese la contraseña inicial."
+                                return@Button
+                            }
+
+                            val cleanUsername = username.trim().lowercase()
+                            val commissionRate = montoPorProductoText.toDoubleOrNull() ?: 0.0
+
+                            val passwordHash = if (password.isNotBlank()) {
+                                password.trim().toSha256()
+                            } else {
+                                userToEdit?.passwordHash ?: "1234".toSha256()
+                            }
+
+                            val effectivePlainPassword = if (password.isNotBlank()) password.trim() else "1234"
+
+                            val userToSave = User(
+                                username = cleanUsername,
+                                fullName = fullName.trim(),
+                                passwordHash = passwordHash,
+                                role = selectedRole,
+                                montoPorProducto = if (selectedRole == UserRole.DEPENDIENTE) commissionRate else 0.0,
+                                isActive = true,
+                                telefono = telefono.trim(),
+                                permisoProduccion = if (selectedRole == UserRole.DUENO) permisoProduccion else true,
+                                permisoMercancias = if (selectedRole == UserRole.DUENO) permisoMercancias else true,
+                                permisoPersonal = if (selectedRole == UserRole.DUENO) permisoPersonal else true,
+                                permisoControlNegocio = true
                             )
 
-                            Spacer(modifier = Modifier.height(4.dp))
-
-                            Text(
-                                text = tab.title,
-                                fontSize = 10.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isSelected) ElQadreGold else Slate400,
-                                letterSpacing = 0.3.sp
-                            )
-                        }
+                            onSaveAndGenerateSms(userToSave, effectivePlainPassword)
+                        },
+                        modifier = Modifier
+                            .weight(1.5f)
+                            .height(52.dp)
+                            .testTag("admin_save_user_btn"),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = ElQadreNavy,
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Filled.Save, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = if (isEditingAdmin) "Guardar Cambios" else "Guardar y Generar SMS",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
             }
@@ -660,179 +1303,346 @@ fun AdminBottomNavigation(
     }
 }
 
-// ============================================================
-// SUB-SCREENS & DIALOGS
-// ============================================================
-
+/**
+ * Diálogo para cambio directo y local de la contraseña del Administrador (@admin).
+ */
 @Composable
-fun ModuleDetailDialog(
-    module: AdminModule,
-    uiState: MainUiState,
-    viewModel: MainViewModel,
-    onDismiss: () -> Unit
+fun AdminPasswordChangeDialog(
+    onDismiss: () -> Unit,
+    onSavePassword: (String) -> Unit
 ) {
-    var entryTitle by remember { mutableStateOf("") }
-    var entryContent by remember { mutableStateOf("") }
+    var newPassword by remember { mutableStateOf("") }
+    var confirmPassword by remember { mutableStateOf("") }
+    var showPassword by remember { mutableStateOf(false) }
+    var errorText by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(module.icon, contentDescription = null, tint = ElQadreGold, modifier = Modifier.size(24.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(module.title, fontWeight = FontWeight.Bold, color = ElQadreNavy)
+                Icon(
+                    imageVector = Icons.Filled.LockReset,
+                    contentDescription = null,
+                    tint = Color(0xFF6D28D9),
+                    modifier = Modifier.size(26.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Column {
+                    Text(
+                        text = "Cambiar Contraseña",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = ElQadreNavy
+                    )
+                    Text(
+                        text = "Cuenta: @admin (Local)",
+                        fontSize = 12.sp,
+                        color = Slate500
+                    )
+                }
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Text(
+                    text = "Introduce la nueva contraseña local para el usuario @admin. Se guardará localmente y se utilizará en los próximos inicios de sesión.",
+                    fontSize = 13.sp,
+                    color = Slate700
+                )
+
+                OutlinedTextField(
+                    value = newPassword,
+                    onValueChange = {
+                        newPassword = it
+                        errorText = null
+                    },
+                    label = { Text("Nueva Contraseña *") },
+                    placeholder = { Text("Ej. mi_nueva_clave") },
+                    singleLine = true,
+                    visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { showPassword = !showPassword }) {
+                            Icon(
+                                imageVector = if (showPassword) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                contentDescription = "Ver contraseña",
+                                tint = Slate500
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp)
+                )
+
+                OutlinedTextField(
+                    value = confirmPassword,
+                    onValueChange = {
+                        confirmPassword = it
+                        errorText = null
+                    },
+                    label = { Text("Confirmar Nueva Contraseña *") },
+                    placeholder = { Text("Repita la nueva contraseña") },
+                    singleLine = true,
+                    visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp)
+                )
+
+                errorText?.let { err ->
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFFFEE2E2),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "⚠️ $err",
+                            color = Color(0xFFDC2626),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(8.dp)
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (newPassword.isBlank()) {
+                        errorText = "La contraseña no puede estar vacía."
+                        return@Button
+                    }
+                    if (newPassword != confirmPassword) {
+                        errorText = "Las contraseñas no coinciden."
+                        return@Button
+                    }
+                    onSavePassword(newPassword.trim())
+                },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF6D28D9),
+                    contentColor = Color.White
+                ),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text("Guardar Contraseña", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar", color = Slate600)
+            }
+        }
+    )
+}
+
+@Composable
+fun FormSectionHeader(number: String, title: String, icon: ImageVector) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.padding(top = 6.dp)
+    ) {
+        Surface(
+            shape = CircleShape,
+            color = ElQadreNavy,
+            modifier = Modifier.size(24.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Text(
+                    text = number,
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+        Text(
+            text = title,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold,
+            color = ElQadreNavy
+        )
+    }
+}
+
+/**
+ * Diálogo de previsualización y envío de SMS generado según formato estándar ElQadre.
+ */
+@Composable
+fun AdminSmsPreviewDialog(
+    smsInfo: GeneratedSmsInfo,
+    onDismiss: () -> Unit,
+    onLogoutToTest: () -> Unit
+) {
+    val context = LocalContext.current
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(
+                    imageVector = Icons.Filled.CheckCircle,
+                    contentDescription = null,
+                    tint = Color(0xFF10B981),
+                    modifier = Modifier.size(28.dp)
+                )
+                Column {
+                    Text(
+                        text = "SMS de Alta Generado",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        color = ElQadreNavy
+                    )
+                    Text(
+                        text = "Usuario guardado exitosamente",
+                        fontSize = 12.sp,
+                        color = Slate500
+                    )
+                }
             }
         },
         text = {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 350.dp)
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                when (module) {
-                    AdminModule.PRODUCCION -> {
-                        Text("Lotes de preparación en Cocina / Barra:", fontSize = 12.sp, color = Slate500)
-                        uiState.productionBatches.forEach { pb ->
-                            Surface(shape = RoundedCornerShape(8.dp), color = ElQadreBackground, modifier = Modifier.fillMaxWidth()) {
-                                Column(modifier = Modifier.padding(8.dp)) {
-                                    Text("${pb.itemName} (${pb.quantity}u)", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                                    Text("Destino: ${pb.destination} • Por: ${pb.createdBy}", fontSize = 11.sp, color = Slate600)
-                                }
-                            }
-                        }
+                // Cuadro informativo de prueba local
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFFFEF3C7),
+                    border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.4f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Lightbulb, contentDescription = null, tint = Color(0xFFB45309), modifier = Modifier.size(22.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "La cuenta ya está registrada localmente en este dispositivo. Puedes salir al Login y probarla con su usuario y contraseña antes de entregar el SMS.",
+                            fontSize = 12.sp,
+                            color = Color(0xFF78350F),
+                            lineHeight = 16.sp
+                        )
                     }
-                    AdminModule.MERCADERIAS -> {
-                        Text("Movimientos de entradas y salidas:", fontSize = 12.sp, color = Slate500)
-                        uiState.stockMovements.forEach { sm ->
-                            Surface(shape = RoundedCornerShape(8.dp), color = ElQadreBackground, modifier = Modifier.fillMaxWidth()) {
-                                Row(modifier = Modifier.padding(8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Column {
-                                        Text(sm.productName, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                                        Text("${sm.type} • ${sm.reason}", fontSize = 11.sp, color = Slate600)
-                                    }
-                                    Text("${sm.quantity}u", fontWeight = FontWeight.Bold, color = ElQadreNavy)
-                                }
-                            }
-                        }
-                    }
-                    AdminModule.GASTOS_CORRIENTES -> {
-                        Text("Gastos corrientes registrados:", fontSize = 12.sp, color = Slate500)
-                        uiState.gastosGenerales.forEach { g ->
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(g.name, fontSize = 12.sp)
-                                Text("$${"%.2f".format(g.amount)}", fontWeight = FontWeight.Bold, color = Rose600)
-                            }
-                        }
-                    }
-                    AdminModule.INVERSIONES -> {
-                        Text("Inversiones y depreciaciones registradas:", fontSize = 12.sp, color = Slate500)
-                        uiState.inversiones.forEach { inv ->
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(inv.name, fontSize = 12.sp)
-                                Text("$${"%.2f".format(inv.amount)}", fontWeight = FontWeight.Bold, color = ElQadreNavy)
-                            }
-                        }
-                    }
-                    AdminModule.ALMACEN -> {
-                        Text("Inventario de existencias críticas:", fontSize = 12.sp, color = Slate500)
-                        uiState.products.forEach { pr ->
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(pr.name, fontSize = 12.sp)
-                                Text("${pr.stock}u", fontWeight = FontWeight.Bold, color = if (pr.stock <= pr.minStock) Rose600 else ElQadreNavy)
-                            }
-                        }
-                    }
-                    AdminModule.REPORTES -> {
-                        Text("Resumen Financiero y Cuadraturas:", fontSize = 12.sp, color = Slate500)
-                        val totalSales = uiState.allJornadas.sumOf { it.totalSales }
-                        val activeSales = uiState.activeJornada?.totalSales ?: 0.0
-                        Text("Ventas Jornada Actual: $${"%.2f".format(activeSales)} CUP", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        Text("Ventas Acumuladas: $${"%.2f".format(totalSales)} CUP", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                    }
+                }
+
+                Text(
+                    text = "Texto del SMS generado para entrega:",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    color = Slate800
+                )
+
+                // Bloque con el texto del SMS en estilo código
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFF0F172A),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = smsInfo.smsText,
+                        color = Color(0xFF38BDF8),
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(14.dp),
+                        lineHeight = 18.sp
+                    )
+                }
+
+                if (smsInfo.recipientPhone.isNotBlank()) {
+                    Text(
+                        text = "Destinatario: ${smsInfo.recipientPhone}",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Slate700
+                    )
                 }
             }
         },
         confirmButton = {
-            Button(onClick = onDismiss, colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy)) {
-                Text("Cerrar")
-            }
-        }
-    )
-}
-
-@Composable
-fun OpenJornadaDialog(onDismiss: () -> Unit, onConfirm: (Double) -> Unit) {
-    var cashText by remember { mutableStateOf("15000") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Abrir Nueva Jornada", fontWeight = FontWeight.Bold, color = ElQadreNavy) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Ingrese el fondo inicial en caja (CUP):", fontSize = 13.sp, color = Slate600)
-                OutlinedTextField(
-                    value = cashText,
-                    onValueChange = { cashText = it },
-                    label = { Text("Fondo Inicial") },
-                    singleLine = true
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    val amount = cashText.toDoubleOrNull() ?: 0.0
-                    onConfirm(amount)
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = ElQadreGold, contentColor = ElQadreNavy)
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("Abrir Jornada", fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancelar") }
-        }
-    )
-}
+                // Botón Enviar SMS por app nativa
+                Button(
+                    onClick = {
+                        try {
+                            val intent = if (smsInfo.recipientPhone.isNotBlank()) {
+                                Intent(Intent.ACTION_SENDTO).apply {
+                                    data = Uri.parse("smsto:${smsInfo.recipientPhone}")
+                                    putExtra("sms_body", smsInfo.smsText)
+                                }
+                            } else {
+                                Intent(Intent.ACTION_VIEW).apply {
+                                    data = Uri.parse("sms:")
+                                    putExtra("sms_body", smsInfo.smsText)
+                                }
+                            }
+                            context.startActivity(intent)
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "No se pudo abrir la app de mensajería: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = ElQadreNavy,
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(Icons.Filled.Send, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Enviar SMS por Mensajería", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                }
 
-@Composable
-fun CloseJornadaDialog(jornada: Jornada?, onDismiss: () -> Unit, onConfirm: (Double, String) -> Unit) {
-    var finalCashText by remember { mutableStateOf("${jornada?.expectedCash?.toInt() ?: 0}") }
-    var notes by remember { mutableStateOf("") }
+                // Botón Copiar al Portapapeles
+                OutlinedButton(
+                    onClick = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        val clip = ClipData.newPlainText("SMS ElQadre", smsInfo.smsText)
+                        clipboard.setPrimaryClip(clip)
+                        Toast.makeText(context, "Texto del SMS copiado al portapapeles", Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, Slate300)
+                ) {
+                    Icon(Icons.Filled.ContentCopy, contentDescription = null, tint = Slate700, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Copiar SMS al Portapapeles", color = Slate700, fontSize = 14.sp)
+                }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Cerrar Jornada Actual", fontWeight = FontWeight.Bold, color = ElQadreNavy) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Efectivo esperado según sistema: $${"%.2f".format(jornada?.expectedCash ?: 0.0)} CUP", fontSize = 12.sp, color = Slate600)
-                OutlinedTextField(
-                    value = finalCashText,
-                    onValueChange = { finalCashText = it },
-                    label = { Text("Efectivo real en caja") },
-                    singleLine = true
-                )
-                OutlinedTextField(
-                    value = notes,
-                    onValueChange = { notes = it },
-                    label = { Text("Notas de cuadre") }
-                )
+                // Botón Probar Cuenta Ahora (Cerrar Sesión)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    TextButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Cerrar", color = Slate600)
+                    }
+
+                    TextButton(
+                        onClick = onLogoutToTest,
+                        modifier = Modifier.weight(1.3f)
+                    ) {
+                        Icon(Icons.AutoMirrored.Outlined.ExitToApp, contentDescription = null, tint = Color(0xFFEF4444), modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Salir a Probar", color = Color(0xFFEF4444), fontWeight = FontWeight.Bold)
+                    }
+                }
             }
         },
-        confirmButton = {
-            Button(
-                onClick = {
-                    val amount = finalCashText.toDoubleOrNull() ?: 0.0
-                    onConfirm(amount, notes)
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = Rose600, contentColor = Color.White)
-            ) {
-                Text("Confirmar Cierre", fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancelar") }
-        }
+        dismissButton = {}
     )
 }

@@ -154,15 +154,6 @@ fun DuenoScreen(
     var showResumenConteoDialog by remember { mutableStateOf(false) }
     var showNotificationsDialog by remember { mutableStateOf(false) }
 
-    val licenseManager = remember { com.example.licensing.CommercialLicenseManager.getInstance(context) }
-    val licenseInfo = licenseManager.licenseInfo.value
-    val isTrialActive = licenseInfo.status == com.example.licensing.CommercialStatus.PRUEBA_ACTIVA
-
-    var showWelcomeTrialDialog by remember {
-        val sharedPrefs = context.getSharedPreferences("elqadre_commercial_license_prefs", Context.MODE_PRIVATE)
-        mutableStateOf(isTrialActive && sharedPrefs.getBoolean("first_owner_access", false))
-    }
-
     // State for restore dialogues
     var showRestoreSalonModal by remember { mutableStateOf(false) }
     var showRestoreBarraModal by remember { mutableStateOf(false) }
@@ -208,169 +199,6 @@ fun DuenoScreen(
             showRestoreCajeroModal -> showRestoreCajeroModal = false
             showQuickActions -> showQuickActions = false
             currentView != DuenoView.INICIO -> currentView = DuenoView.INICIO
-        }
-    }
-
-    if (showWelcomeTrialDialog) {
-        androidx.compose.ui.window.Dialog(
-            onDismissRequest = {
-                context.getSharedPreferences("elqadre_commercial_license_prefs", Context.MODE_PRIVATE)
-                    .edit()
-                    .putBoolean("first_owner_access", false)
-                    .apply()
-                showWelcomeTrialDialog = false
-            }
-        ) {
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = Color.White,
-                modifier = Modifier
-                    .fillMaxWidth(0.92f)
-                    .padding(vertical = 20.dp)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .padding(22.dp)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(60.dp)
-                            .background(ElQadreGold.copy(alpha = 0.15f), shape = CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.CheckCircle,
-                            contentDescription = null,
-                            tint = ElQadreGoldDark,
-                            modifier = Modifier.size(36.dp)
-                        )
-                    }
-
-                    Text(
-                        text = "¡PRUEBA ACTIVADA CON ÉXITO!",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = ElQadreNavy,
-                        textAlign = TextAlign.Center
-                    )
-
-                    Text(
-                        text = "Su período de prueba de 7 días ha comenzado. A continuación se detallan los datos de acceso iniciales y vinculación de su negocio.",
-                        fontSize = 13.sp,
-                        color = Slate600,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(horizontal = 4.dp)
-                    )
-
-                    HorizontalDivider(color = Slate200, thickness = 1.dp)
-
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Slate50, shape = RoundedCornerShape(12.dp))
-                            .padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = "DETALLES DEL NEGOCIO",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = ElQadreNavy,
-                            letterSpacing = 1.sp
-                        )
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(imageVector = Icons.Outlined.Storefront, contentDescription = null, tint = ElQadreNavy, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(text = licenseInfo.businessName, fontWeight = FontWeight.Bold, color = Color.Black, fontSize = 14.sp)
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(imageVector = Icons.Outlined.Person, contentDescription = null, tint = ElQadreNavy, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(text = "Dueño: " + (if (licenseInfo.phoneNumber.isNotBlank()) "Móvil " + licenseInfo.phoneNumber else ""), color = Slate800, fontSize = 13.sp)
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(imageVector = Icons.Outlined.Info, contentDescription = null, tint = ElQadreNavy, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(text = "Vence: " + licenseInfo.endDate, color = Slate800, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                        }
-                    }
-
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Slate50, shape = RoundedCornerShape(12.dp))
-                            .padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = "CREDENCIALES DE ACCESO DEL DUEÑO",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = ElQadreNavy,
-                            letterSpacing = 1.sp
-                        )
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(text = "Usuario:", color = Slate600, fontSize = 13.sp)
-                            Text(text = licenseInfo.ownerUsername, fontWeight = FontWeight.Bold, color = Color.Black, fontSize = 13.sp)
-                        }
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(text = "Contraseña:", color = Slate600, fontSize = 13.sp)
-                            Text(text = licenseInfo.ownerPassword, fontWeight = FontWeight.Bold, color = ElQadreGoldDark, fontSize = 13.sp)
-                        }
-                    }
-
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(1.5.dp, ElQadreGold, shape = RoundedCornerShape(12.dp))
-                            .background(ElQadreGold.copy(alpha = 0.08f), shape = RoundedCornerShape(12.dp))
-                            .padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "TOKEN DE VINCULACIÓN",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = ElQadreNavy,
-                            letterSpacing = 1.sp
-                        )
-                        Text(
-                            text = licenseInfo.token,
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = ElQadreNavy,
-                            letterSpacing = 2.sp
-                        )
-                        Text(
-                            text = "Conserve este token para vincular otros dispositivos a su negocio.",
-                            fontSize = 11.sp,
-                            color = Slate600,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    Button(
-                        onClick = {
-                            context.getSharedPreferences("elqadre_commercial_license_prefs", Context.MODE_PRIVATE)
-                                .edit()
-                                .putBoolean("first_owner_access", false)
-                                .apply()
-                            showWelcomeTrialDialog = false
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.fillMaxWidth().height(48.dp)
-                    ) {
-                        Text("ENTENDIDO", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.White)
-                    }
-                }
-            }
         }
     }
 
@@ -11977,18 +11805,6 @@ fun DuenoAjustesView(
         }
     }
 
-    var isSendingActivationRequest by remember { mutableStateOf(false) }
-
-    val smsPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) {
-            Toast.makeText(context, "Permiso de envío de SMS concedido. Pulse de nuevo para enviar la solicitud.", Toast.LENGTH_SHORT).show()
-        } else {
-            Toast.makeText(context, "Permiso de envío de SMS denegado.", Toast.LENGTH_LONG).show()
-        }
-    }
-
     // State for Restore
     var showRestoreModal by remember { mutableStateOf(false) }
     var restoreJsonText by remember { mutableStateOf("") }
@@ -12124,21 +11940,14 @@ fun DuenoAjustesView(
         )
 
         // -------------------------------------------------------------
-        // SECTION 1: INFORMACIÓN Y DATOS DEL NEGOCIO & TOKEN DE ENTRADA
+        // SECTION 1: INFORMACIÓN Y DATOS DEL NEGOCIO
         // -------------------------------------------------------------
-        val licenseManager = remember { com.example.licensing.CommercialLicenseManager.getInstance(context) }
-        val currentToken = licenseManager.licenseInfo.value.token.ifBlank {
-            uiState.businessConfig?.codigoNegocio?.let { code ->
-                com.example.licensing.SuperAdminBusinessManager.getBusinessByCode(context, code)?.token
-            } ?: ""
-        }
-
         SettingsSectionCard(
             title = "INFORMACIÓN Y DATOS DEL NEGOCIO",
             icon = Icons.Outlined.Store
         ) {
             Text(
-                text = "Identificación pública y token de autorización del establecimiento.",
+                text = "Identificación pública y datos del establecimiento.",
                 fontSize = 12.sp,
                 color = Slate600
             )
@@ -12223,64 +12032,6 @@ fun DuenoAjustesView(
                     modifier = Modifier.weight(1f),
                     colors = OutlinedTextFieldDefaults.colors(disabledBorderColor = Slate300, disabledLabelColor = Slate600)
                 )
-            }
-
-            // TOKEN DE ENTRADA DEL NEGOCIO
-            if (currentToken.isNotBlank()) {
-                Spacer(modifier = Modifier.height(12.dp))
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = ElQadreNavy.copy(alpha = 0.05f),
-                    border = BorderStroke(1.dp, ElQadreNavy.copy(alpha = 0.25f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = ElQadreNavy.copy(alpha = 0.1f),
-                                    modifier = Modifier.size(28.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(Icons.Outlined.VpnKey, contentDescription = null, tint = ElQadreNavy, modifier = Modifier.size(16.dp))
-                                    }
-                                }
-                                Text("TOKEN DE ENTRADA DEL NEGOCIO", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = ElQadreNavy)
-                            }
-                            IconButton(
-                                onClick = {
-                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                    val clip = android.content.ClipData.newPlainText("Token del Negocio", currentToken)
-                                    clipboard.setPrimaryClip(clip)
-                                    Toast.makeText(context, "Token copiado al portapapeles: $currentToken", Toast.LENGTH_SHORT).show()
-                                },
-                                modifier = Modifier.size(32.dp)
-                            ) {
-                                Icon(Icons.Outlined.ContentCopy, contentDescription = "Copiar Token", tint = ElQadreNavy, modifier = Modifier.size(18.dp))
-                            }
-                        }
-                        Text(
-                            text = currentToken,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Black,
-                            fontFamily = FontFamily.Monospace,
-                            color = ElQadreNavy
-                        )
-                        Text(
-                            text = "Utilice este token para incorporar o autorizar dispositivos adicionales según el sistema de licencias del negocio.",
-                            fontSize = 11.sp,
-                            color = Slate600
-                        )
-                    }
-                }
             }
 
             Spacer(modifier = Modifier.height(14.dp))
@@ -12649,7 +12400,7 @@ fun DuenoAjustesView(
                         Toast.makeText(context, "Las contraseñas no coinciden.", Toast.LENGTH_SHORT).show()
                         return@Button
                     }
-                    val currentUsername = uiState.currentUser?.username ?: licenseManager.licenseInfo.value.ownerUsername
+                    val currentUsername = uiState.currentUser?.username ?: currentOwnerUsername
                     viewModel.updateDuenoPasswordLocally(currentUsername, nuevaContrasena)
                     nuevaContrasena = ""
                     confirmarContrasena = ""
@@ -12666,99 +12417,7 @@ fun DuenoAjustesView(
         }
 
         // -------------------------------------------------------------
-        // SECTION 4: ACTIVACIÓN DE LICENCIA COMERCIAL
-        // -------------------------------------------------------------
-        SettingsSectionCard(
-            title = "ACTIVACIÓN DE LICENCIA COMERCIAL",
-            icon = Icons.Outlined.VerifiedUser
-        ) {
-            Text(
-                text = "Solicite la activación de su licencia comercial al Super Administrador. Puede realizar la solicitud en cualquier momento de la prueba.",
-                fontSize = 12.sp,
-                color = Slate600
-            )
-            Spacer(modifier = Modifier.height(14.dp))
-            
-            val bizName = uiState.businessConfig?.nombreNegocio?.trim() ?: licenseManager.licenseInfo.value.businessName.trim().ifBlank { "Mi Negocio" }
-            val ownerName = licenseManager.licenseInfo.value.ownerUsername.trim().ifBlank { "Dueño" }
-            val phone = uiState.businessConfig?.telefono?.trim() ?: licenseManager.licenseInfo.value.phoneNumber.trim().ifBlank { "Sin Teléfono" }
-            val bizCode = uiState.businessConfig?.codigoNegocio?.trim() ?: licenseManager.licenseInfo.value.businessCode.trim().ifBlank { "Sin Código" }
-            val dvcCode = uiState.deviceId
-            
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = Slate50,
-                shape = RoundedCornerShape(14.dp),
-                border = BorderStroke(1.dp, Slate200)
-            ) {
-                Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Text("Detalles de la solicitud a enviar:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = ElQadreNavy)
-                    Text("• Negocio: $bizName", fontSize = 12.sp, color = Slate700)
-                    Text("• Dueño: $ownerName", fontSize = 12.sp, color = Slate700)
-                    Text("• DVC del dispositivo: $dvcCode", fontSize = 12.sp, color = Slate700)
-                    Text("• Número de negocio: $bizCode", fontSize = 12.sp, color = Slate700)
-                    Text("• Teléfono principal: $phone", fontSize = 12.sp, color = Slate700)
-                }
-            }
-            
-            Spacer(modifier = Modifier.height(14.dp))
-            
-            Button(
-                onClick = {
-                    val hasSendPermission = ContextCompat.checkSelfPermission(
-                        context,
-                        Manifest.permission.SEND_SMS
-                    ) == PackageManager.PERMISSION_GRANTED
-
-                    if (!hasSendPermission) {
-                        smsPermissionLauncher.launch(Manifest.permission.SEND_SMS)
-                    } else {
-                        isSendingActivationRequest = true
-                        val smsBody = StringBuilder().apply {
-                            append("SOLICITUD DE ACTIVACIÓN ($bizName)\n")
-                            append("Dueño: $ownerName\n")
-                            append("MP: $phone\n")
-                            append("DVC: $dvcCode\n")
-                            append("Código Negocio: $bizCode")
-                        }.toString()
-                        
-                        val sendResult = com.example.licensing.SuperAdminSmsHelper.sendSmsDirectOnlyToPhone(context, "54413935", smsBody)
-                        isSendingActivationRequest = false
-                        
-                        if (sendResult.isSuccess) {
-                            Toast.makeText(context, "Solicitud de activación enviada correctamente por SMS al Super Admin.", Toast.LENGTH_LONG).show()
-                        } else {
-                            Toast.makeText(context, "Error al enviar SMS: ${sendResult.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
-                        }
-                    }
-                },
-                enabled = !isSendingActivationRequest,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(50.dp)
-                    .testTag("btn_solicitar_activacion_licencia"),
-                colors = ButtonDefaults.buttonColors(containerColor = ElQadreGold, contentColor = ElQadreNavy),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                if (isSendingActivationRequest) {
-                    CircularProgressIndicator(
-                        color = ElQadreNavy,
-                        strokeWidth = 2.dp,
-                        modifier = Modifier.size(20.dp)
-                    )
-                } else {
-                    Icon(Icons.Outlined.VerifiedUser, contentDescription = null, modifier = Modifier.size(20.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("SOLICITAR ACTIVACIÓN DE LICENCIA", fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-
-        // -------------------------------------------------------------
-        // SECTION 5: COPIAS DE SEGURIDAD LOCALES (RESPALDAR & RESTAURAR)
+        // SECTION 4: COPIAS DE SEGURIDAD LOCALES (RESPALDAR & RESTAURAR)
         // -------------------------------------------------------------
         SettingsSectionCard(
             title = "COPIAS DE SEGURIDAD LOCALES",

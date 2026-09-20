@@ -68,8 +68,7 @@ fun LoginScreen(
     viewModel: MainViewModel,
     onLoginSuccess: () -> Unit,
     modifier: Modifier = Modifier,
-    onBack: (() -> Unit)? = null,
-    superAdminUser: String? = null
+    onBack: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val loginPrefs = remember { context.getSharedPreferences("elqadre_login_prefs", Context.MODE_PRIVATE) }
@@ -107,7 +106,7 @@ fun LoginScreen(
     var isDownloadingUpdate by remember { mutableStateOf(false) }
     var downloadProgress by remember { mutableStateOf(0f) }
     var showLoginGuiado by remember {
-        mutableStateOf(!com.example.ui.screens.inicio.GuiadoPrefsManager.isLoginGuideShown(context))
+        mutableStateOf(!com.example.ui.components.GuiadoPrefsManager.isLoginGuideShown(context))
     }
     var isImportingUserData by remember { mutableStateOf(false) }
 
@@ -131,46 +130,70 @@ fun LoginScreen(
                         return@launch
                     }
                     
-                    val root = try {
-                        org.json.JSONObject(jsonString)
-                    } catch (e: Exception) {
-                        Toast.makeText(context, "El archivo no contiene un formato JSON válido.", Toast.LENGTH_LONG).show()
-                        return@launch
-                    }
+                    val fileContent = jsonString.trim()
 
-                    if (com.example.util.PersonalUserDataManager.isPersonalUserJson(root)) {
-                        when (val res = com.example.util.PersonalUserDataManager.importPersonalUserJson(context, uri, db)) {
-                            is com.example.util.PersonalUserDataManager.ImportResult.Success -> {
-                                username = res.username
+                    if (com.example.util.AccountProvisioningHelper.isAccountSms(fileContent)) {
+                        when (val res = com.example.util.AccountProvisioningHelper.processAccountSms(context, fileContent)) {
+                            is com.example.util.AccountProvisioningResult.Success -> {
+                                username = res.user.username
                                 Toast.makeText(
                                     context,
-                                    "¡Datos de usuario cargados con éxito!\nUsuario: ${res.username} (${res.roleDisplayName})",
+                                    "¡Cuenta de usuario cargada con éxito!\nUsuario: ${res.user.username} (${res.user.role.displayName})",
                                     Toast.LENGTH_LONG
                                 ).show()
                             }
-                            is com.example.util.PersonalUserDataManager.ImportResult.Error -> {
-                                Toast.makeText(context, res.message, Toast.LENGTH_LONG).show()
+                            is com.example.util.AccountProvisioningResult.Error -> {
+                                Toast.makeText(context, res.reason, Toast.LENGTH_LONG).show()
                             }
-                        }
-                    } else if (com.example.util.CatalogoDataManager.isCatalogoJson(root)) {
-                        when (val res = com.example.util.CatalogoDataManager.importCatalogoJson(context, uri, db)) {
-                            is com.example.util.CatalogoDataManager.ImportResult.Success -> {
+                            is com.example.util.AccountProvisioningResult.IgnoredNotAccountSms -> {
                                 Toast.makeText(
                                     context,
-                                    "¡Catálogo cargado con éxito!\n${res.businessName} (${res.businessNumber}): ${res.productsCount} productos y ${res.categoriesCount} categorías.",
+                                    "El SMS no tiene el formato de alta requerido.",
                                     Toast.LENGTH_LONG
                                 ).show()
-                            }
-                            is com.example.util.CatalogoDataManager.ImportResult.Error -> {
-                                Toast.makeText(context, res.message, Toast.LENGTH_LONG).show()
                             }
                         }
                     } else {
-                        Toast.makeText(
-                            context,
-                            "El archivo seleccionado no corresponde a un usuario ni a un catálogo de ElQadre.",
-                            Toast.LENGTH_LONG
-                        ).show()
+                        val root = try {
+                            org.json.JSONObject(fileContent)
+                        } catch (e: Exception) {
+                            null
+                        }
+
+                        if (root != null && com.example.util.PersonalUserDataManager.isPersonalUserJson(root)) {
+                            when (val res = com.example.util.PersonalUserDataManager.importPersonalUserJson(context, uri, db)) {
+                                is com.example.util.PersonalUserDataManager.ImportResult.Success -> {
+                                    username = res.username
+                                    Toast.makeText(
+                                        context,
+                                        "¡Datos de usuario cargados con éxito!\nUsuario: ${res.username} (${res.roleDisplayName})",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                                is com.example.util.PersonalUserDataManager.ImportResult.Error -> {
+                                    Toast.makeText(context, res.message, Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        } else if (root != null && com.example.util.CatalogoDataManager.isCatalogoJson(root)) {
+                            when (val res = com.example.util.CatalogoDataManager.importCatalogoJson(context, uri, db)) {
+                                is com.example.util.CatalogoDataManager.ImportResult.Success -> {
+                                    Toast.makeText(
+                                        context,
+                                        "¡Catálogo cargado con éxito!\n${res.businessName} (${res.businessNumber}): ${res.productsCount} productos y ${res.categoriesCount} categorías.",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                                is com.example.util.CatalogoDataManager.ImportResult.Error -> {
+                                    Toast.makeText(context, res.message, Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        } else {
+                            Toast.makeText(
+                                context,
+                                "El archivo seleccionado no corresponde a un SMS de alta, usuario ni catálogo válido de ElQadre.",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
                     }
                 } catch (e: Exception) {
                     Toast.makeText(context, "Error al procesar archivo: ${e.message}", Toast.LENGTH_LONG).show()
@@ -181,63 +204,67 @@ fun LoginScreen(
         }
     }
 
-    var showNoSmsFoundDialog by remember { mutableStateOf(false) }
-    var isSearchingSms by remember { mutableStateOf(false) }
-
-    fun runCargarDatosSmsCheck() {
-        isSearchingSms = true
-        scope.launch {
-            try {
-                // 1. OPCIÓN A: Buscar SMS de confirmación válido de prueba/licencia en la bandeja
-                val licenseMgr = com.example.licensing.CommercialLicenseManager.getInstance(context)
-                val smsFoundAndProcessed = licenseMgr.checkAndProcessInboxTrialConfirmation(context)
-                if (smsFoundAndProcessed) {
-                    val info = licenseMgr.licenseInfo.value
-                    if (info.ownerUsername.isNotBlank()) {
-                        username = info.ownerUsername
-                    }
-                    if (info.ownerPassword.isNotBlank()) {
-                        password = info.ownerPassword
-                    }
-                    Toast.makeText(
-                        context,
-                        "¡Datos de confirmación recuperados por SMS!\nNegocio: ${info.businessName}\nUsuario Dueño: ${info.ownerUsername}\n\nListo para INGRESAR.",
-                        Toast.LENGTH_LONG
-                    ).show()
-                } else {
-                    // OPCIÓN B: No se encontró SMS -> Preguntar para cargar JSON
-                    showNoSmsFoundDialog = true
-                }
-            } catch (e: Exception) {
-                Toast.makeText(context, "Error al buscar SMS de confirmación: ${e.message}", Toast.LENGTH_LONG).show()
-                showNoSmsFoundDialog = true
-            } finally {
-                isSearchingSms = false
-            }
-        }
-    }
-
-    val smsReadPermissionLauncher = rememberLauncherForActivityResult(
+    val readSmsPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
-            runCargarDatosSmsCheck()
+            isImportingUserData = true
+            scope.launch {
+                try {
+                    val results = withContext(Dispatchers.IO) {
+                        com.example.util.AccountProvisioningHelper.scanAndProcessInbox(context, forceReprocess = true)
+                    }
+                    val firstSuccess = results.filterIsInstance<com.example.util.AccountProvisioningResult.Success>().lastOrNull()
+                    if (firstSuccess != null) {
+                        username = firstSuccess.user.username
+                        Toast.makeText(
+                            context,
+                            "¡Cuenta cargada con éxito desde SMS!\nUsuario: ${firstSuccess.user.username} (${firstSuccess.user.role.displayName})",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    } else {
+                        Toast.makeText(context, "No se encontró ningún SMS de alta nuevo en la bandeja. Seleccione un archivo.", Toast.LENGTH_SHORT).show()
+                        jsonFilePickerLauncher.launch("*/*")
+                    }
+                } catch (e: Exception) {
+                    jsonFilePickerLauncher.launch("*/*")
+                } finally {
+                    isImportingUserData = false
+                }
+            }
         } else {
-            Toast.makeText(context, "Permiso de SMS no concedido.", Toast.LENGTH_SHORT).show()
-            showNoSmsFoundDialog = true
+            jsonFilePickerLauncher.launch("*/*")
         }
     }
 
     fun executeCargarDatosFlow() {
-        val hasReadPermission = ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.READ_SMS
-        ) == PackageManager.PERMISSION_GRANTED
-
-        if (!hasReadPermission) {
-            smsReadPermissionLauncher.launch(Manifest.permission.READ_SMS)
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED) {
+            isImportingUserData = true
+            scope.launch {
+                try {
+                    val results = withContext(Dispatchers.IO) {
+                        com.example.util.AccountProvisioningHelper.scanAndProcessInbox(context, forceReprocess = true)
+                    }
+                    val firstSuccess = results.filterIsInstance<com.example.util.AccountProvisioningResult.Success>().lastOrNull()
+                    if (firstSuccess != null) {
+                        username = firstSuccess.user.username
+                        Toast.makeText(
+                            context,
+                            "¡Cuenta cargada con éxito desde SMS!\nUsuario: ${firstSuccess.user.username} (${firstSuccess.user.role.displayName})",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    } else {
+                        Toast.makeText(context, "Bandeja SMS revisada sin altas pendientes. Seleccione archivo de datos.", Toast.LENGTH_SHORT).show()
+                        jsonFilePickerLauncher.launch("*/*")
+                    }
+                } catch (e: Exception) {
+                    jsonFilePickerLauncher.launch("*/*")
+                } finally {
+                    isImportingUserData = false
+                }
+            }
         } else {
-            runCargarDatosSmsCheck()
+            readSmsPermissionLauncher.launch(Manifest.permission.READ_SMS)
         }
     }
 
@@ -278,48 +305,6 @@ fun LoginScreen(
                 logoSize = 168.dp,
                 modifier = Modifier.padding(horizontal = 24.dp)
             )
-
-            if (superAdminUser != null) {
-                val testingBiz = remember { com.example.licensing.SuperAdminBusinessManager.getTestingBusiness(context) }
-                Spacer(modifier = Modifier.height(10.dp))
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = ElQadreNavyCard,
-                    modifier = Modifier.padding(horizontal = 24.dp)
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.AdminPanelSettings,
-                                contentDescription = null,
-                                tint = ElQadreGold,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Sesión Super Admin ($superAdminUser)",
-                                color = Color.White,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                        if (testingBiz != null) {
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "Negocio: [${testingBiz.code}] ${testingBiz.name}",
-                                color = ElQadreGold,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                }
-            }
 
             Spacer(modifier = Modifier.height(20.dp))
 
@@ -530,7 +515,7 @@ fun LoginScreen(
                         onClick = {
                             executeCargarDatosFlow()
                         },
-                        enabled = !uiState.isLoading && !isSearchingSms && !isImportingUserData,
+                        enabled = !uiState.isLoading && !isImportingUserData,
                         shape = RoundedCornerShape(14.dp),
                         border = BorderStroke(1.5.dp, ElQadreNavy.copy(alpha = 0.8f)),
                         colors = ButtonDefaults.outlinedButtonColors(
@@ -541,7 +526,7 @@ fun LoginScreen(
                             .height(52.dp)
                             .testTag("btn_cargar_datos_usuario_login")
                     ) {
-                        if (isSearchingSms || isImportingUserData) {
+                        if (isImportingUserData) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(20.dp),
                                 color = ElQadreNavy,
@@ -644,7 +629,7 @@ fun LoginScreen(
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = if (superAdminUser != null) "Volver a Super Admin" else "Volver a Inicio",
+                    contentDescription = "Volver",
                     tint = Color.White
                 )
             }
@@ -920,46 +905,10 @@ fun LoginScreen(
     )
 
     if (showLoginGuiado) {
-        com.example.ui.screens.inicio.LoginGuiadoDialog(
+        com.example.ui.components.LoginGuiadoDialog(
             onDismiss = {
-                com.example.ui.screens.inicio.GuiadoPrefsManager.setLoginGuideShown(context)
+                com.example.ui.components.GuiadoPrefsManager.setLoginGuideShown(context)
                 showLoginGuiado = false
-            }
-        )
-    }
-
-    if (showNoSmsFoundDialog) {
-        AlertDialog(
-            onDismissRequest = { showNoSmsFoundDialog = false },
-            title = {
-                Text(
-                    "Confirmación SMS",
-                    fontWeight = FontWeight.Bold,
-                    color = ElQadreNavy
-                )
-            },
-            text = {
-                Text(
-                    "No se encontró confirmación SMS. ¿Desea cargar los datos de usuario?",
-                    fontSize = 14.sp,
-                    color = Slate700
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showNoSmsFoundDialog = false
-                        jsonFilePickerLauncher.launch("*/*")
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy)
-                ) {
-                    Text("Aceptar")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showNoSmsFoundDialog = false }) {
-                    Text("Cancelar")
-                }
             }
         )
     }

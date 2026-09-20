@@ -283,7 +283,7 @@ fun GestionSubScreen(
                         viewModel.updateBusinessConfig(
                             ConfiguracionNegocio(
                                 id = 1,
-                                nombreNegocio = nombreNegocio.ifBlank { "Cafetería La Plaza" },
+                                nombreNegocio = nombreNegocio.ifBlank { "Pizzas Factory" },
                                 direccion = direccion,
                                 telefono = telefono,
                                 logoPath = finalLogoPath,

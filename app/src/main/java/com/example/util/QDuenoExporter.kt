@@ -40,7 +40,7 @@ object QDuenoExporter {
         jsonObject.put("archivo", fileName)
         jsonObject.put("identificador_archivo", "Q_DUENO")
         jsonObject.put("codigoNegocio", formattedCode)
-        jsonObject.put("urlDueño", com.example.licensing.SuperAdminBusinessManager.buildUrlDueño(formattedCode))
+        jsonObject.put("urlDueño", com.example.licensing.BusinessCodeHelper.buildUrlDueño(formattedCode))
         jsonObject.put("timestamp_ms", now)
         jsonObject.put("version", now.toString())
         jsonObject.put("fecha_publicacion", fechaPub)

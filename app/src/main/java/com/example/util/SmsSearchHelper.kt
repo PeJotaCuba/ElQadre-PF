@@ -1,8 +1,10 @@
 package com.example.util
 
 import android.content.Context
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Telephony
+import androidx.core.content.ContextCompat
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -22,6 +24,10 @@ object SmsSearchHelper {
         existingTransactions: Set<String>
     ): List<SearchedPagoXMovilSms> {
         val results = mutableListOf<SearchedPagoXMovilSms>()
+
+        if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_SMS) != PackageManager.PERMISSION_GRANTED) {
+            return results
+        }
 
         // Calculate start and end of target day in local timezone
         val startCal = (targetDateCalendar.clone() as Calendar).apply {

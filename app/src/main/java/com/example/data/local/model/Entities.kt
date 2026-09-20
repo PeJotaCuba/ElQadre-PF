@@ -5,15 +5,31 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 
 enum class UserRole(val displayName: String) {
-    @Deprecated("Eliminado como rol operativo del negocio", level = DeprecationLevel.WARNING)
     ADMIN("Administrador"),
+    DUENO("Dueño"),
+    DEPENDIENTE("Dependiente"),
     CAJERO("Cajero"),
+    COCINA("Cocina"),
     SALON("Dependiente de Salón"),
-    BARRA("Dependiente de Barra"),
-    DUENO("Dueño");
+    BARRA("Dependiente de Barra");
 
     companion object {
-        val OPERATIONAL_ROLES = listOf(DUENO, CAJERO, SALON, BARRA)
+        val CREATABLE_BY_ADMIN = listOf(DUENO, DEPENDIENTE, CAJERO, COCINA)
+        val OPERATIONAL_ROLES = listOf(ADMIN, DUENO, DEPENDIENTE, CAJERO, COCINA)
+
+        fun fromString(value: String): UserRole {
+            val normalized = value.trim().uppercase()
+            return when {
+                normalized == "ADMIN" || normalized == "ADMINISTRADOR" -> ADMIN
+                normalized == "DUENO" || normalized == "DUEÑO" -> DUENO
+                normalized == "DEPENDIENTE" -> DEPENDIENTE
+                normalized == "CAJERO" -> CAJERO
+                normalized == "COCINA" -> COCINA
+                normalized.contains("SALON") || normalized.contains("SALÓN") -> DEPENDIENTE
+                normalized.contains("BARRA") -> BARRA
+                else -> DEPENDIENTE
+            }
+        }
     }
 }
 

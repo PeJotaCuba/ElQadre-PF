@@ -36,7 +36,6 @@ import androidx.core.content.ContextCompat
 import com.example.data.local.model.User
 import com.example.data.local.model.UserRole
 import com.example.licensing.BusinessCodeHelper
-import com.example.licensing.SuperAdminBusinessManager
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.MainUiState
 import com.example.ui.viewmodel.MainViewModel
@@ -156,10 +155,10 @@ fun UsuariosSubScreen(uiState: MainUiState, viewModel: MainViewModel) {
                 jsonObject.put("version", System.currentTimeMillis().toString())
 
                 val currentConfig = uiState.generalConfig
-                val uUrl = SuperAdminBusinessManager.buildUrlUsuarios(currentBizCode)
-                val cUrl = SuperAdminBusinessManager.buildUrlCatalogo(currentBizCode)
-                val aUrl = SuperAdminBusinessManager.buildUrlAdmin(currentBizCode)
-                val dUrl = SuperAdminBusinessManager.buildUrlDueño(currentBizCode)
+                val uUrl = BusinessCodeHelper.buildUrlUsuarios(currentBizCode)
+                val cUrl = BusinessCodeHelper.buildUrlCatalogo(currentBizCode)
+                val aUrl = BusinessCodeHelper.buildUrlAdmin(currentBizCode)
+                val dUrl = BusinessCodeHelper.buildUrlDueño(currentBizCode)
                 val mUrl = urlMercainv.trim().ifBlank { currentConfig?.urlMercainvJson ?: "" }
                 val vUrl = urlVersionJson.trim().ifBlank { currentConfig?.urlVersionJson ?: "" }
                 val ownerPhone = telefonoDueno.trim().ifBlank { currentConfig?.telefonoDueno ?: "" }
@@ -216,6 +215,16 @@ fun UsuariosSubScreen(uiState: MainUiState, viewModel: MainViewModel) {
                             permissionsObj.put("personal", user.permisoPersonal)
                             permissionsObj.put("controlNegocio", true)
                             userObj.put("permissions", permissionsObj)
+                        }
+                        UserRole.ADMIN -> {
+                            userObj.put("urlAdmin", aUrl)
+                            userObj.put("urlAdminJson", aUrl)
+                            userObj.put("urlCatalogo", cUrl)
+                            userObj.put("urlCatalogoJson", cUrl)
+                            userObj.put("urlUsuarios", uUrl)
+                            userObj.put("urlUsuariosJson", uUrl)
+                            userObj.put("urlMercainv", mUrl)
+                            userObj.put("urlMercainvJson", mUrl)
                         }
                         else -> { // CAJERO, DEPENDIENTE DE SALÓN, DEPENDIENTE DE BARRA
                             userObj.put("urlCatalogo", cUrl)
@@ -638,25 +647,32 @@ fun UsuariosSubScreen(uiState: MainUiState, viewModel: MainViewModel) {
             }
         }
         
-        // Floating Action Button for Create (Solicitar Usuario)
+        // Floating Action Button for Create (Nuevo Usuario)
         FloatingActionButton(
-            onClick = { showSolicitarUsuarioDialog = true },
+            onClick = { showCreateDialog = true },
             containerColor = ElQadreGold,
             contentColor = ElQadreNavy,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(16.dp)
         ) {
-            Icon(Icons.Filled.Add, contentDescription = "Solicitar Usuario")
+            Icon(Icons.Filled.Add, contentDescription = "Nuevo Usuario")
         }
     }
 
-    if (showCreateDialog) {
-        com.example.ui.components.SolicitarNuevoUsuarioDialog(
-            solicitanteNombre = uiState.currentUser?.fullName ?: "Dueño",
-            businessName = uiState.businessConfig?.nombreNegocio ?: uiState.businessName ?: "ElQadre",
-            deviceId = uiState.deviceId,
-            onDismiss = { showCreateDialog = false }
+    if (showCreateDialog || showSolicitarUsuarioDialog) {
+        UserDialog(
+            user = null,
+            currentDeviceId = uiState.deviceId,
+            onDismiss = {
+                showCreateDialog = false
+                showSolicitarUsuarioDialog = false
+            },
+            onConfirm = { newUser ->
+                viewModel.createUser(newUser)
+                showCreateDialog = false
+                showSolicitarUsuarioDialog = false
+            }
         )
     }
 
@@ -865,7 +881,18 @@ fun UsuariosSubScreen(uiState: MainUiState, viewModel: MainViewModel) {
                         }
 
                         val passStr = sendDataPassword.trim().ifBlank { "1234" }
-                        val smsBody = "Usuario: ${u.username}\nRol: ${u.role.displayName}\nMóvil: $recipientPhone\nContraseña: $passStr"
+                        val configNegocio = uiState.businessConfig
+                        val negocioName = configNegocio?.nombreNegocio?.ifBlank { uiState.businessName.ifBlank { "ElQadre" } } ?: uiState.businessName.ifBlank { "ElQadre" }
+                        val codigoNegocio = configNegocio?.codigoNegocio?.ifBlank { "001" } ?: "001"
+                        val rolName = com.example.util.AccountProvisioningHelper.mapRoleToProtocolString(u.role)
+
+                        val smsBody = com.example.util.AccountProvisioningHelper.buildAccountDeliverySms(
+                            numeroNegocio = codigoNegocio,
+                            nombre = u.fullName,
+                            usuario = u.username,
+                            contrasenaInicial = passStr,
+                            rol = rolName
+                        )
 
                         val sent = try {
                             val smsManager = context.getSystemService(android.telephony.SmsManager::class.java)
@@ -900,15 +927,6 @@ fun UsuariosSubScreen(uiState: MainUiState, viewModel: MainViewModel) {
                     Text("Cancelar")
                 }
             }
-        )
-    }
-
-    if (showSolicitarUsuarioDialog) {
-        com.example.ui.components.SolicitarNuevoUsuarioDialog(
-            solicitanteNombre = uiState.currentUser?.fullName ?: "Dueño",
-            businessName = uiState.businessConfig?.nombreNegocio ?: uiState.businessName ?: "ElQadre",
-            deviceId = uiState.deviceId,
-            onDismiss = { showSolicitarUsuarioDialog = false }
         )
     }
 }
@@ -1124,7 +1142,7 @@ fun UserDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    if (username.isNotBlank() && fullName.isNotBlank() && (user != null || password.isNotBlank()) && role != UserRole.ADMIN && !username.trim().equals("adminq", ignoreCase = true)) {
+                    if (username.isNotBlank() && fullName.isNotBlank() && (user != null || password.isNotBlank())) {
                         val finalDevice = authorizedDeviceId.trim().ifEmpty { null }
                         val passHash = if (password.isNotBlank()) password.trim().toSha256() else user!!.passwordHash
                         

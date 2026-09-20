@@ -7,42 +7,30 @@ import java.util.Locale
 
 object BusinessCodeHelper {
 
+    const val GITHUB_BASE_RAW_URL = "https://raw.githubusercontent.com/PeJotaCuba/BD-Qadre-PF/refs/heads/main/"
+
+    fun buildUrlUsuarios(code: String): String =
+        "${GITHUB_BASE_RAW_URL}Q_${formatCode(code)}usuarios.json"
+
+    fun buildUrlCatalogo(code: String): String =
+        "${GITHUB_BASE_RAW_URL}Q_${formatCode(code)}catalogo.json"
+
+    fun buildUrlAdmin(code: String): String =
+        "${GITHUB_BASE_RAW_URL}Q_${formatCode(code)}admin.json"
+
+    fun buildUrlDueño(code: String): String =
+        "${GITHUB_BASE_RAW_URL}Q_${formatCode(code)}dueño.json"
+
     /**
-     * Resolves the 3-digit business code (e.g., "001", "002") consistently
-     * across all scenarios:
-     * 1. Super Admin testing mode (ENTRAR A ELQADRE)
-     * 2. Active 7-day trial authorization
-     * 3. Active commercial license
-     * 4. Local database configuration
+     * Resuelve el código de negocio de 3 dígitos (por ejemplo "001", "002")
+     * a partir de la configuración general o de negocio local.
      */
     fun resolveBusinessCode(
         context: Context? = null,
         configNegocio: ConfiguracionNegocio? = null,
-        configGeneral: ConfiguracionGeneral? = null,
-        licenseInfo: CommercialLicenseInfo? = null
+        configGeneral: ConfiguracionGeneral? = null
     ): String {
-        // 1. Super Admin testing business context
-        if (context != null) {
-            val testingBiz = SuperAdminBusinessManager.getTestingBusiness(context)
-            if (testingBiz != null && testingBiz.code.isNotBlank()) {
-                return formatCode(testingBiz.code)
-            }
-        }
-
-        // 2. Active license or trial info
-        if (licenseInfo != null && licenseInfo.businessCode.isNotBlank()) {
-            return formatCode(licenseInfo.businessCode)
-        }
-
-        // 3. Fallback: check stored license in prefs
-        if (context != null) {
-            val storedCode = CommercialLicenseManager.getInstance(context).licenseInfo.value.businessCode
-            if (storedCode.isNotBlank()) {
-                return formatCode(storedCode)
-            }
-        }
-
-        // 4. Check URL from general config (regex match on Q_XXX)
+        // 1. Verificar URLs en configuración general (búsqueda de Q_XXX)
         val candidateUrls = listOfNotNull(
             configGeneral?.urlUsuariosJson,
             configGeneral?.urlCatalogoJson,
@@ -56,7 +44,7 @@ object BusinessCodeHelper {
             }
         }
 
-        // 5. Check business config code
+        // 2. Verificar código en configuración del negocio
         if (configNegocio != null && configNegocio.codigoNegocio.isNotBlank()) {
             return formatCode(configNegocio.codigoNegocio)
         }

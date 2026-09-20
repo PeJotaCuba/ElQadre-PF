@@ -96,60 +96,16 @@ class SmsReceiver : BroadcastReceiver() {
                 return
             }
 
-            // 3. Separate check for Trial Request SMS ("SOLICITUD PRUEBA ELQADRE")
-            val upperFull = fullText.uppercase()
-            val isTrialPattern = upperFull.contains("SOLICITUD PRUEBA ELQADRE") ||
-                    upperFull.contains("SOLICITUD PRUEBA") ||
-                    (upperFull.contains("ELQADRE") && (upperFull.contains("AUTORIZACION") || upperFull.contains("AUTORIZACIÓN") || upperFull.contains("PRUEBA")))
-
-            if (isTrialPattern) {
+            // 3. Separate check for Account Provisioning / Delivery SMS
+            if (com.example.util.AccountProvisioningHelper.isAccountSms(fullText)) {
                 val pendingResult = goAsync()
-                CoroutineScope(Dispatchers.IO).launch {
+                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
                     try {
-                        com.example.licensing.SuperAdminSmsHelper.processIncomingTrialSms(
+                        com.example.util.AccountProvisioningHelper.processAccountSms(
                             context = context.applicationContext,
-                            sender = senderTrimmed,
                             body = fullText,
-                            timestamp = System.currentTimeMillis()
+                            senderPhone = senderTrimmed
                         )
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    } finally {
-                        pendingResult.finish()
-                    }
-                }
-                return
-            }
-
-            // 4. Separate check for Confirmation SMS ("CONFIRMACIÓN PRUEBA ELQADRE")
-            val isConfirmationPattern = upperFull.contains("CONFIRMACIÓN PRUEBA ELQADRE") ||
-                    upperFull.contains("CONFIRMACION PRUEBA ELQADRE")
-
-            if (isConfirmationPattern) {
-                val pendingResult = goAsync()
-                CoroutineScope(Dispatchers.IO).launch {
-                    try {
-                        com.example.licensing.CommercialLicenseManager.getInstance(context.applicationContext)
-                            .processIncomingConfirmationSms(context.applicationContext, fullText)
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    } finally {
-                        pendingResult.finish()
-                    }
-                }
-                return
-            }
-
-            // 5. Separate check for License Confirmation SMS ("CONFIRMACIÓN LICENCIA ELQADRE")
-            val isLicenseConfirmationPattern = upperFull.contains("CONFIRMACIÓN LICENCIA ELQADRE") ||
-                    upperFull.contains("CONFIRMACION LICENCIA ELQADRE")
-
-            if (isLicenseConfirmationPattern) {
-                val pendingResult = goAsync()
-                CoroutineScope(Dispatchers.IO).launch {
-                    try {
-                        com.example.licensing.CommercialLicenseManager.getInstance(context.applicationContext)
-                            .processIncomingLicenseConfirmationSms(context.applicationContext, fullText)
                     } catch (e: Exception) {
                         e.printStackTrace()
                     } finally {

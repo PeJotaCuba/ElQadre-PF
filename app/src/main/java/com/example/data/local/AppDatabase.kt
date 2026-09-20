@@ -596,16 +596,29 @@ abstract class AppDatabase : RoomDatabase() {
 
         suspend fun seedDefaultData(db: AppDatabase) {
             // Seed configs safely
-            if (db.configuracionNegocioDao().getConfigSync() == null) {
+            val currentNegocio = db.configuracionNegocioDao().getConfigSync()
+            if (currentNegocio == null) {
                 val defaultNegocio = ConfiguracionNegocio(
                     id = 1,
-                    nombreNegocio = "Cafetería La Plaza",
-                    direccion = "Plaza de la Revolución, La Habana",
+                    nombreNegocio = "Pizzas Factory",
+                    direccion = "Bayamo, Cuba",
                     telefono = "+53 51234567",
-                    codigoNegocio = "NEG-000001",
+                    codigoNegocio = "001",
                     logoPath = null
                 )
                 db.configuracionNegocioDao().insertConfig(defaultNegocio)
+            } else if (currentNegocio.nombreNegocio.isBlank() || 
+                       currentNegocio.nombreNegocio == "Cafetería La Plaza" || 
+                       currentNegocio.nombreNegocio == "Restaurante El Buen Sabor" ||
+                       currentNegocio.nombreNegocio == "El Qadre POS" ||
+                       currentNegocio.nombreNegocio == "ElQadre") {
+                db.configuracionNegocioDao().updateConfig(
+                    currentNegocio.copy(
+                        nombreNegocio = "Pizzas Factory",
+                        direccion = if (currentNegocio.direccion.contains("La Habana") || currentNegocio.direccion.isBlank()) "Bayamo, Cuba" else currentNegocio.direccion,
+                        codigoNegocio = if (currentNegocio.codigoNegocio.isBlank() || currentNegocio.codigoNegocio == "NEG-000001") "001" else currentNegocio.codigoNegocio
+                    )
+                )
             }
 
             if (db.configuracionGeneralDao().getConfigSync() == null) {
@@ -619,28 +632,54 @@ abstract class AppDatabase : RoomDatabase() {
                 db.configuracionGeneralDao().insertConfig(defaultGeneral)
             }
 
-            // Clean up any legacy admin users if they exist in database
-            try {
-                db.userDao().deleteAdminUsers()
-            } catch (e: Exception) {
-                // Ignore
-            }
-
-            // Seed Users safely (Dueño is the central operational account, no Administrador)
-            if (db.userDao().getAllUsersSync().isEmpty()) {
+            // Ensure default users exist (Administrador, Dueño, Cajero, Salón, Barra)
+            val existingUsers = db.userDao().getAllUsersSync()
+            if (existingUsers.isEmpty()) {
                 val defaultUsers = listOf(
-                    User("dueno", "Don Roberto (Dueño)", "1234".toSha256(), UserRole.DUENO, montoPorProducto = 0.0),
-                    User("cajero1", "Carlos Mendoza (Caja)", "1234".toSha256(), UserRole.CAJERO, montoPorProducto = 0.0),
-                    User("salon1", "Sofía Valdés (Salón)", "1234".toSha256(), UserRole.SALON, montoPorProducto = 50.0),
-                    User("barra1", "Mateo Gómez (Barra)", "1234".toSha256(), UserRole.BARRA, montoPorProducto = 30.0)
+                    User("admin", "Administrador Principal", "admin26".toSha256(), UserRole.ADMIN, isActive = true, montoPorProducto = 0.0),
+                    User("dueno", "Don Roberto (Dueño)", "1234".toSha256(), UserRole.DUENO, isActive = true, montoPorProducto = 0.0),
+                    User("cajero1", "Carlos Mendoza (Caja)", "1234".toSha256(), UserRole.CAJERO, isActive = true, montoPorProducto = 0.0),
+                    User("salon1", "Sofía Valdés (Salón)", "1234".toSha256(), UserRole.SALON, isActive = true, montoPorProducto = 50.0),
+                    User("barra1", "Mateo Gómez (Barra)", "1234".toSha256(), UserRole.BARRA, isActive = true, montoPorProducto = 30.0)
                 )
                 defaultUsers.forEach { db.userDao().insertUser(it) }
+            } else {
+                ensureAdminUserExists(db)
             }
-
-
 
             // Seed only essential configurations and users on first creation.
             // Fresh installs of the app start with an empty catalog, empty materials, empty expenses, empty tables, and empty jornadas.
+        }
+
+        /**
+         * Comprueba que existe localmente la cuenta ADMINISTRADOR.
+         * Si NO existe: la crea automáticamente con username = "admin", password inicial = "admin26", rol = ADMINISTRADOR, activo.
+         * Si YA existe:
+         *   - Si tiene la contraseña antigua heredada de "1234", se migra automáticamente a "admin26".
+         *   - Si tiene cualquier otra contraseña personalizada, se conserva intacta.
+         */
+        suspend fun ensureAdminUserExists(db: AppDatabase): User {
+            val existingAdmin = db.userDao().getUserByUsername("admin")
+            if (existingAdmin == null) {
+                val newAdmin = User(
+                    username = "admin",
+                    fullName = "Administrador Principal",
+                    passwordHash = "admin26".toSha256(),
+                    role = UserRole.ADMIN,
+                    isActive = true,
+                    montoPorProducto = 0.0
+                )
+                db.userDao().insertUser(newAdmin)
+                return newAdmin
+            } else {
+                val legacyHash = "1234".toSha256()
+                if (existingAdmin.passwordHash == legacyHash) {
+                    val migratedAdmin = existingAdmin.copy(passwordHash = "admin26".toSha256())
+                    db.userDao().updateUser(migratedAdmin)
+                    return migratedAdmin
+                }
+            }
+            return existingAdmin
         }
     }
 }

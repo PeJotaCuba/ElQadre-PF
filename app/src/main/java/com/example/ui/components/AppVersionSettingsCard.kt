@@ -172,7 +172,7 @@ fun AppVersionSettingsCard(
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("BUSCAR ACTUALIZACIONES", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Text("ACTUALIZAR APLICACIÓN", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 }
             }
         }

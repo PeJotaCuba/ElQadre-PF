@@ -6,13 +6,13 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface UserDao {
-    @Query("SELECT * FROM users WHERE role != 'ADMIN' ORDER BY role ASC, fullName ASC")
+    @Query("SELECT * FROM users ORDER BY role ASC, fullName ASC")
     fun getAllUsers(): Flow<List<User>>
 
-    @Query("SELECT * FROM users WHERE role != 'ADMIN' ORDER BY role ASC, fullName ASC")
+    @Query("SELECT * FROM users ORDER BY role ASC, fullName ASC")
     suspend fun getAllUsersSync(): List<User>
 
-    @Query("SELECT * FROM users WHERE (username = :username OR LOWER(username) = LOWER(:username)) AND role != 'ADMIN' LIMIT 1")
+    @Query("SELECT * FROM users WHERE (username = :username OR LOWER(username) = LOWER(:username)) LIMIT 1")
     suspend fun getUserByUsername(username: String): User?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)

@@ -12,7 +12,6 @@ import com.example.data.local.model.ConfiguracionGeneral
 import com.example.data.local.model.ConfiguracionNegocio
 import com.example.data.local.model.Product
 import com.example.licensing.BusinessCodeHelper
-import com.example.licensing.CommercialLicenseManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -60,13 +59,10 @@ object CatalogoDataManager {
         configNegocio: ConfiguracionNegocio?,
         configGeneral: ConfiguracionGeneral?
     ): File {
-        val licenseMgr = CommercialLicenseManager.getInstance(context)
-        val licenseInfo = licenseMgr.licenseInfo.value
         val rawBizCode = BusinessCodeHelper.resolveBusinessCode(
             context = context,
             configNegocio = configNegocio,
-            configGeneral = configGeneral,
-            licenseInfo = licenseInfo
+            configGeneral = configGeneral
         )
         val businessNumber = BusinessCodeHelper.formatCode(rawBizCode)
         val businessCode = configNegocio?.codigoNegocio?.ifBlank { "NEG-$businessNumber" } ?: "NEG-$businessNumber"
@@ -224,13 +220,10 @@ object CatalogoDataManager {
 
             val configNegocio = db.configuracionNegocioDao().getConfigSync()
             val configGeneral = db.configuracionGeneralDao().getConfigSync()
-            val licenseMgr = CommercialLicenseManager.getInstance(context)
-            val licenseInfo = licenseMgr.licenseInfo.value
             val deviceRawBiz = BusinessCodeHelper.resolveBusinessCode(
                 context = context,
                 configNegocio = configNegocio,
-                configGeneral = configGeneral,
-                licenseInfo = licenseInfo
+                configGeneral = configGeneral
             )
             val deviceBizNumber = BusinessCodeHelper.formatCode(deviceRawBiz)
 

@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "ElQadre"
+rootProject.name = "ElQadre-PF"
 include(":app")

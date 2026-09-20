@@ -134,19 +134,18 @@ object UserUpdateManager {
             .replace("Ú", "U")
 
         return when (normalized) {
-            "ADMIN", "ADMINISTRADOR" -> UserRole.DUENO
+            "ADMIN", "ADMINISTRADOR" -> UserRole.ADMIN
             "CAJERO", "CAJA" -> UserRole.CAJERO
             "SALON", "DEPENDIENTE_SALON", "DEPENDIENTE_DE_SALON" -> UserRole.SALON
             "BARRA", "DEPENDIENTE_BARRA", "DEPENDIENTE_DE_BARRA" -> UserRole.BARRA
             "DUENO", "DUEÑO", "OWNER" -> UserRole.DUENO
             else -> {
                 try {
-                    val r = UserRole.valueOf(normalized)
-                    if (r == UserRole.ADMIN) UserRole.DUENO else r
+                    UserRole.valueOf(normalized)
                 } catch (e: Exception) {
                     UserRole.values().firstOrNull {
-                        (it.name.equals(normalized, ignoreCase = true) ||
-                        it.displayName.equals(roleStr.trim(), ignoreCase = true)) && it != UserRole.ADMIN
+                        it.name.equals(normalized, ignoreCase = true) ||
+                        it.displayName.equals(roleStr.trim(), ignoreCase = true)
                     }
                 }
             }
@@ -235,10 +234,10 @@ object UserUpdateManager {
                 jsonObject.optString("url_admin_json", "")))).trim()
 
             if (bizCodeFormatted.isNotBlank()) {
-                if (urlUsuarios.isBlank()) urlUsuarios = com.example.licensing.SuperAdminBusinessManager.buildUrlUsuarios(bizCodeFormatted)
-                if (urlCatalogo.isBlank()) urlCatalogo = com.example.licensing.SuperAdminBusinessManager.buildUrlCatalogo(bizCodeFormatted)
-                if (urlQDueno.isBlank()) urlQDueno = com.example.licensing.SuperAdminBusinessManager.buildUrlDueño(bizCodeFormatted)
-                if (urlAdmin.isBlank()) urlAdmin = com.example.licensing.SuperAdminBusinessManager.buildUrlAdmin(bizCodeFormatted)
+                if (urlUsuarios.isBlank()) urlUsuarios = com.example.licensing.BusinessCodeHelper.buildUrlUsuarios(bizCodeFormatted)
+                if (urlCatalogo.isBlank()) urlCatalogo = com.example.licensing.BusinessCodeHelper.buildUrlCatalogo(bizCodeFormatted)
+                if (urlQDueno.isBlank()) urlQDueno = com.example.licensing.BusinessCodeHelper.buildUrlDueño(bizCodeFormatted)
+                if (urlAdmin.isBlank()) urlAdmin = com.example.licensing.BusinessCodeHelper.buildUrlAdmin(bizCodeFormatted)
             }
 
             val urlVersion = jsonObject.optString("versionJsonUrl",

@@ -187,7 +187,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _uiState.update {
                         it.copy(
                             businessConfig = config,
-                            businessName = config?.nombreNegocio ?: "Restaurante El Buen Sabor"
+                            businessName = config?.nombreNegocio?.ifBlank { "Pizzas Factory" } ?: "Pizzas Factory"
                         )
                     }
                 }
@@ -289,20 +289,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val sessionDurationMillis = 24L * 60 * 60 * 1000 // 24 hours
                 if (now - lastActivityTimestamp < sessionDurationMillis) {
                     val user = repository.getUserByUsername(loggedInUsername)
-                    if (user != null && user.isActive && user.role != UserRole.ADMIN) {
-                        // Requisito 1: El DUEÑO solo puede acceder cuando el dispositivo esté autorizado comercialmente
-                        if (user.role == UserRole.DUENO) {
-                            val licenseMgr = com.example.licensing.CommercialLicenseManager.getInstance(getApplication())
-                            val currentLicense = licenseMgr.checkCurrentExpiration()
-                            val isValid = currentLicense.status == com.example.licensing.CommercialStatus.PRUEBA_ACTIVA ||
-                                    currentLicense.status == com.example.licensing.CommercialStatus.LICENCIA_ACTIVA
-                            val isOfflineOverdue = licenseMgr.isOfflineCheckRequired()
-                            if (!isValid || isOfflineOverdue) {
-                                logout()
-                                return@launch
-                            }
-                        }
-
+                    if (user != null && user.isActive) {
                         loadSalonTableCountForUser(user.username)
                         _uiState.update { it.copy(currentUser = user) }
                         
@@ -321,11 +308,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         startCollectingFlows()
 
-        // Normalización preventiva de cuentas locales:
-        // 1. Elimina duplicados que sólo difieran por mayúsculas/minúsculas.
-        // 2. Normaliza cuentas DUEÑO históricas.
+        // Normalización preventiva de cuentas locales y verificación de la cuenta ADMINISTRADOR:
+        // 1. Comprueba y asegura la existencia de la cuenta ADMINISTRADOR local ("admin" / "admin26" inicial).
+        // 2. Elimina duplicados que sólo difieran por mayúsculas/minúsculas.
+        // 3. Normaliza cuentas DUEÑO históricas.
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                AppDatabase.ensureAdminUserExists(repository.getDatabase())
                 val allUsers = repository.getDatabase().userDao().getAllUsersSync()
                 val seenUsernames = mutableMapOf<String, User>()
                 for (u in allUsers) {
@@ -357,8 +346,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
+        // Listen for incoming account provisioning SMS events
+        viewModelScope.launch {
+            com.example.util.AccountProvisioningBus.events.collect { (accountUser, isUpdate) ->
+                val action = if (isUpdate) "actualizada" else "creada"
+                _uiState.update { 
+                    it.copy(successMessage = "Cuenta $action por SMS: ${accountUser.username} (${accountUser.role.displayName})")
+                }
+            }
+        }
+
+        // Scan inbox for any pending account delivery SMS without requiring SuperAdmin
+        scanPendingAccountSms()
+
         // Process any pending SMS comandas in queue
         processPendingSmsComandas()
+    }
+
+    fun scanPendingAccountSms() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                com.example.util.AccountProvisioningHelper.scanAndProcessInbox(getApplication())
+            } catch (_: Exception) {}
+        }
     }
 
     fun dismissComandaAlert() {
@@ -1010,29 +1020,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
 
 
-    fun login(username: String, password: String,onSuccess: (User) -> Unit) {
+    fun login(username: String, password: String, onSuccess: (User) -> Unit) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             
             val trimmedUsername = username.trim()
-            if (trimmedUsername.equals("adminq", ignoreCase = true)) {
-                _uiState.update { it.copy(isLoading = false, errorMessage = "La cuenta de Administrador ha sido eliminada.") }
-                return@launch
-            }
+            val normalizedUsername = trimmedUsername.lowercase()
 
             var user = repository.getUserByUsername(trimmedUsername)
+            if (user == null && normalizedUsername != trimmedUsername) {
+                user = repository.getUserByUsername(normalizedUsername)
+            }
+
+            // Comprobación y creación garantizada de cuenta ADMINISTRADOR local si no existiera
+            if (user == null && (normalizedUsername == "admin" || trimmedUsername.equals("admin", ignoreCase = true))) {
+                user = AppDatabase.ensureAdminUserExists(repository.getDatabase())
+            }
+
             val personalAccount = repository.getDatabase().personalContratadoDao().getPersonalByUsername(trimmedUsername)
+                ?: repository.getDatabase().personalContratadoDao().getPersonalByUsername(normalizedUsername)
             if (user == null && personalAccount != null && personalAccount.tieneAccesoApp) {
                 val role = when (personalAccount.role.uppercase()) {
+                    "ADMIN", "ADMINISTRADOR" -> UserRole.ADMIN
                     "DUENO", "DUEÑO" -> UserRole.DUENO
                     "CAJERO" -> UserRole.CAJERO
-                    "DEPENDIENTE", "SALON" -> {
-                        if (personalAccount.dependienteTipo.uppercase() == "BARRA") UserRole.BARRA else UserRole.SALON
-                    }
+                    "COCINA" -> UserRole.COCINA
+                    "DEPENDIENTE" -> UserRole.DEPENDIENTE
+                    "SALON" -> UserRole.SALON
                     "BARRA" -> UserRole.BARRA
-                    else -> {
-                        if (personalAccount.dependienteTipo.uppercase() == "BARRA") UserRole.BARRA else UserRole.SALON
-                    }
+                    else -> UserRole.fromString(personalAccount.role)
                 }
                 val newUser = User(
                     username = personalAccount.username.trim().lowercase(),
@@ -1051,18 +1067,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 user = newUser
             }
 
-            if (user == null || user.role == UserRole.ADMIN) {
+            if (user == null) {
                 _uiState.update { it.copy(isLoading = false, errorMessage = "Usuario no encontrado.") }
                 return@launch
-            }
-
-            val isPersonalUser = personalAccount?.tieneAccesoApp == true
-            val config = repository.getDatabase().configuracionGeneralDao().getConfigSync()
-            if (config == null || config.lastUserUpdateStatus != com.example.util.UserUpdateManager.STATUS_SUCCESS) {
-                if (user.role != UserRole.DUENO && !isPersonalUser) {
-                    _uiState.update { it.copy(isLoading = false, errorMessage = "Debe actualizar usuarios antes de iniciar sesión.") }
-                    return@launch
-                }
             }
             
             if (user.passwordHash != password.trim().toSha256()) {
@@ -1074,48 +1081,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
 
-            // Requisito 1 & 3: El DUEÑO solo podrá acceder a su sección cuando el dispositivo esté autorizado
-            // para ese negocio mediante la información vigente de confirmación de prueba/licencia, DVC, negocio y token
-            if (user.role == UserRole.DUENO) {
-                val licenseMgr = com.example.licensing.CommercialLicenseManager.getInstance(getApplication())
-                val currentLicense = licenseMgr.checkCurrentExpiration()
-                val isAuthorized = currentLicense.status == com.example.licensing.CommercialStatus.PRUEBA_ACTIVA ||
-                        currentLicense.status == com.example.licensing.CommercialStatus.LICENCIA_ACTIVA
-
-                // Excepción exclusiva para pruebas en dispositivo de SuperAdmin:
-                val context = getApplication<android.app.Application>()
-                val isSuperAdminDevice = com.example.ui.screens.inicio.SuperAdminAuthService.isSuperAdminConfigured(context)
-                val localSuperAdminBusinesses = com.example.licensing.SuperAdminBusinessManager.getBusinesses(context)
-                val isLocalSuperAdminDueno = isSuperAdminDevice && localSuperAdminBusinesses.any { biz ->
-                    (biz.ownerUsername.equals(user.username, ignoreCase = true) ||
-                     biz.users.any { u -> u.username.equals(user.username, ignoreCase = true) && (u.role.contains("DUEÑO") || u.role.contains("DUENO")) })
-                }
-
-                if (!isAuthorized && !isLocalSuperAdminDueno) {
-                    val msg = when (currentLicense.status) {
-                        com.example.licensing.CommercialStatus.PRUEBA_VENCIDA -> "Período de prueba vencido. Requiere activación de licencia comercial."
-                        com.example.licensing.CommercialStatus.LICENCIA_VENCIDA -> "Licencia comercial vencida. Requiere renovación."
-                        com.example.licensing.CommercialStatus.LICENCIA_REVOCADA -> "Licencia comercial revocada por la administración."
-                        else -> "Dispositivo no autorizado para este negocio."
-                    }
-                    _uiState.update { it.copy(isLoading = false, errorMessage = msg) }
-                    return@launch
-                }
-
-                if (!isLocalSuperAdminDueno && licenseMgr.isOfflineCheckRequired()) {
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            errorMessage = "Han transcurrido más de 7 días sin comprobación comercial. Conéctese a Internet para verificar su licencia."
-                        )
-                    }
-                    return@launch
-                }
-            }
-
-            // Nota de Arquitectura: El acceso del usuario depende de: usuario + contraseña + negocio autorizado en este dispositivo.
-            // La autorización comercial del dispositivo pertenece a DVC / SuperAdmin / Licencia.
-            // authorizedDeviceId ya no bloquea el inicio de sesión.
             loadSalonTableCountForUser(user.username)
             _uiState.update { it.copy(isLoading = false, currentUser = user, errorMessage = null) }
             
@@ -1949,6 +1914,77 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.insertUser(user)
             _uiState.update { it.copy(successMessage = "Usuario creado exitosamente") }
+        }
+    }
+
+    fun saveUserByAdmin(user: User, onComplete: ((User) -> Unit)? = null) {
+        viewModelScope.launch {
+            try {
+                val db = repository.getDatabase()
+                val cleanUser = user.copy(username = user.username.trim().lowercase())
+                val existing = db.userDao().getUserByUsername(cleanUser.username)
+                if (existing != null) {
+                    db.userDao().updateUser(cleanUser)
+                } else {
+                    db.userDao().insertUser(cleanUser)
+                }
+
+                // Sincronizar con PersonalContratado para mantener consistencia
+                try {
+                    val personalDao = db.personalContratadoDao()
+                    val existingPersonal = personalDao.getPersonalByUsername(cleanUser.username)
+                    val roleStr = when (cleanUser.role) {
+                        UserRole.ADMIN -> "ADMINISTRADOR"
+                        UserRole.DUENO -> "DUEÑO"
+                        UserRole.DEPENDIENTE -> "DEPENDIENTE"
+                        UserRole.CAJERO -> "CAJERO"
+                        UserRole.COCINA -> "COCINA"
+                        UserRole.SALON -> "DEPENDIENTE"
+                        UserRole.BARRA -> "BARRA"
+                    }
+                    if (existingPersonal != null) {
+                        personalDao.updatePersonal(
+                            existingPersonal.copy(
+                                nombreCompleto = cleanUser.fullName,
+                                movil = cleanUser.telefono,
+                                passwordHash = cleanUser.passwordHash,
+                                role = roleStr,
+                                montoPorProducto = cleanUser.montoPorProducto,
+                                permisoProduccion = cleanUser.permisoProduccion,
+                                permisoMercancias = cleanUser.permisoMercancias,
+                                permisoPersonal = cleanUser.permisoPersonal,
+                                permisoControlNegocio = cleanUser.permisoControlNegocio,
+                                isActive = cleanUser.isActive,
+                                tieneAccesoApp = true
+                            )
+                        )
+                    } else {
+                        personalDao.insertPersonal(
+                            com.example.data.local.model.PersonalContratado(
+                                nombreCompleto = cleanUser.fullName,
+                                carnetIdentidad = "",
+                                movil = cleanUser.telefono,
+                                formaPago = if (cleanUser.montoPorProducto > 0) "Por producto" else "Fijo",
+                                username = cleanUser.username,
+                                passwordHash = cleanUser.passwordHash,
+                                role = roleStr,
+                                montoPorProducto = cleanUser.montoPorProducto,
+                                tieneAccesoApp = true,
+                                isActive = cleanUser.isActive,
+                                permisoProduccion = cleanUser.permisoProduccion,
+                                permisoMercancias = cleanUser.permisoMercancias,
+                                permisoPersonal = cleanUser.permisoPersonal,
+                                permisoControlNegocio = cleanUser.permisoControlNegocio
+                            )
+                        )
+                    }
+                } catch (_: Exception) {}
+
+                _uiState.update { it.copy(successMessage = "Usuario ${cleanUser.username} guardado localmente") }
+                onComplete?.invoke(cleanUser)
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "Error al guardar usuario: ${e.message}") }
+            }
         }
     }
 

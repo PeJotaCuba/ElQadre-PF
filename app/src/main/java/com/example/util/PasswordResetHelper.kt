@@ -1,8 +1,10 @@
 package com.example.util
 
 import android.content.Context
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.util.Log
+import androidx.core.content.ContextCompat
 import com.example.data.local.model.ConfiguracionGeneral
 import com.example.data.local.model.User
 import com.example.data.local.model.UserRole
@@ -69,6 +71,11 @@ object PasswordResetHelper {
 
     fun scanInboxForResetRequests(context: Context): List<PasswordResetRequest> {
         val results = mutableListOf<PasswordResetRequest>()
+        if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_SMS) != PackageManager.PERMISSION_GRANTED) {
+            Log.d("PasswordResetHelper", "Permiso READ_SMS no concedido. Omitiendo escaneo.")
+            return results
+        }
+
         val uri = Uri.parse("content://sms/inbox")
         val projection = arrayOf("_id", "address", "body", "date")
 
@@ -92,6 +99,8 @@ object PasswordResetHelper {
                     }
                 }
             }
+        } catch (se: SecurityException) {
+            Log.w("PasswordResetHelper", "SecurityException scanning SMS inbox: ${se.message}")
         } catch (e: Exception) {
             Log.e("PasswordResetHelper", "Error scanning SMS inbox", e)
         }

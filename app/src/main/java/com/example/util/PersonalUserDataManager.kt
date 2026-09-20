@@ -12,7 +12,6 @@ import com.example.data.local.model.PersonalContratado
 import com.example.data.local.model.User
 import com.example.data.local.model.UserRole
 import com.example.licensing.BusinessCodeHelper
-import com.example.licensing.CommercialLicenseManager
 import com.example.util.toSha256
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -52,13 +51,10 @@ object PersonalUserDataManager {
         configNegocio: ConfiguracionNegocio?,
         configGeneral: ConfiguracionGeneral?
     ): File {
-        val licenseMgr = CommercialLicenseManager.getInstance(context)
-        val licenseInfo = licenseMgr.licenseInfo.value
         val rawBizCode = BusinessCodeHelper.resolveBusinessCode(
             context = context,
             configNegocio = configNegocio,
-            configGeneral = configGeneral,
-            licenseInfo = licenseInfo
+            configGeneral = configGeneral
         )
         val businessNumber = BusinessCodeHelper.formatCode(rawBizCode)
         val businessCode = configNegocio?.codigoNegocio?.ifBlank { "NEG-$businessNumber" } ?: "NEG-$businessNumber"
@@ -270,13 +266,10 @@ object PersonalUserDataManager {
 
             val configNegocio = db.configuracionNegocioDao().getConfigSync()
             val configGeneral = db.configuracionGeneralDao().getConfigSync()
-            val licenseMgr = CommercialLicenseManager.getInstance(context)
-            val licenseInfo = licenseMgr.licenseInfo.value
             val deviceRawBiz = BusinessCodeHelper.resolveBusinessCode(
                 context = context,
                 configNegocio = configNegocio,
-                configGeneral = configGeneral,
-                licenseInfo = licenseInfo
+                configGeneral = configGeneral
             )
             val deviceBizNumber = BusinessCodeHelper.formatCode(deviceRawBiz)
 
@@ -293,20 +286,25 @@ object PersonalUserDataManager {
 
             // 3. Mapear rol a UserRole
             val mappedRole = when (rawRole) {
+                "ADMIN", "ADMINISTRADOR" -> UserRole.ADMIN
                 "DUENO", "DUEÑO" -> UserRole.DUENO
                 "CAJERO" -> UserRole.CAJERO
-                "DEPENDIENTE", "SALON", "DEPENDIENTE DE SALÓN" -> {
+                "COCINA" -> UserRole.COCINA
+                "DEPENDIENTE" -> UserRole.DEPENDIENTE
+                "SALON", "DEPENDIENTE DE SALÓN" -> {
                     if (dependienteTipo == "BARRA") UserRole.BARRA else UserRole.SALON
                 }
                 "BARRA", "DEPENDIENTE DE BARRA" -> UserRole.BARRA
                 else -> {
-                    if (dependienteTipo == "BARRA") UserRole.BARRA else UserRole.SALON
+                    if (dependienteTipo == "BARRA") UserRole.BARRA else UserRole.DEPENDIENTE
                 }
             }
 
             val storedRole = when (mappedRole) {
+                UserRole.ADMIN -> "ADMIN"
                 UserRole.DUENO -> "DUENO"
                 UserRole.CAJERO -> "CAJERO"
+                UserRole.COCINA -> "COCINA"
                 else -> "DEPENDIENTE"
             }
 

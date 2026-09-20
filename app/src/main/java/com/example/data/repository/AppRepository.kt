@@ -1185,17 +1185,14 @@ class AppRepository(private val db: AppDatabase) {
     private suspend fun syncPersonalToUser(personal: PersonalContratado) {
         if (personal.tieneAccesoApp && personal.username.isNotBlank()) {
             val role = when (personal.role.uppercase()) {
+                "ADMIN", "ADMINISTRADOR" -> com.example.data.local.model.UserRole.ADMIN
                 "DUENO", "DUEÑO" -> com.example.data.local.model.UserRole.DUENO
                 "CAJERO" -> com.example.data.local.model.UserRole.CAJERO
-                "DEPENDIENTE", "SALON" -> {
-                    if (personal.dependienteTipo.uppercase() == "BARRA") com.example.data.local.model.UserRole.BARRA
-                    else com.example.data.local.model.UserRole.SALON
-                }
+                "COCINA" -> com.example.data.local.model.UserRole.COCINA
+                "DEPENDIENTE" -> com.example.data.local.model.UserRole.DEPENDIENTE
+                "SALON" -> com.example.data.local.model.UserRole.SALON
                 "BARRA" -> com.example.data.local.model.UserRole.BARRA
-                else -> {
-                    if (personal.dependienteTipo.uppercase() == "BARRA") com.example.data.local.model.UserRole.BARRA
-                    else com.example.data.local.model.UserRole.SALON
-                }
+                else -> com.example.data.local.model.UserRole.fromString(personal.role)
             }
             val user = com.example.data.local.model.User(
                 username = personal.username.trim().lowercase(),

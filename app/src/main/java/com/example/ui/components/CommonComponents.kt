@@ -66,8 +66,11 @@ fun TodoCuadraTopBar(
     val isOperationalUser = uiState.currentUser != null
 
     val userInitials = when (uiState.currentUser?.role) {
+        UserRole.ADMIN -> "AD"
         UserRole.DUENO -> "DN"
         UserRole.CAJERO -> "CJ"
+        UserRole.DEPENDIENTE -> "DP"
+        UserRole.COCINA -> "CC"
         UserRole.SALON -> "SL"
         UserRole.BARRA -> "BR"
         else -> "EQ"
