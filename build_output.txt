@@ -1,0 +1,491 @@
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :app:checkDebugAarMetadata UP-TO-DATE
+> Task :app:generateDebugResValues UP-TO-DATE
+> Task :app:mapDebugSourceSetPaths UP-TO-DATE
+> Task :app:generateDebugResources UP-TO-DATE
+> Task :app:mergeDebugResources UP-TO-DATE
+> Task :app:packageDebugResources UP-TO-DATE
+> Task :app:parseDebugLocalResources UP-TO-DATE
+> Task :app:createDebugCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksDebug UP-TO-DATE
+> Task :app:processDebugMainManifest UP-TO-DATE
+> Task :app:processDebugManifest UP-TO-DATE
+> Task :app:processDebugManifestForPackage UP-TO-DATE
+> Task :app:processDebugResources UP-TO-DATE
+> Task :app:javaPreCompileDebug UP-TO-DATE
+> Task :app:mergeDebugShaders UP-TO-DATE
+> Task :app:compileDebugShaders NO-SOURCE
+> Task :app:generateDebugAssets UP-TO-DATE
+> Task :app:mergeDebugAssets UP-TO-DATE
+> Task :app:compressDebugAssets UP-TO-DATE
+> Task :app:desugarDebugFileDependencies UP-TO-DATE
+> Task :app:checkDebugDuplicateClasses UP-TO-DATE
+> Task :app:mergeExtDexDebug UP-TO-DATE
+> Task :app:mergeLibDexDebug UP-TO-DATE
+> Task :app:mergeDebugJniLibFolders UP-TO-DATE
+> Task :app:mergeDebugNativeLibs UP-TO-DATE
+> Task :app:stripDebugDebugSymbols UP-TO-DATE
+> Task :app:validateSigningDebug UP-TO-DATE
+> Task :app:writeDebugAppMetadata UP-TO-DATE
+> Task :app:writeDebugSigningConfigVersions UP-TO-DATE
+
+> Task :app:kspDebugKotlin FAILED
+e: [ksp] /app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt: (115, 29): Function declaration must have a name
+e: Error occurred in KSP, check log for detail
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:86:68 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:94:63 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:99:64 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:100:42 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:101:34 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:103:26 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:108:26 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:113:21 Expecting an element
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:114:18 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:115:17 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:115:27 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:115:29 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:130:72 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:131:42 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:132:34 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:137:108 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:139:34 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:145:67 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:147:33 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:148:25 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:149:21 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:150:17 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:151:13 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:151:15 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:151:31 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:172:90 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:185:34 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:188:46 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:192:54 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:195:25 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:195:38 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:195:39 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:195:56 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:195:59 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:207:34 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:209:25 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:210:21 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:211:17 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:212:13 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:213:9 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:214:5 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:217:5 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:217:8 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:217:9 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:217:29 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:217:31 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:236:5 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:236:8 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:236:9 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:236:29 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:236:31 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:256:5 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:256:29 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:256:31 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:256:35 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:256:39 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:283:1 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:295:45 Expecting comma or ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:392:79 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:396:67 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:403:76 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:409:76 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:420:77 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:425:61 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:436:72 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:437:42 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:440:29 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:442:29 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:442:35 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:442:36 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:442:45 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:442:47 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:442:55 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:442:56 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:442:62 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:442:63 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:442:65 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:442:66 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:442:68 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:442:69 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:443:29 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:443:46 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:443:47 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:443:53 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:443:55 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:443:73 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:444:29 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:444:35 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:444:36 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:444:45 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:444:47 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:444:55 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:444:56 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:444:62 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:444:63 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:444:64 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:444:65 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:444:67 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:444:68 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:446:29 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:446:32 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:447:33 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:447:42 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:447:44 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:447:52 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:447:53 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:447:65 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:447:66 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:447:67 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:448:33 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:448:55 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:448:57 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:448:68 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:448:69 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:449:33 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:449:35 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:464:29 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:464:35 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:464:36 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:464:45 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:464:47 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:464:55 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:464:56 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:464:62 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:464:63 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:464:65 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:464:66 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:464:68 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:464:69 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:466:29 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:466:32 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:467:33 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:467:42 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:467:44 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:467:52 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:467:53 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:467:65 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:467:66 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:467:67 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:468:33 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:468:55 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:468:57 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:468:68 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:468:69 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:468:77 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:468:78 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:468:79 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:468:80 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:468:82 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:469:33 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:469:35 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:477:55 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:478:39 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:484:33 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:484:47 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:485:37 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:485:45 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:485:47 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:485:80 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:486:37 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:486:43 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:486:45 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:486:63 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:486:64 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:486:65 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:486:66 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:486:68 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:486:69 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:487:37 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:487:44 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:487:46 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:487:58 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:487:59 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:487:60 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:487:61 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:487:63 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:487:65 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:487:72 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:487:73 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:488:37 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:488:44 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:488:46 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:488:60 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:488:61 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:488:81 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:488:82 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:488:95 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:488:97 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:488:104 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:488:105 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:489:37 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:489:46 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:489:48 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:489:56 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:489:57 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:489:63 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:489:64 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:489:66 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:489:67 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:489:69 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:490:37 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:490:39 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:493:29 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:494:25 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:495:21 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:496:17 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:497:13 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:498:9 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:499:5 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:500:1 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:604:79 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:611:72 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:617:72 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:628:73 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:634:61 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:641:77 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:649:83 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:650:35 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:656:72 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:657:42 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:658:37 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:658:46 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:658:48 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:658:56 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:658:57 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:658:62 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:658:63 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:658:67 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:659:37 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:661:33 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:661:43 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:662:37 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:662:45 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:662:47 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:662:72 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:663:37 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:663:46 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:663:48 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:663:56 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:663:57 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:663:61 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:663:62 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:663:64 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:663:65 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:663:67 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:664:37 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:664:39 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:668:33 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:668:43 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:669:37 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:669:45 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:669:47 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:669:82 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:670:37 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:670:46 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:670:48 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:670:56 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:670:57 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:670:61 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:670:62 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:670:64 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:670:65 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:670:67 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:671:37 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:671:39 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:674:29 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:675:25 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:676:21 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:677:17 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:678:13 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:679:9 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:680:5 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:681:1 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:804:79 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:813:69 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:819:152 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:826:104 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:835:81 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:852:17 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:853:13 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:854:9 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:855:5 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:856:1 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:953:52 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:955:25 Expecting an element
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:956:22 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:963:10 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:964:9 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:964:23 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:964:25 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:969:5 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:970:1 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1085:64 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1087:25 Expecting an element
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1088:22 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1095:10 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1096:9 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1096:23 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1096:25 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1101:5 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1102:1 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1219:52 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1226:85 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1233:64 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1238:61 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1244:72 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1249:30 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1251:21 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1252:17 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1253:13 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1254:9 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1254:10 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1255:9 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1255:23 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1255:25 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1263:5 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1264:1 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1327:45 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1329:27 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1335:93 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1339:42 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1340:38 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1348:22 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1351:17 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1351:34 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1352:27 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1352:29 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1352:41 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1353:21 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1353:35 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1353:37 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1353:58 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1354:21 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1354:27 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1354:29 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1354:110 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1355:21 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1355:33 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1355:35 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1355:54 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1356:21 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1356:32 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1356:34 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1356:38 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1357:21 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1357:37 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1357:39 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1357:54 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1357:55 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1357:68 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1357:70 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1357:82 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1357:83 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1357:89 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1357:90 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1358:21 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1358:28 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1358:30 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1358:55 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1358:56 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1358:62 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1358:63 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1358:82 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1358:84 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1358:95 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1358:97 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1358:115 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1358:117 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1358:128 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1358:129 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1359:21 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1359:30 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1359:32 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1359:40 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1359:41 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1359:53 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1359:54 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1359:55 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1359:56 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1359:63 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1359:64 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1359:65 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1359:85 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1359:86 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1360:17 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1362:17 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1362:20 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1362:21 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1362:30 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1362:32 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1370:13 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1371:9 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1371:10 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1372:9 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1372:23 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1372:25 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1384:68 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1386:25 Expecting an element
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1387:22 Expecting ')'
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1388:18 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1389:17 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1389:24 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1389:26 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1389:40 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1389:41 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1389:53 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1389:54 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1389:69 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1389:71 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1389:82 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1389:83 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1390:17 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1390:26 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1390:28 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1390:36 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1390:37 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1390:44 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1390:45 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1390:46 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1390:70 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1390:71 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1391:13 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1391:15 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1394:9 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1394:10 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1395:9 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1395:23 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1395:25 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1400:5 Expecting a top level declaration
+e: file:///app/applet/app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt:1401:1 Expecting a top level declaration
+
+[Incubating] Problems report is available at: file:///app/applet/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:kspDebugKotlin'.
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
+   > Compilation error. See log for more details
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+> Get more help at https://help.gradle.org.
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 10.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/9.3.1/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD FAILED in 1s
+28 actionable tasks: 1 executed, 27 up-to-date

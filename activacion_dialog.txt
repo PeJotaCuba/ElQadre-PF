@@ -1,0 +1,169 @@
+@Composable
+private fun ActivationProcessDialog(
+    request: SuperAdminSmsRequest,
+    onApproved: (java.io.File) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
+    var isProcessing by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    
+    var tipoLicencia by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("MENSUAL") }
+    var duracionDias by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(30) }
+    var showLicenciaDropdown by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+
+    val hasPayment = androidx.compose.runtime.remember {
+        com.example.licensing.SuperAdminPaymentHelper.hasConfirmedPaymentForBusiness(context, businessName = request.nombreNegocio, phone = request.numeroMovil)
+    }
+
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        androidx.compose.material3.Surface(
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+            color = androidx.compose.ui.graphics.Color.White,
+            modifier = Modifier.fillMaxWidth(0.9f).padding(vertical = 24.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "Aprobar Activación",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = com.example.ui.theme.ElQadreNavy
+                )
+                
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = com.example.ui.theme.Slate100,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(text = "DVC: ${request.dvc}", fontWeight = FontWeight.Bold, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, color = com.example.ui.theme.ElQadreNavy)
+                        Text(text = "Negocio: ${request.nombreNegocio}", fontSize = 13.sp, color = com.example.ui.theme.Slate800)
+                        Text(text = "Móvil: ${request.numeroMovil}", fontSize = 13.sp, color = com.example.ui.theme.Slate800)
+                    }
+                }
+                
+                if (!hasPayment) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = com.example.ui.theme.Rose50,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "⚠ No se encontró un pago confirmado para este negocio. Verifique los pagos antes de activar.",
+                            fontSize = 12.sp,
+                            color = com.example.ui.theme.Rose700,
+                            modifier = Modifier.padding(12.dp)
+                        )
+                    }
+                } else {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = com.example.ui.theme.Emerald50,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "✅ Pago confirmado para este negocio.",
+                            fontSize = 12.sp,
+                            color = com.example.ui.theme.Emerald700,
+                            modifier = Modifier.padding(12.dp)
+                        )
+                    }
+                }
+
+                Text(
+                    text = "Tipo y Vigencia de la Licencia:",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = com.example.ui.theme.ElQadreNavy
+                )
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    androidx.compose.foundation.layout.Box(modifier = Modifier.weight(1f)) {
+                        androidx.compose.material3.OutlinedButton(
+                            onClick = { showLicenciaDropdown = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text(tipoLicencia, fontSize = 12.sp, color = com.example.ui.theme.ElQadreNavy)
+                        }
+                        androidx.compose.material3.DropdownMenu(
+                            expanded = showLicenciaDropdown,
+                            onDismissRequest = { showLicenciaDropdown = false }
+                        ) {
+                            androidx.compose.material3.DropdownMenuItem(text = { Text("MENSUAL") }, onClick = { tipoLicencia = "MENSUAL"; duracionDias = 30; showLicenciaDropdown = false })
+                            androidx.compose.material3.DropdownMenuItem(text = { Text("ANUAL") }, onClick = { tipoLicencia = "ANUAL"; duracionDias = 365; showLicenciaDropdown = false })
+                            androidx.compose.material3.DropdownMenuItem(text = { Text("PERMANENTE") }, onClick = { tipoLicencia = "PERMANENTE"; duracionDias = 36500; showLicenciaDropdown = false })
+                        }
+                    }
+                    androidx.compose.material3.OutlinedTextField(
+                        value = duracionDias.toString(),
+                        onValueChange = { duracionDias = it.toIntOrNull() ?: 30 },
+                        label = { Text("Días") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    androidx.compose.material3.OutlinedButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("Cancelar")
+                    }
+                    Button(
+                        onClick = {
+                            coroutineScope.launch {
+                                isProcessing = true
+                                val file = com.example.licensing.SuperAdminSmsHelper.generateOrUpdateLicenciasJson(
+                                    context = context,
+                                    dvc = request.dvc,
+                                    nombreNegocio = request.nombreNegocio,
+                                    numeroMovil = request.numeroMovil,
+                                    tipoLicencia = tipoLicencia,
+                                    durationDays = duracionDias
+                                )
+                                isProcessing = false
+                                onApproved(file)
+                            }
+                        },
+                        enabled = !isProcessing && hasPayment,
+                        colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                            containerColor = com.example.ui.theme.ElQadreNavy,
+                            contentColor = androidx.compose.ui.graphics.Color.White
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(1.4f)
+                    ) {
+                        if (isProcessing) {
+                            androidx.compose.material3.CircularProgressIndicator(color = androidx.compose.ui.graphics.Color.White, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                        } else {
+                            Text(
+                                text = "Aprobar",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

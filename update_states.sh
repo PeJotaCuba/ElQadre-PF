@@ -1,0 +1,2 @@
+#!/bin/bash
+sed -i '/var showAddIngredientDialog/a \    var showAddGastoDialog by remember { mutableStateOf(false) }\n    var gastoToEdit by remember { mutableStateOf<com.example.data.local.model.GastoGeneral?>(null) }\n    var showFichaCostoDialog by remember { mutableStateOf<com.example.data.local.model.Product?>(null) }' app/src/main/java/com/example/ui/screens/admin/ProductionWorkspaceDialog.kt

@@ -1,0 +1,6 @@
+<resources>
+    <style name="Theme.ElQadre" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@color/elqadre_navy</item>
+        <item name="android:navigationBarColor">@color/white</item>
+    </style>
+</resources>

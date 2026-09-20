@@ -1,0 +1,48 @@
+    fun updateUsers(url: String? = null) {
+        val finalUrl = url ?: uiState.value.generalConfig?.urlUsuariosJson ?: ""
+        if (finalUrl.isBlank()) {
+            _uiState.update { it.copy(updateStatusText = "Error: URL no configurada") }
+            return
+        }
+        
+        _uiState.update { it.copy(updateStatusText = "Comprobando conexión...", isLoading = true) }
+        viewModelScope.launch {
+            val db = com.example.data.local.AppDatabase.getDatabase(getApplication())
+            val result = com.example.util.UserUpdateManager.updateUsers(db, finalUrl)
+            
+            val statusText = when (result) {
+                is com.example.util.UserUpdateManager.UpdateResult.Success -> "Actualización completada."
+                is com.example.util.UserUpdateManager.UpdateResult.NoConnection -> "No hay conexión."
+                is com.example.util.UserUpdateManager.UpdateResult.DownloadError -> "Error de descarga."
+                is com.example.util.UserUpdateManager.UpdateResult.InvalidFile -> "Archivo inválido."
+                is com.example.util.UserUpdateManager.UpdateResult.NoNewUpdate -> "No hay actualización nueva."
+            }
+            
+            _uiState.update { it.copy(updateStatusText = statusText, isLoading = false) }
+        }
+    }
+
+    fun checkDailyUpdate() {
+        viewModelScope.launch {
+            val db = com.example.data.local.AppDatabase.getDatabase(getApplication())
+            val config = db.configuracionGeneralDao().getConfigSync() ?: return@launch
+            
+            if (config.urlUsuariosJson.isBlank()) return@launch
+            
+            val cal = java.util.Calendar.getInstance()
+            val hourOfDay = cal.get(java.util.Calendar.HOUR_OF_DAY)
+            
+            if (hourOfDay >= 9) {
+                val lastUpdate = config.lastUserUpdateDate
+                val lastUpdateCal = java.util.Calendar.getInstance()
+                lastUpdateCal.timeInMillis = lastUpdate
+                
+                val isSameDay = cal.get(java.util.Calendar.YEAR) == lastUpdateCal.get(java.util.Calendar.YEAR) &&
+                                cal.get(java.util.Calendar.DAY_OF_YEAR) == lastUpdateCal.get(java.util.Calendar.DAY_OF_YEAR)
+                
+                if (!isSameDay || config.lastUserUpdateStatus != com.example.util.UserUpdateManager.STATUS_SUCCESS) {
+                    updateUsers(config.urlUsuariosJson)
+                }
+            }
+        }
+    }

@@ -1,0 +1,8 @@
+{
+  "name": "ElQadre-PF",
+  "description": "Imported from GitHub: PeJotaCuba/ElQadre",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

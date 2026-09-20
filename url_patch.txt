@@ -1,0 +1,10 @@
+    fun updateUrlUsuariosJson(url: String) {
+        viewModelScope.launch {
+            val db = com.example.data.local.AppDatabase.getDatabase(getApplication())
+            val config = db.configuracionGeneralDao().getConfigSync()
+            if (config != null) {
+                db.configuracionGeneralDao().updateConfig(config.copy(urlUsuariosJson = url))
+                _uiState.update { it.copy(generalConfig = config.copy(urlUsuariosJson = url)) }
+            }
+        }
+    }

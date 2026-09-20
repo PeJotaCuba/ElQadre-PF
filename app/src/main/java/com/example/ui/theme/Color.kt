@@ -1,0 +1,66 @@
+package com.example.ui.theme
+
+import androidx.compose.ui.graphics.Color
+
+// ELQADRE Official Brand Palette (Exact Match to Reference)
+val ElQadreNavy = Color(0xFF161C2C)
+val ElQadreNavyDark = Color(0xFF0F1420)
+val ElQadreNavyLight = Color(0xFF222B42)
+val ElQadreNavyCard = Color(0xFF1B2337)
+val ElQadreNavySoft = Color(0xFFE8EBF2)
+
+val ElQadreGold = Color(0xFFF8BA2A)
+val ElQadreGoldLight = Color(0xFFFDD874)
+val ElQadreGoldDark = Color(0xFFE09F14)
+val ElQadreGoldSoft = Color(0xFFFFF6DF)
+val ElQadreGoldSurface = Color(0xFFFFF7E6)
+
+val ElQadreBackground = Color(0xFFF4F6F9)
+val ElQadreSurface = Color(0xFFFFFFFF)
+val ElQadreSurfaceAlt = Color(0xFFF8F9FA)
+val ElQadreBgSecondary = Color(0xFFF8F9FA)
+val ElQadreBorder = Color(0xFFE2E8F0)
+val ElQadreBorderLight = Color(0xFFEDF2F7)
+
+// Supporting Grays & Accents
+val Slate900 = Color(0xFF0F172A)
+val Slate800 = Color(0xFF1E293B)
+val Slate700 = Color(0xFF334155)
+val Slate600 = Color(0xFF475569)
+val Slate500 = Color(0xFF64748B)
+val Slate400 = Color(0xFF94A3B8)
+val Slate300 = Color(0xFFCBD5E1)
+val Slate200 = Color(0xFFE2E8F0)
+val Slate100 = Color(0xFFF1F5F9)
+val Slate50 = Color(0xFFF8FAFC)
+
+val Emerald800 = Color(0xFF065F46)
+val Emerald700 = Color(0xFF047857)
+val Emerald600 = Color(0xFF059669)
+val Emerald500 = Color(0xFF10B981)
+val Emerald200 = Color(0xFFA7F3D0)
+val Emerald100 = Color(0xFFD1FAE5)
+val Emerald50 = Color(0xFFECFDF5)
+
+val Rose800 = Color(0xFF991B1B)
+val Rose700 = Color(0xFFB91C1C)
+val Rose600 = Color(0xFFDC2626)
+val Rose500 = Color(0xFFEF4444)
+val Rose300 = Color(0xFFFCA5A5)
+val Rose200 = Color(0xFFFECACA)
+val Rose100 = Color(0xFFFEE2E2)
+val Rose50 = Color(0xFFFEF2F2)
+
+val Amber800 = Color(0xFF92400E)
+val Amber700 = Color(0xFFB45309)
+val Amber600 = Color(0xFFD97706)
+val Amber500 = Color(0xFFF59E0B)
+val Amber200 = Color(0xFFFDE68A)
+val Amber100 = Color(0xFFFEF3C7)
+val Amber50 = Color(0xFFFFFBEB)
+
+val Sky900 = Color(0xFF0C4A6E)
+val Sky700 = Color(0xFF0369A1)
+val Sky200 = Color(0xFFBAE6FD)
+val Sky100 = Color(0xFFE0F2FE)
+val Sky50 = Color(0xFFF0F9FF)

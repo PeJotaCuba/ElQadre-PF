@@ -1,0 +1,174 @@
+@Composable
+private fun UsuariosProcessDialog(
+    request: SuperAdminSmsRequest,
+    onApproved: (java.io.File) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
+    var isProcessing by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var initialPassword by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("123456") }
+
+    val business = androidx.compose.runtime.remember {
+        com.example.licensing.SuperAdminBusinessManager.getBusinessByDvc(context, request.dvc) 
+            ?: com.example.licensing.SuperAdminBusinessManager.getBusinesses(context).firstOrNull { it.name.equals(request.nombreNegocio, ignoreCase = true) }
+    }
+
+    val isAdminValid = androidx.compose.runtime.remember {
+        business?.users?.any { 
+            it.role.equals("ADMINISTRADOR", ignoreCase = true) && 
+            (it.phone.contains(request.senderAddress) || request.senderAddress.contains(it.phone))
+        } ?: false
+    }
+
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        androidx.compose.material3.Surface(
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+            color = androidx.compose.ui.graphics.Color.White,
+            modifier = Modifier.fillMaxWidth(0.9f).padding(vertical = 24.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "Aprobar Nuevo Usuario",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = com.example.ui.theme.ElQadreNavy
+                )
+                
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = com.example.ui.theme.Slate100,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(text = "DVC: ${request.dvc}", fontWeight = FontWeight.Bold, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, color = com.example.ui.theme.ElQadreNavy)
+                        Text(text = "Negocio: ${request.nombreNegocio}", fontSize = 13.sp, color = com.example.ui.theme.Slate800)
+                        Text(text = "Solicitante: ${request.solicitante} (${request.senderAddress})", fontSize = 13.sp, color = com.example.ui.theme.Slate800)
+                    }
+                }
+                
+                if (business == null) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = com.example.ui.theme.Rose50,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "⚠ No se encontró el negocio registrado para este DVC/Nombre.",
+                            fontSize = 12.sp,
+                            color = com.example.ui.theme.Rose700,
+                            modifier = Modifier.padding(12.dp)
+                        )
+                    }
+                } else if (!isAdminValid) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = com.example.ui.theme.Rose50,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "⚠ El número de remitente (${request.senderAddress}) no coincide con los administradores de este negocio.",
+                            fontSize = 12.sp,
+                            color = com.example.ui.theme.Rose700,
+                            modifier = Modifier.padding(12.dp)
+                        )
+                    }
+                } else {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = com.example.ui.theme.Emerald50,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "✅ Administrador validado correctamente.",
+                            fontSize = 12.sp,
+                            color = com.example.ui.theme.Emerald700,
+                            modifier = Modifier.padding(12.dp)
+                        )
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = com.example.ui.theme.Emerald50,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(text = "Datos del Usuario Solicitado:", fontWeight = FontWeight.Bold, color = com.example.ui.theme.Emerald700, fontSize = 13.sp)
+                        Text(text = "• Nombre: ${request.nuevoNombre}", fontSize = 12.sp, color = com.example.ui.theme.Slate800)
+                        Text(text = "• Usuario: ${request.nuevoUsername}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = com.example.ui.theme.ElQadreNavy)
+                        Text(text = "• Rol: ${request.nuevoRol}", fontSize = 12.sp, color = com.example.ui.theme.Slate800)
+                    }
+                }
+
+                androidx.compose.material3.OutlinedTextField(
+                    value = initialPassword,
+                    onValueChange = { initialPassword = it },
+                    label = { Text("Contraseña Inicial") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    androidx.compose.material3.OutlinedButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("Cancelar")
+                    }
+                    Button(
+                        onClick = {
+                            coroutineScope.launch {
+                                isProcessing = true
+                                if (business != null) {
+                                    val (updatedBiz, userFile) = com.example.licensing.SuperAdminBusinessManager.approveUserRequest(
+                                        context = context,
+                                        business = business,
+                                        req = request,
+                                        initialPassword = initialPassword
+                                    )
+                                    isProcessing = false
+                                    onApproved(userFile)
+                                }
+                            }
+                        },
+                        enabled = !isProcessing && isAdminValid && business != null,
+                        colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                            containerColor = com.example.ui.theme.ElQadreNavy,
+                            contentColor = androidx.compose.ui.graphics.Color.White
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(1.4f)
+                    ) {
+                        if (isProcessing) {
+                            androidx.compose.material3.CircularProgressIndicator(color = androidx.compose.ui.graphics.Color.White, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                        } else {
+                            Text(
+                                text = "Aprobar",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
