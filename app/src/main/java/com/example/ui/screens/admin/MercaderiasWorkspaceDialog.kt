@@ -2955,7 +2955,7 @@ fun AddEditEgresoMercaderiaDialog(
                                 expanded = periodDropdownExpanded,
                                 onDismissRequest = { periodDropdownExpanded = false }
                             ) {
-                                listOf("ÚNICO", "DIARIO", "SEMANAL", "MENSUAL").forEach { p ->
+                                listOf("DÍA", "SEMANA", "SEMANA LABORABLE", "MES", "MES LABORABLE", "AÑO", "AÑO LABORABLE").forEach { p ->
                                     DropdownMenuItem(
                                         text = { Text(p) },
                                         onClick = { period = p; periodDropdownExpanded = false }
@@ -3087,10 +3087,15 @@ fun AddEditEgresoMercaderiaDialog(
                         onClick = {
                             val amt = amountStr.toDoubleOrNull() ?: 0.0
                             val targetIdsStr = if (isPuntual) selectedProductIds.joinToString(",") else null
-                            val pDays = when (period.uppercase()) {
-                                "ÚNICO", "UNICO", "DIARIO" -> 1
-                                "SEMANAL" -> 7
-                                else -> 30
+                            val pDays = when (period.uppercase().trim()) {
+                                "ÚNICO", "UNICO", "DÍA", "DIA", "DIARIO" -> 1
+                                "SEMANA", "SEMANAL" -> 7
+                                "SEMANA LABORABLE" -> 6
+                                "MES", "MENSUAL" -> 30
+                                "MES LABORABLE" -> 26
+                                "AÑO", "ANO", "ANUAL" -> 360
+                                "AÑO LABORABLE", "ANO LABORABLE" -> 312
+                                else -> 26
                             }
                             
                             val targetIdSingle = if (isPuntual && selectedProductIds.size == 1) selectedProductIds.first() else null

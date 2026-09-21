@@ -36,6 +36,33 @@ import com.example.util.CostSheetPdfExporter
 import com.example.util.IngredientCostDetail
 import androidx.compose.ui.platform.LocalContext
 
+private fun normalizePeriodLabel(p: String, days: Int): String {
+    val upper = p.uppercase().trim()
+    return when {
+        upper == "SEMANA LABORABLE" || (upper == "SEMANAL" && days == 6) -> "SEMANA LABORABLE"
+        upper == "SEMANA" || upper == "SEMANAL" -> "SEMANA"
+        upper == "MES LABORABLE" || (upper == "MENSUAL" && days == 26) -> "MES LABORABLE"
+        upper == "MES" || upper == "MENSUAL" -> "MES"
+        upper == "AÑO LABORABLE" || upper == "ANO LABORABLE" || (upper == "ANUAL" && days == 312) -> "AÑO LABORABLE"
+        upper == "AÑO" || upper == "ANO" || upper == "ANUAL" -> "AÑO"
+        upper == "DÍA" || upper == "DIA" || upper == "DIARIO" || upper == "ÚNICO" || upper == "UNICO" -> "DÍA"
+        else -> "MES LABORABLE"
+    }
+}
+
+private fun getPeriodDaysForPeriod(p: String): Int {
+    return when (p.uppercase().trim()) {
+        "DÍA", "DIA", "DIARIO", "ÚNICO", "UNICO" -> 1
+        "SEMANA", "SEMANAL" -> 7
+        "SEMANA LABORABLE" -> 6
+        "MES", "MENSUAL" -> 30
+        "MES LABORABLE" -> 26
+        "AÑO", "ANO", "ANUAL" -> 360
+        "AÑO LABORABLE", "ANO LABORABLE" -> 312
+        else -> 26
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddEditGastoGeneralDialog(
@@ -47,13 +74,29 @@ fun AddEditGastoGeneralDialog(
     var name by remember { mutableStateOf(gasto?.name ?: "") }
     var description by remember { mutableStateOf(gasto?.description ?: "") }
     var amount by remember { mutableStateOf(if (gasto != null && gasto.amount > 0.0) gasto.amount.toString() else "") }
-    var period by remember { mutableStateOf(gasto?.period ?: "MENSUAL") }
-    var periodDaysText by remember { mutableStateOf(gasto?.periodDays?.toString() ?: "30") }
+    var period by remember { 
+        mutableStateOf(
+            if (gasto != null) normalizePeriodLabel(gasto.period, gasto.periodDays) 
+            else "MES LABORABLE"
+        ) 
+    }
+    var periodDaysText by remember { 
+        mutableStateOf(
+            (gasto?.periodDays?.takeIf { it > 0 } ?: getPeriodDaysForPeriod(period)).toString()
+        ) 
+    }
     var category by remember { mutableStateOf(gasto?.category ?: "Otros") }
     var isActive by remember { mutableStateOf(gasto?.isActive ?: true) }
-    var targetProductId by remember { mutableStateOf<Long?>(gasto?.targetProductId) }
 
-    val periods = listOf("DIARIO", "SEMANAL", "MENSUAL", "ANUAL")
+    val periods = listOf(
+        "DÍA",
+        "SEMANA",
+        "SEMANA LABORABLE",
+        "MES",
+        "MES LABORABLE",
+        "AÑO",
+        "AÑO LABORABLE"
+    )
     val categories = listOf(
         "Personal",
         "Electricidad",
@@ -71,17 +114,10 @@ fun AddEditGastoGeneralDialog(
 
     // Live calculation for preview
     val amtVal = amount.toDoubleOrNull() ?: 0.0
-    val daysVal = periodDaysText.toIntOrNull() ?: when (period) {
-        "DIARIO" -> 1
-        "SEMANAL" -> 7
-        "MENSUAL" -> 30
-        "ANUAL" -> 365
-        else -> 30
-    }
+    val daysVal = periodDaysText.toIntOrNull() ?: getPeriodDaysForPeriod(period)
     val dailyEquivalent = if (amtVal > 0.0 && daysVal > 0) {
         amtVal / daysVal
     } else 0.0
-    val monthlyEquivalent = dailyEquivalent * 30.0
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -114,7 +150,7 @@ fun AddEditGastoGeneralDialog(
                             color = ElQadreNavy
                         )
                         Text(
-                            text = "Configuración de costos indirectos del negocio",
+                            text = "Gastos generales del negocio (sin asociación a producto)",
                             fontSize = 11.sp,
                             color = Slate500
                         )
@@ -206,12 +242,12 @@ fun AddEditGastoGeneralDialog(
                     )
 
                     // Period dropdown
-                    Box(modifier = Modifier.weight(1.2f)) {
+                    Box(modifier = Modifier.weight(1.3f)) {
                         OutlinedTextField(
                             value = period,
                             onValueChange = {},
                             readOnly = true,
-                            label = { Text("Período") },
+                            label = { Text("Periodicidad") },
                             trailingIcon = {
                                 IconButton(onClick = { expandedPeriod = true }) {
                                     Icon(Icons.Default.ArrowDropDown, contentDescription = null)
@@ -231,16 +267,29 @@ fun AddEditGastoGeneralDialog(
                             onDismissRequest = { expandedPeriod = false }
                         ) {
                             periods.forEach { p ->
+                                val labelDays = when (p) {
+                                    "DÍA" -> "1 día"
+                                    "SEMANA" -> "7 días"
+                                    "SEMANA LABORABLE" -> "6 días"
+                                    "MES" -> "30 días"
+                                    "MES LABORABLE" -> "26 días"
+                                    "AÑO" -> "360 días"
+                                    "AÑO LABORABLE" -> "312 días"
+                                    else -> ""
+                                }
                                 DropdownMenuItem(
-                                    text = { Text(p, fontSize = 13.sp) },
+                                    text = { Text("$p ($labelDays)", fontSize = 13.sp) },
                                     onClick = {
                                         period = p
                                         periodDaysText = when (p) {
-                                            "DIARIO" -> "1"
-                                            "SEMANAL" -> "7"
-                                            "MENSUAL" -> "30"
-                                            "ANUAL" -> "365"
-                                            else -> "30"
+                                            "DÍA" -> "1"
+                                            "SEMANA" -> "7"
+                                            "SEMANA LABORABLE" -> "6"
+                                            "MES" -> "30"
+                                            "MES LABORABLE" -> "26"
+                                            "AÑO" -> "360"
+                                            "AÑO LABORABLE" -> "312"
+                                            else -> "26"
                                         }
                                         expandedPeriod = false
                                     }
@@ -253,7 +302,7 @@ fun AddEditGastoGeneralDialog(
                         value = periodDaysText,
                         onValueChange = { periodDaysText = it },
                         label = { Text("Días base") },
-                        modifier = Modifier.weight(0.9f).testTag("gasto_days_input"),
+                        modifier = Modifier.weight(0.8f).testTag("gasto_days_input"),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
@@ -277,7 +326,7 @@ fun AddEditGastoGeneralDialog(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
-                            Text("EQUIVALENTE DIARIO", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Slate600)
+                            Text("EQUIVALENTE DIARIO NORMALIZADO", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Slate600)
                             Text(
                                 "$${"%.2f".format(dailyEquivalent)} CUP / día",
                                 fontWeight = FontWeight.ExtraBold,
@@ -286,9 +335,9 @@ fun AddEditGastoGeneralDialog(
                             )
                         }
                         Column(horizontalAlignment = Alignment.End) {
-                            Text("EQUIVALENTE MENSUAL (30d)", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Slate600)
+                            Text("BASE DE CÁLCULO", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Slate600)
                             Text(
-                                "$${"%.2f".format(monthlyEquivalent)} CUP / mes",
+                                "$daysVal días ($period)",
                                 fontWeight = FontWeight.Bold,
                                 color = ElQadreGoldDark,
                                 fontSize = 13.sp
@@ -306,7 +355,7 @@ fun AddEditGastoGeneralDialog(
                     Column {
                         Text("Estado del Gasto", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = ElQadreNavy)
                         Text(
-                            if (isActive) "Gasto activo (incluido en prorrateo diario)" else "Gasto pausado (excluido del prorrateo)",
+                            if (isActive) "Gasto activo (se calcula costo diario equivalente)" else "Gasto pausado",
                             fontSize = 11.sp,
                             color = Slate500
                         )
@@ -320,59 +369,6 @@ fun AddEditGastoGeneralDialog(
                         ),
                         modifier = Modifier.testTag("gasto_active_switch")
                     )
-                }
-
-                // Target Product (Optional)
-                if (products.isNotEmpty()) {
-                    var expandedTargetProduct by remember { mutableStateOf(false) }
-                    val selectedTargetProduct = remember(targetProductId, products) {
-                        products.find { it.id == targetProductId }
-                    }
-                    Box(modifier = Modifier.fillMaxWidth()) {
-                        OutlinedTextField(
-                            value = selectedTargetProduct?.name ?: "Todos los productos (Compartido)",
-                            onValueChange = {},
-                            readOnly = true,
-                            label = { Text("Asociación / Producto Destino") },
-                            trailingIcon = {
-                                IconButton(onClick = { expandedTargetProduct = true }) {
-                                    Icon(Icons.Default.ArrowDropDown, contentDescription = null)
-                                }
-                            },
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = ElQadreNavy,
-                                focusedLabelColor = ElQadreNavy
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { expandedTargetProduct = true }
-                                .testTag("gasto_target_product_trigger")
-                        )
-                        DropdownMenu(
-                            expanded = expandedTargetProduct,
-                            onDismissRequest = { expandedTargetProduct = false },
-                            modifier = Modifier.fillMaxWidth(0.85f)
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("Todos los productos (Compartido)", fontSize = 13.sp, fontWeight = FontWeight.Bold) },
-                                onClick = {
-                                    targetProductId = null
-                                    expandedTargetProduct = false
-                                }
-                            )
-                            HorizontalDivider()
-                            products.filter { it.isAvailable }.forEach { p ->
-                                val destLabel = if (p.destination == "BARRA") " [BARRA / MERCADERÍA]" else " [COCINA]"
-                                DropdownMenuItem(
-                                    text = { Text("${p.name}$destLabel", fontSize = 13.sp) },
-                                    onClick = {
-                                        targetProductId = p.id
-                                        expandedTargetProduct = false
-                                    }
-                                )
-                            }
-                        }
-                    }
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -391,12 +387,7 @@ fun AddEditGastoGeneralDialog(
                     Button(
                         onClick = {
                             val amt = amount.toDoubleOrNull() ?: 0.0
-                            val days = periodDaysText.toIntOrNull() ?: when (period) {
-                                "DIARIO" -> 1
-                                "SEMANAL" -> 7
-                                "MENSUAL" -> 30
-                                else -> 30
-                            }
+                            val days = periodDaysText.toIntOrNull() ?: getPeriodDaysForPeriod(period)
                             if (name.isNotBlank() && amt > 0.0) {
                                 val newGasto = GastoGeneral(
                                     id = gasto?.id ?: 0,
@@ -407,7 +398,8 @@ fun AddEditGastoGeneralDialog(
                                     periodDays = days,
                                     category = category,
                                     isActive = isActive,
-                                    targetProductId = targetProductId
+                                    targetProductId = null,
+                                    targetProductIds = null
                                 )
                                 onConfirm(newGasto)
                             }

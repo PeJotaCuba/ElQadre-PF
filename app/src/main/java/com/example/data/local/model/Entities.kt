@@ -390,25 +390,29 @@ data class GastoGeneral(
     val name: String,
     val description: String = "",
     val amount: Double,
-    val period: String = "MENSUAL", // "DIARIO", "SEMANAL", "MENSUAL"
-    val periodDays: Int = 30, // 1 for DIARIO, 7 for SEMANAL, 30 for MENSUAL (o días personalizados)
+    val period: String = "MES LABORABLE", // "DÍA", "SEMANA", "SEMANA LABORABLE", "MES", "MES LABORABLE", "AÑO", "AÑO LABORABLE"
+    val periodDays: Int = 26, // Días base del período (e.g. 1, 7, 6, 30, 26, 360, 312)
     val category: String = "Otros", // "Personal", "Electricidad", "Transporte", "Limpieza", "Insumos indirectos", "Agua", "Seguridad", "Otros"
     val isActive: Boolean = true,
     val createdAt: Long = System.currentTimeMillis(),
     val inversionId: Long? = null,
-    val targetProductId: Long? = null, // null or 0L = Todos los productos (Deprecated in favor of targetProductIds)
-    val targetProductIds: String? = null, // Comma-separated list of product IDs for Puntual expenses
+    val targetProductId: Long? = null, // Deprecated / Gastos generales del negocio
+    val targetProductIds: String? = null, // Deprecated / Gastos generales del negocio
     val startDate: Long? = null, // For Period-based expenses
     val endDate: Long? = null,    // For Period-based expenses
     val scope: String = "PRODUCCION" // "PRODUCCION" or "MERCADERIAS"
 ) {
     fun dailyCost(): Double {
         if (!isActive || amount <= 0.0) return 0.0
-        return when (period.uppercase()) {
-            "ÚNICO", "UNICO", "DIARIO", "DÍA", "DIA" -> amount
-            "SEMANAL", "SEMANA" -> if (periodDays > 0) amount / periodDays else amount / 7.0
-            "MENSUAL", "MES" -> if (periodDays > 0) amount / periodDays else amount / 30.0
-            "ANUAL", "AÑO", "ANO" -> if (periodDays > 0) amount / periodDays else amount / 365.0
+        if (periodDays > 0) return amount / periodDays
+        return when (period.uppercase().trim()) {
+            "ÚNICO", "UNICO", "DÍA", "DIA", "DIARIO" -> amount
+            "SEMANA", "SEMANAL" -> amount / 7.0
+            "SEMANA LABORABLE" -> amount / 6.0
+            "MES", "MENSUAL" -> amount / 30.0
+            "MES LABORABLE" -> amount / 26.0
+            "AÑO", "ANO", "ANUAL" -> amount / 360.0
+            "AÑO LABORABLE", "ANO LABORABLE" -> amount / 312.0
             else -> amount
         }
     }
