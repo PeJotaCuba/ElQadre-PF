@@ -36,6 +36,7 @@ import androidx.core.content.ContextCompat
 import com.example.data.local.model.User
 import com.example.data.local.model.UserRole
 import com.example.licensing.BusinessCodeHelper
+import com.example.ui.components.ContactPickerIconButton
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.MainUiState
 import com.example.ui.viewmodel.MainViewModel
@@ -1110,7 +1111,18 @@ fun UserDialog(
                     label = { Text("Teléfono de contacto (Opcional)") },
                     placeholder = { Text("Ej. 5351234567") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                    singleLine = true
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("input_user_telefono"),
+                    trailingIcon = {
+                        ContactPickerIconButton(
+                            onContactPicked = { pickedName, pickedPhone ->
+                                telefono = pickedPhone
+                                if (fullName.isBlank() && pickedName.isNotBlank()) {
+                                    fullName = pickedName
+                                }
+                            }
+                        )
+                    }
                 )
                 
                 Spacer(modifier = Modifier.height(8.dp))

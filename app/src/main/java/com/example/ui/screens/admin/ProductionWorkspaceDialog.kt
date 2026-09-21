@@ -471,6 +471,7 @@ fun ProductionWorkspaceDialog(
             AddEditMateriaPrimaDialog(
                 materia = materiaToEdit,
                 isJornadaOpen = uiState.activeJornada?.isOpen == true,
+                uiState = uiState,
                 onDismiss = {
                     showAddMateriaDialog = false
                     materiaToEdit = null
@@ -1146,12 +1147,32 @@ fun MateriasPrimasPane(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = m.name,
-                                        fontWeight = FontWeight.Bold,
-                                        color = ElQadreNavy,
-                                        fontSize = 16.sp
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Text(
+                                            text = m.name,
+                                            fontWeight = FontWeight.Bold,
+                                            color = ElQadreNavy,
+                                            fontSize = 16.sp
+                                        )
+                                        if (m.isAgregado) {
+                                            Surface(
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = Color(0xFFDCFCE7)
+                                            ) {
+                                                val assocName = uiState.products.find { it.id == m.productId }?.name
+                                                Text(
+                                                    text = if (assocName != null) "AGREGADO ($assocName)" else "AGREGADO",
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFF15803D),
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        }
+                                    }
                                     Spacer(modifier = Modifier.height(6.dp))
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text(
@@ -5182,6 +5203,325 @@ fun CargarProductosTxtDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text("Cerrar", color = Slate600)
+            }
+        }
+    )
+}
+
+/**
+ * Diálogo para activar/desactivar o configurar el modo Agregado de un insumo existente,
+ * permitiendo asociar el producto del catálogo, raciones y precio de venta.
+ */
+@Composable
+fun ToggleAgregadoInsumoDialog(
+    materiaPrima: MateriaPrima,
+    products: List<Product>,
+    onDismiss: () -> Unit,
+    onSave: (MateriaPrima) -> Unit
+) {
+    var isAgregado by remember { mutableStateOf(materiaPrima.isAgregado) }
+    var selectedProductId by remember { mutableStateOf<Long?>(materiaPrima.productId) }
+    val baseUnit = remember(materiaPrima.unit) { getBaseUnit(materiaPrima.unit) }
+    val compatibleUnits = remember(baseUnit) { getCompatibleUnits(baseUnit) }
+    var rationUnit by remember {
+        mutableStateOf(
+            if (materiaPrima.rationUnit.isNotBlank() && materiaPrima.rationUnit in compatibleUnits) {
+                materiaPrima.rationUnit
+            } else {
+                compatibleUnits.firstOrNull() ?: baseUnit
+            }
+        )
+    }
+    var rationQuantityText by remember {
+        mutableStateOf(
+            if (materiaPrima.rationQuantity > 0.0) materiaPrima.rationQuantity.toString() else ""
+        )
+    }
+    var salePriceText by remember {
+        mutableStateOf(
+            if (materiaPrima.salePrice > 0.0) materiaPrima.salePrice.toString() else ""
+        )
+    }
+    var showAssocDropdown by remember { mutableStateOf(false) }
+    var showRationUnitDropdown by remember { mutableStateOf(false) }
+    var errorMsg by remember { mutableStateOf<String?>(null) }
+
+    val selectedProd = products.find { it.id == selectedProductId }
+    val rationQty = rationQuantityText.trim().toDoubleOrNull() ?: 0.0
+    val unitCost = materiaPrima.unitCost
+    val costoRacion = if (rationQty > 0.0) unitCost * rationQty else 0.0
+    val precioSugerido = if (costoRacion > 0.0) costoRacion / 0.70 else 0.0
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(
+                    imageVector = Icons.Outlined.ShoppingCart,
+                    contentDescription = null,
+                    tint = if (isAgregado) Color(0xFF16A34A) else Slate600
+                )
+                Text(
+                    text = if (materiaPrima.isAgregado) "Configurar / Desactivar Agregado" else "Convertir Insumo en Agregado",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = ElQadreNavy
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Slate100,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Text(
+                            text = "Insumo: ${materiaPrima.name}",
+                            fontWeight = FontWeight.Black,
+                            fontSize = 14.sp,
+                            color = ElQadreNavy
+                        )
+                        Text(
+                            text = "Stock actual: ${"%.2f".format(materiaPrima.stock)} ${materiaPrima.unit} • Costo base: $${"%.4f".format(materiaPrima.unitCost)} CUP/${materiaPrima.unit}",
+                            fontSize = 11.sp,
+                            color = Slate600
+                        )
+                    }
+                }
+
+                // SWITCH ACTIVAR / DESACTIVAR
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (isAgregado) Color(0xFFF0FDF4) else Slate100,
+                    border = BorderStroke(1.dp, if (isAgregado) Color(0xFF86EFAC) else Slate300),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = if (isAgregado) "MODO AGREGADO ACTIVO" else "MODO AGREGADO DESACTIVADO",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 13.sp,
+                                color = if (isAgregado) Color(0xFF15803D) else Slate700
+                            )
+                            Text(
+                                text = if (isAgregado) "Este insumo se porciona y vende como agregado/extra." else "Este insumo funciona únicamente como materia prima base.",
+                                fontSize = 11.sp,
+                                color = Slate500
+                            )
+                        }
+                        Switch(
+                            checked = isAgregado,
+                            onCheckedChange = { isAgregado = it },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = Color(0xFF16A34A)
+                            ),
+                            modifier = Modifier.testTag("switch_toggle_agregado")
+                        )
+                    }
+                }
+
+                if (isAgregado) {
+                    // ASOCIAR A PRODUCTO DEL CATÁLOGO
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = "PRODUCTO ASOCIADO DEL CATÁLOGO (*)",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF15803D)
+                        )
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            OutlinedButton(
+                                onClick = { showAssocDropdown = true },
+                                shape = RoundedCornerShape(10.dp),
+                                border = BorderStroke(1.5.dp, Color(0xFF16A34A)),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF15803D)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(50.dp)
+                                    .testTag("btn_select_assoc_product")
+                            ) {
+                                Text(
+                                    text = selectedProd?.let { "✓ Asociado a: ${it.name} (${it.code})" } ?: "Seleccionar Producto Existente...",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    modifier = Modifier.weight(1f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+                            }
+
+                            DropdownMenu(
+                                expanded = showAssocDropdown,
+                                onDismissRequest = { showAssocDropdown = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Ninguno / Agregado General (Libre)", color = Slate500) },
+                                    onClick = {
+                                        selectedProductId = null
+                                        showAssocDropdown = false
+                                    }
+                                )
+                                products.forEach { prod ->
+                                    DropdownMenuItem(
+                                        text = { Text("${prod.name} (${prod.code})", fontWeight = FontWeight.Bold) },
+                                        onClick = {
+                                            selectedProductId = prod.id
+                                            showAssocDropdown = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // CANTIDAD POR RACIÓN Y UNIDAD
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = rationQuantityText,
+                            onValueChange = { rationQuantityText = it },
+                            label = { Text("Cant. por Ración *", fontSize = 12.sp) },
+                            placeholder = { Text("Ej. 30", fontSize = 13.sp) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .weight(1.2f)
+                                .testTag("input_toggle_ration_quantity")
+                        )
+
+                        Box(modifier = Modifier.weight(1f)) {
+                            OutlinedButton(
+                                onClick = { showRationUnitDropdown = true },
+                                shape = RoundedCornerShape(10.dp),
+                                border = BorderStroke(1.dp, Slate300),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Slate800),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(56.dp)
+                            ) {
+                                Column(horizontalAlignment = Alignment.Start, modifier = Modifier.weight(1f)) {
+                                    Text("Unidad", fontSize = 10.sp, color = Slate500)
+                                    Text(rationUnit, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Slate800)
+                                }
+                                Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = Slate600)
+                            }
+
+                            DropdownMenu(
+                                expanded = showRationUnitDropdown,
+                                onDismissRequest = { showRationUnitDropdown = false }
+                            ) {
+                                compatibleUnits.forEach { u ->
+                                    DropdownMenuItem(
+                                        text = { Text(u, fontWeight = FontWeight.Bold) },
+                                        onClick = {
+                                            rationUnit = u
+                                            showRationUnitDropdown = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // PRECIO DE VENTA EFECTIVO
+                    OutlinedTextField(
+                        value = salePriceText,
+                        onValueChange = { salePriceText = it },
+                        label = { Text("Precio de Venta CUP (Efectivo)", fontSize = 12.sp) },
+                        placeholder = { Text(if (precioSugerido > 0.0) "$${"%.2f".format(precioSugerido)}" else "0.0", fontSize = 13.sp) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("input_toggle_sale_price")
+                    )
+
+                    // RESUMEN FINANCIERO
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color.White,
+                        border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Costo unitario base:", fontSize = 11.sp, color = Slate600)
+                                Text("$${"%.4f".format(materiaPrima.unitCost)} CUP/${materiaPrima.unit}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Slate800)
+                            }
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Costo por ración:", fontSize = 11.sp, color = Slate600)
+                                Text("$${"%.2f".format(costoRacion)} CUP", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Slate800)
+                            }
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Precio sugerido (+30% margen):", fontSize = 11.sp, color = Slate600)
+                                Text("$${"%.2f".format(precioSugerido)} CUP", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF15803D))
+                            }
+                        }
+                    }
+                }
+
+                errorMsg?.let { msg ->
+                    Text(msg, color = Rose600, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (isAgregado) {
+                        val rq = rationQuantityText.trim().toDoubleOrNull() ?: 0.0
+                        if (rq <= 0.0) {
+                            errorMsg = "Debe ingresar una cantidad por ración mayor a 0."
+                            return@Button
+                        }
+                        val sp = salePriceText.trim().toDoubleOrNull() ?: (if (precioSugerido > 0.0) precioSugerido else 0.0)
+                        val updated = materiaPrima.copy(
+                            isAgregado = true,
+                            productId = selectedProductId,
+                            rationQuantity = rq,
+                            rationUnit = rationUnit,
+                            suggestedPrice = precioSugerido,
+                            salePrice = sp
+                        )
+                        onSave(updated)
+                    } else {
+                        val updated = materiaPrima.copy(
+                            isAgregado = false,
+                            productId = null,
+                            salePrice = 0.0
+                        )
+                        onSave(updated)
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = if (isAgregado) Color(0xFF16A34A) else ElQadreNavy),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.testTag("btn_save_toggle_agregado")
+            ) {
+                Text(if (isAgregado) "Guardar como Agregado" else "Guardar como Insumo Base", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar", color = Slate600)
             }
         }
     )

@@ -90,7 +90,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.screens.barra.BarraProductItem
 import androidx.compose.material.icons.filled.Edit
+import com.example.ui.components.ContactPickerIconButton
 import com.example.ui.screens.admin.AddEditMateriaPrimaDialog
+import com.example.ui.screens.admin.ToggleAgregadoInsumoDialog
 import com.example.ui.screens.admin.AddEditMercaderiaDialog
 import com.example.ui.screens.admin.ConfigurarPagosBebidasDialog
 import androidx.compose.material.icons.filled.Payments
@@ -2094,6 +2096,8 @@ fun DuenoProduccionSubscreen(
 
     var selectedInsumoForEntrada by remember { mutableStateOf<MateriaPrima?>(null) }
     var insumoToDelete by remember { mutableStateOf<MateriaPrima?>(null) }
+    var insumoToToggleAgregado by remember { mutableStateOf<MateriaPrima?>(null) }
+    var insumoToEdit by remember { mutableStateOf<MateriaPrima?>(null) }
 
     var selectedProductToEdit by remember { mutableStateOf<Product?>(null) }
     var productToDelete by remember { mutableStateOf<Product?>(null) }
@@ -2487,12 +2491,28 @@ fun DuenoProduccionSubscreen(
                                                     )
                                                 }
                                             }
-                                            Icon(
-                                                imageVector = Icons.Default.ChevronRight,
-                                                contentDescription = "Ver Detalle",
-                                                tint = Slate400,
-                                                modifier = Modifier.size(24.dp)
-                                            )
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                IconButton(
+                                                    onClick = { insumoToToggleAgregado = mp },
+                                                    modifier = Modifier.size(36.dp).testTag("btn_convert_to_agregado_${mp.id}")
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Outlined.ShoppingCart,
+                                                        contentDescription = "Convertir en Agregado",
+                                                        tint = Color(0xFF16A34A),
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                }
+                                                Icon(
+                                                    imageVector = Icons.Default.ChevronRight,
+                                                    contentDescription = "Ver Detalle",
+                                                    tint = Slate400,
+                                                    modifier = Modifier.size(24.dp)
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -3142,6 +3162,36 @@ fun DuenoProduccionSubscreen(
 
                         HorizontalDivider(color = Slate200, thickness = 2.dp)
 
+                        // BOTÓN PARA ACTIVAR / CONFIGURAR O DESACTIVAR MODO AGREGADO
+                        Button(
+                            onClick = {
+                                val target = mp
+                                selectedInsumoForDetail = null
+                                insumoToToggleAgregado = target
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (mp.isAgregado) Color(0xFF15803D) else Color(0xFF0F766E)
+                            ),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(52.dp)
+                                .testTag("btn_insumo_toggle_agregado_detail")
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(Icons.Outlined.ShoppingCart, contentDescription = null, tint = Color.White)
+                                Text(
+                                    text = if (mp.isAgregado) "CONFIGURAR / DESACTIVAR AGREGADO" else "CONVERTIR EN AGREGADO (ACTIVAR)",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Color.White
+                                )
+                            }
+                        }
+
                         // BOTÓN DE ACCIÓN ESPECIAL PARA AGREGADOS: SALIDA PARA VENTA
                         if (mp.isAgregado) {
                             Button(
@@ -3164,6 +3214,35 @@ fun DuenoProduccionSubscreen(
                                     Icon(Icons.Outlined.ShoppingCart, contentDescription = null, tint = Color.White)
                                     Text("SALIDA PARA VENTA (ENVIAR RACIONES A VENTA)", fontSize = 14.sp, fontWeight = FontWeight.Black, color = Color.White)
                                 }
+                            }
+                        }
+
+                        // BOTÓN EDITAR DATOS COMPLETOS DE INSUMO
+                        OutlinedButton(
+                            onClick = {
+                                val target = mp
+                                selectedInsumoForDetail = null
+                                insumoToEdit = target
+                            },
+                            shape = RoundedCornerShape(14.dp),
+                            border = BorderStroke(1.5.dp, ElQadreNavy),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = ElQadreNavy),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp)
+                                .testTag("btn_insumo_edit_full_detail")
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(Icons.Default.Edit, contentDescription = null, tint = ElQadreNavy)
+                                Text(
+                                    text = "EDITAR DATOS DE INSUMO",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = ElQadreNavy
+                                )
                             }
                         }
 
@@ -3624,6 +3703,54 @@ fun DuenoProduccionSubscreen(
                     TextButton(onClick = { insumoToDelete = null }) {
                         Text("Cancelar")
                     }
+                }
+            )
+        }
+
+        if (insumoToToggleAgregado != null) {
+            val mpToToggle = insumoToToggleAgregado!!
+            ToggleAgregadoInsumoDialog(
+                materiaPrima = mpToToggle,
+                products = uiState.products,
+                onDismiss = { insumoToToggleAgregado = null },
+                onSave = { updatedMp ->
+                    viewModel.updateMateriaPrima(updatedMp)
+                    insumoToToggleAgregado = null
+                }
+            )
+        }
+
+        if (insumoToEdit != null) {
+            val mpToEdit = insumoToEdit!!
+            AddEditMateriaPrimaDialog(
+                materia = mpToEdit,
+                isJornadaOpen = uiState.activeJornada?.isOpen == true,
+                uiState = uiState,
+                onDismiss = { insumoToEdit = null },
+                onConfirm = { updatedMp, entQty, entUnit, entNotes, salQty, salUnit, salNotes ->
+                    viewModel.updateMateriaPrima(updatedMp)
+                    val currentUserStr = viewModel.uiState.value.currentUser?.username ?: "Dueño"
+                    if (entQty > 0.0) {
+                        val entQtyBase = convertToBaseQty(entQty, entUnit)
+                        viewModel.insertMovimientoMateriaPrima(
+                            materiaPrimaId = updatedMp.id,
+                            type = "ENTRADA",
+                            quantity = entQtyBase,
+                            notes = if (entNotes.isNotBlank()) entNotes else "Entrada al editar insumo",
+                            responsibleUser = currentUserStr
+                        )
+                    }
+                    if (salQty > 0.0) {
+                        val salQtyBase = convertToBaseQty(salQty, salUnit)
+                        viewModel.insertMovimientoMateriaPrima(
+                            materiaPrimaId = updatedMp.id,
+                            type = "MERMA",
+                            quantity = salQtyBase,
+                            notes = if (salNotes.isNotBlank()) salNotes else "Ajuste de salida al editar insumo",
+                            responsibleUser = currentUserStr
+                        )
+                    }
+                    insumoToEdit = null
                 }
             )
         }
@@ -9524,7 +9651,17 @@ fun DuenoPersonalView(
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = ElQadreNavy,
                             focusedLabelColor = ElQadreNavy
-                        )
+                        ),
+                        trailingIcon = {
+                            ContactPickerIconButton(
+                                onContactPicked = { pickedName, pickedPhone ->
+                                    movil = pickedPhone
+                                    if (nombreCompleto.isBlank() && pickedName.isNotBlank()) {
+                                        nombreCompleto = pickedName
+                                    }
+                                }
+                            )
+                        }
                     )
 
                     // 4. Forma de pago
@@ -10305,7 +10442,20 @@ fun EditarPersonalDialog(
                     onValueChange = { movil = it },
                     label = { Text("Móvil *") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Phone
+                    ),
+                    modifier = Modifier.fillMaxWidth().testTag("edit_input_movil"),
+                    trailingIcon = {
+                        ContactPickerIconButton(
+                            onContactPicked = { pickedName, pickedPhone ->
+                                movil = pickedPhone
+                                if (nombreCompleto.isBlank() && pickedName.isNotBlank()) {
+                                    nombreCompleto = pickedName
+                                }
+                            }
+                        )
+                    }
                 )
                 OutlinedTextField(
                     value = formaPago,

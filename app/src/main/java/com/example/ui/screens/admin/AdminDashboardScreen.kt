@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import com.example.data.local.model.User
 import com.example.data.local.model.UserRole
 import com.example.ui.components.AppVersionSettingsCard
+import com.example.ui.components.ContactPickerIconButton
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.MainUiState
 import com.example.ui.viewmodel.MainViewModel
@@ -921,10 +922,20 @@ fun AdminUserFormDialog(
                         placeholder = { Text("Ej. 5351234567", color = Slate400) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("input_user_telefono"),
                         shape = RoundedCornerShape(12.dp),
                         leadingIcon = {
                             Icon(Icons.Outlined.Phone, contentDescription = null, tint = Slate500)
+                        },
+                        trailingIcon = {
+                            ContactPickerIconButton(
+                                onContactPicked = { pickedName, pickedPhone ->
+                                    telefono = pickedPhone
+                                    if (fullName.isBlank() && pickedName.isNotBlank()) {
+                                        fullName = pickedName
+                                    }
+                                }
+                            )
                         }
                     )
 
