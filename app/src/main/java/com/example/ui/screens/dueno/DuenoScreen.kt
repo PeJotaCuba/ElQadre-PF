@@ -4981,28 +4981,29 @@ fun RegistrarEntradaInsumoDialog(
                     }
                 }
 
-                // PIE DE PÁGINA: BOTONES FIJADOS SOBRE LA NAVEGACIÓN DE ANDROID
+                // PIE DE PÁGINA: BOTONES FIJADOS SOBRE LA NAVEGACIÓN DE ANDROID (CON MARGEN DE SEGURIDAD ELEVADO)
                 Surface(
                     color = Color.White,
-                    shadowElevation = 10.dp,
-                    border = BorderStroke(1.dp, Slate200),
+                    shadowElevation = 12.dp,
+                    border = BorderStroke(1.5.dp, Slate200),
                     modifier = Modifier
                         .fillMaxWidth()
                         .navigationBarsPadding()
+                        .padding(bottom = 32.dp)
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 20.dp, vertical = 14.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            .padding(horizontal = 20.dp, vertical = 18.dp),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
                         OutlinedButton(
                             onClick = onDismiss,
                             shape = RoundedCornerShape(14.dp),
-                            border = BorderStroke(1.5.dp, Slate300),
+                            border = BorderStroke(2.dp, Slate300),
                             modifier = Modifier
                                 .weight(1f)
-                                .height(56.dp)
+                                .height(60.dp)
                         ) {
                             Text("CANCELAR", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = Slate700)
                         }
@@ -5032,7 +5033,7 @@ fun RegistrarEntradaInsumoDialog(
                             shape = RoundedCornerShape(14.dp),
                             modifier = Modifier
                                 .weight(1.5f)
-                                .height(56.dp)
+                                .height(60.dp)
                                 .testTag("confirm_entrada_insumo_btn")
                         ) {
                             Row(
@@ -5040,7 +5041,7 @@ fun RegistrarEntradaInsumoDialog(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
-                                Text("REGISTRAR ENTRADA", fontWeight = FontWeight.Black, fontSize = 15.sp, color = Color.White)
+                                Text("REGISTRAR ENTRADA", fontWeight = FontWeight.Black, fontSize = 16.sp, color = Color.White)
                             }
                         }
                     }
@@ -7099,6 +7100,13 @@ fun RegistrarVentaDirectaMercaderiaDialog(
     )
 }
 
+data class InsufficientIngredientDetail(
+    val name: String,
+    val required: Double,
+    val available: Double,
+    val unit: String
+)
+
 @Composable
 fun RegisterTandaDialog(
     uiState: MainUiState,
@@ -7113,16 +7121,16 @@ fun RegisterTandaDialog(
         }
     }
 
+    // Cálculo automático del número de tanda (secuencial de hoy / jornada)
+    val autoTandaNumberStr = remember(uiState.tandas) {
+        val maxNum = uiState.tandas.mapNotNull { it.tandaNumber.toIntOrNull() }.maxOrNull() ?: 0
+        "%02d".format(maxNum + 1)
+    }
+
     var selectedProductPair by remember { mutableStateOf<Pair<ProductoElaborado, Product>?>(null) }
     var baseQuantityInput by remember { mutableStateOf("") }
-    var observationText by remember { mutableStateOf("") }
     var productDropdownExpanded by remember { mutableStateOf(false) }
-
-    val activeRecipeIngredients = remember(selectedProductPair, uiState.recetaIngredientes) {
-        selectedProductPair?.let { (pe, _) ->
-            uiState.recetaIngredientes.filter { it.productoElaboradoId == pe.productId || it.productoElaboradoId == pe.id }
-        } ?: emptyList()
-    }
+    var missingIngredientsAlert by remember { mutableStateOf<List<InsufficientIngredientDetail>?>(null) }
 
     LaunchedEffect(selectedProductPair) {
         selectedProductPair?.let { (pe, _) ->
@@ -7165,46 +7173,96 @@ fun RegisterTandaDialog(
         }
     }
 
-    val hasRecipe = selectedProductPair != null && activeRecipeIngredients.isNotEmpty()
-    val expectedYield = (selectedPe?.baseYield ?: 0.0) * productionFactor
-
-    val ingredientConsumptions = remember(selectedProductPair, productionFactor, activeRecipeIngredients, uiState.materiasPrimas) {
-        if (selectedProductPair == null || productionFactor <= 0.0) emptyList()
-        else {
-            activeRecipeIngredients.map { ing ->
-                val raw = uiState.materiasPrimas.find { it.id == ing.materiaPrimaId }
-                val rawName = raw?.name ?: "Insumo desconocido"
-                val requiredQty = ing.quantity * productionFactor
-                val convertedQty = if (raw != null) {
-                    com.example.ui.viewmodel.UnitConverter.convert(requiredQty, ing.unit, raw.unit) ?: requiredQty
-                } else requiredQty
-
-                val isSufficient = if (raw != null) raw.stock >= convertedQty else true
-                val cost = convertedQty * (raw?.unitCost ?: 0.0)
-
-                IngredientBatchResult(
-                    materiaPrimaId = ing.materiaPrimaId,
-                    name = rawName,
-                    recipeUnit = ing.unit,
-                    inventoryUnit = raw?.unit ?: ing.unit,
-                    recalculatedRecipeQty = requiredQty,
-                    convertedInventoryQty = convertedQty,
-                    unitCost = raw?.unitCost ?: 0.0,
-                    totalCost = cost,
-                    stockAvailable = raw?.stock ?: 0.0,
-                    isSufficient = isSufficient,
-                    isCompatible = true
-                )
-            }
-        }
+    val activeRecipeIngredients = remember(selectedProductPair, uiState.recetaIngredientes) {
+        selectedProductPair?.let { (pe, _) ->
+            uiState.recetaIngredientes.filter { it.productoElaboradoId == pe.productId || it.productoElaboradoId == pe.id }
+        } ?: emptyList()
     }
 
-    val totalDirectCost = ingredientConsumptions.sumOf { it.totalCost }
-    val costPerUnit = if (expectedYield > 0.0) totalDirectCost / expectedYield else 0.0
-    val salePricePerUnit = selectedProd?.price ?: 0.0
-    val expectedRevenue = expectedYield * salePricePerUnit
-    val estimatedProfit = expectedRevenue - totalDirectCost
-    val hasStockErrors = ingredientConsumptions.any { !it.isSufficient }
+    // Modal de Alerta: INVENTARIO INSUFICIENTE
+    if (missingIngredientsAlert != null) {
+        AlertDialog(
+            onDismissRequest = { missingIngredientsAlert = null },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = Color(0xFFDC2626),
+                    modifier = Modifier.size(48.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = "NO HAY INVENTARIO SUFICIENTE",
+                    fontWeight = FontWeight.Black,
+                    fontSize = 20.sp,
+                    color = Color(0xFF991B1B),
+                    textAlign = TextAlign.Center
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "No se puede activar la tanda ni realizar descuentos parciales. Faltan los siguientes insumos en el inventario:",
+                        fontSize = 15.sp,
+                        color = Slate700,
+                        fontWeight = FontWeight.Medium
+                    )
+
+                    missingIngredientsAlert?.forEach { item ->
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFFFEF2F2),
+                            border = BorderStroke(1.5.dp, Color(0xFFFECACA)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = item.name.uppercase(),
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 16.sp,
+                                    color = Color(0xFF991B1B)
+                                )
+                                Text(
+                                    text = "• Necesita: ${"%.2f".format(item.required)} ${item.unit} / Disponible: ${"%.2f".format(item.available)} ${item.unit}",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFB91C1C)
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { missingIngredientsAlert = null },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF991B1B)),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp)
+                ) {
+                    Text(
+                        text = "ENTENDIDO / CORREGIR INVENTARIO",
+                        fontWeight = FontWeight.Black,
+                        fontSize = 15.sp,
+                        color = Color.White
+                    )
+                }
+            },
+            shape = RoundedCornerShape(20.dp),
+            containerColor = Color.White
+        )
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -7225,23 +7283,23 @@ fun RegisterTandaDialog(
             ) {
                 // ENCABEZADO SUPERIOR PANTALLA COMPLETA
                 Surface(
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp),
                     color = Color.White,
                     border = BorderStroke(1.5.dp, Slate200),
-                    shadowElevation = 1.dp,
+                    shadowElevation = 2.dp,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         IconButton(
                             onClick = onDismiss,
                             colors = IconButtonDefaults.iconButtonColors(containerColor = Slate100),
-                            modifier = Modifier.size(52.dp)
+                            modifier = Modifier.size(48.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.ArrowBack,
@@ -7253,78 +7311,123 @@ fun RegisterTandaDialog(
 
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Outlined.Layers,
                                 contentDescription = null,
                                 tint = ElQadreNavy,
-                                modifier = Modifier.size(30.dp)
+                                modifier = Modifier.size(28.dp)
                             )
                             Text(
-                                text = "REGISTRAR NUEVA TANDA",
+                                text = "ACTIVAR NUEVA TANDA",
                                 fontWeight = FontWeight.Black,
                                 color = ElQadreNavy,
                                 fontSize = 20.sp
                             )
                         }
 
-                        Spacer(modifier = Modifier.width(52.dp))
+                        Spacer(modifier = Modifier.width(48.dp))
                     }
                 }
 
                 // VALIDACIÓN DE JORNADA
                 if (!isJornadaOpen) {
                     Surface(
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(16.dp),
                         color = Color(0xFFFEF2F2),
-                        border = BorderStroke(1.5.dp, Color(0xFFFECACA)),
-                        modifier = Modifier.fillMaxWidth()
+                        border = BorderStroke(2.dp, Color(0xFFFECACA)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp)
                     ) {
                         Column(
-                            modifier = Modifier.padding(20.dp),
+                            modifier = Modifier.padding(24.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
-                            Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFBE123C), modifier = Modifier.size(40.dp))
+                            Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFBE123C), modifier = Modifier.size(48.dp))
                             Text(
-                                text = "NO SE PUEDE CREAR UNA TANDA SIN UNA JORNADA ABIERTA",
+                                text = "SE REQUIERE UNA JORNADA ABIERTA",
                                 color = Color(0xFFBE123C),
-                                fontSize = 16.sp,
+                                fontSize = 18.sp,
                                 fontWeight = FontWeight.Black,
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                textAlign = TextAlign.Center
                             )
                             Text(
-                                text = "Para registrar producción de tandas, primero debe abrir la jornada de trabajo.",
+                                text = "Para activar una tanda de producción y descontar inventario, primero debe iniciar una jornada de trabajo.",
                                 color = Slate700,
-                                fontSize = 14.sp,
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                fontSize = 15.sp,
+                                textAlign = TextAlign.Center
                             )
                             Button(
                                 onClick = onDismiss,
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFBE123C)),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.fillMaxWidth().height(50.dp)
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier.fillMaxWidth().height(56.dp)
                             ) {
-                                Text("ENTENDIDO / REGRESAR", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color.White)
+                                Text("ENTENDIDO / REGRESAR", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.White)
                             }
                         }
                     }
                 } else {
-                    // CUERPO SCROLLABLE
+                    // CUERPO PRINCIPAL DEL FORMULARIO ACCESIBLE
                     Column(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxWidth()
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 20.dp, vertical = 20.dp),
+                        verticalArrangement = Arrangement.spacedBy(20.dp)
                     ) {
-                        // SELECCIÓN DE PRODUCTO
+                        // 1. NÚMERO DE TANDA (AUTOMÁTICO / NO EDITABLE)
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color(0xFFEFF6FF),
+                            border = BorderStroke(2.dp, Color(0xFFBFDBFE)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(
+                                        text = "NÚMERO DE TANDA",
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF1E40AF)
+                                    )
+                                    Text(
+                                        text = "Generado automáticamente",
+                                        fontSize = 12.sp,
+                                        color = Slate600
+                                    )
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = ElQadreNavy
+                                ) {
+                                    Text(
+                                        text = "Tanda #$autoTandaNumberStr",
+                                        fontSize = 20.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = Color.White,
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        // 2. PRODUCTO (SELECTOR DE PRODUCTOS REALES)
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(
-                                text = "PRODUCTO ELABORADO (*)",
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.ExtraBold,
+                                text = "PRODUCTO (*)",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Black,
                                 color = ElQadreNavy
                             )
                             Box(modifier = Modifier.fillMaxWidth()) {
@@ -7332,9 +7435,14 @@ fun RegisterTandaDialog(
                                     onClick = { productDropdownExpanded = true },
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(64.dp),
-                                    shape = RoundedCornerShape(14.dp),
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = ElQadreNavy)
+                                        .height(68.dp)
+                                        .testTag("select_producto_elaborado_btn"),
+                                    shape = RoundedCornerShape(16.dp),
+                                    border = BorderStroke(2.dp, if (selectedProductPair != null) ElQadreNavy else Slate400),
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        containerColor = Color.White,
+                                        contentColor = ElQadreNavy
+                                    )
                                 ) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
@@ -7343,10 +7451,16 @@ fun RegisterTandaDialog(
                                     ) {
                                         Text(
                                             text = selectedProductPair?.second?.name?.uppercase() ?: "SELECCIONAR PRODUCTO...",
-                                            fontSize = 16.sp,
-                                            fontWeight = FontWeight.Black
+                                            fontSize = 18.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = if (selectedProductPair != null) ElQadreNavy else Slate500
                                         )
-                                        Icon(Icons.Default.ArrowDropDown, contentDescription = null, modifier = Modifier.size(28.dp))
+                                        Icon(
+                                            Icons.Default.ArrowDropDown,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(32.dp),
+                                            tint = ElQadreNavy
+                                        )
                                     }
                                 }
                                 DropdownMenu(
@@ -7356,7 +7470,15 @@ fun RegisterTandaDialog(
                                 ) {
                                     elaboratedProducts.forEach { pair ->
                                         DropdownMenuItem(
-                                            text = { Text(pair.second.name.uppercase(), fontSize = 16.sp, fontWeight = FontWeight.Bold) },
+                                            text = {
+                                                Text(
+                                                    pair.second.name.uppercase(),
+                                                    fontSize = 18.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = ElQadreNavy,
+                                                    modifier = Modifier.padding(vertical = 4.dp)
+                                                )
+                                            },
                                             onClick = {
                                                 selectedProductPair = pair
                                                 productDropdownExpanded = false
@@ -7367,6 +7489,7 @@ fun RegisterTandaDialog(
                             }
                         }
 
+                        // 3. CANTIDAD Y UNIDAD DE MEDIDA
                         if (selectedProductPair != null) {
                             val pe = selectedProductPair!!.first
                             val p = selectedProductPair!!.second
@@ -7385,7 +7508,7 @@ fun RegisterTandaDialog(
                                     ) {
                                         Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFBE123C), modifier = Modifier.size(28.dp))
                                         Text(
-                                            text = "Este producto no tiene una receta configurada con insumos.",
+                                            text = "Este producto no tiene una receta con insumos configurada.",
                                             color = Color(0xFFBE123C),
                                             fontSize = 15.sp,
                                             fontWeight = FontWeight.Bold
@@ -7393,78 +7516,82 @@ fun RegisterTandaDialog(
                                     }
                                 }
                             } else {
-                                // CAMPO PRINCIPAL: CANTIDAD DEL INSUMO BASE
-                                Surface(
-                                    shape = RoundedCornerShape(14.dp),
-                                    color = Color.White,
-                                    border = BorderStroke(1.5.dp, ElQadreNavy.copy(alpha = 0.3f)),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                        Text(
-                                            text = "CANTIDAD DEL INSUMO BASE (*)",
-                                            fontSize = 15.sp,
-                                            fontWeight = FontWeight.Black,
-                                            color = ElQadreNavy
-                                        )
-                                        Text(
-                                            text = "Insumo base: ${baseMp?.name?.uppercase() ?: "Insumo"} • Receta estándar: ${pe.baseYield} ${pe.productionUnit} con ${pe.baseQuantity} ${baseMp?.unit ?: ""}",
-                                            fontSize = 13.sp,
-                                            color = Slate600
-                                        )
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text(
+                                        text = "CANTIDAD (*)",
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = ElQadreNavy
+                                    )
+                                    Text(
+                                        text = "Insumo base: ${baseMp?.name?.uppercase() ?: "Base"} • Receta estándar: ${pe.baseYield} ${pe.productionUnit} con ${pe.baseQuantity} ${baseMp?.unit ?: ""}",
+                                        fontSize = 14.sp,
+                                        color = Slate600
+                                    )
 
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            OutlinedTextField(
-                                                value = baseQuantityInput,
-                                                onValueChange = { baseQuantityInput = it },
-                                                label = { Text("Cantidad (*)", fontSize = 13.sp, fontWeight = FontWeight.Bold) },
-                                                placeholder = { Text("Ej. ${pe.baseQuantity}", fontSize = 15.sp) },
-                                                modifier = Modifier
-                                                    .weight(1.3f)
-                                                    .height(64.dp)
-                                                    .testTag("input_base_quantity"),
-                                                singleLine = true,
-                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                                shape = RoundedCornerShape(14.dp),
-                                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = ElQadreNavy, focusedLabelColor = ElQadreNavy)
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        OutlinedTextField(
+                                            value = baseQuantityInput,
+                                            onValueChange = { baseQuantityInput = it },
+                                            label = { Text("Cantidad (*)", fontSize = 15.sp, fontWeight = FontWeight.Bold) },
+                                            placeholder = { Text("Ej. ${pe.baseQuantity}", fontSize = 18.sp) },
+                                            modifier = Modifier
+                                                .weight(1.3f)
+                                                .height(68.dp)
+                                                .testTag("input_base_quantity"),
+                                            singleLine = true,
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                            shape = RoundedCornerShape(16.dp),
+                                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 20.sp, fontWeight = FontWeight.Black, color = ElQadreNavy),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedBorderColor = ElQadreNavy,
+                                                focusedLabelColor = ElQadreNavy
                                             )
+                                        )
 
-                                            // Selector Unidad de Medida
-                                            var expandedBaseUnit by remember { mutableStateOf(false) }
-                                            Box(modifier = Modifier.weight(1f)) {
-                                                OutlinedButton(
-                                                    onClick = { expandedBaseUnit = true },
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .height(64.dp)
-                                                        .testTag("select_base_unit_btn"),
-                                                    shape = RoundedCornerShape(14.dp),
-                                                    border = BorderStroke(1.5.dp, ElQadreNavy)
+                                        // Selector / Visualizador de Unidad de Medida
+                                        var expandedBaseUnit by remember { mutableStateOf(false) }
+                                        Box(modifier = Modifier.weight(1f)) {
+                                            OutlinedButton(
+                                                onClick = { if (compatibleUnits.size > 1) expandedBaseUnit = true },
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .height(68.dp)
+                                                    .testTag("select_base_unit_btn"),
+                                                shape = RoundedCornerShape(16.dp),
+                                                border = BorderStroke(2.dp, ElQadreNavy),
+                                                colors = ButtonDefaults.outlinedButtonColors(
+                                                    containerColor = Color.White,
+                                                    contentColor = ElQadreNavy
+                                                )
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
                                                 ) {
-                                                    Row(
-                                                        modifier = Modifier.fillMaxWidth(),
-                                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                                        verticalAlignment = Alignment.CenterVertically
-                                                    ) {
-                                                        Column {
-                                                            Text("Unidad", fontSize = 10.sp, color = Slate500)
-                                                            Text(selectedBaseUnit, color = ElQadreNavy, fontWeight = FontWeight.Black, fontSize = 16.sp)
-                                                        }
-                                                        Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = ElQadreNavy, modifier = Modifier.size(24.dp))
+                                                    Column {
+                                                        Text("Unidad", fontSize = 11.sp, color = Slate500, fontWeight = FontWeight.Bold)
+                                                        Text(selectedBaseUnit, color = ElQadreNavy, fontWeight = FontWeight.Black, fontSize = 18.sp)
+                                                    }
+                                                    if (compatibleUnits.size > 1) {
+                                                        Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = ElQadreNavy, modifier = Modifier.size(26.dp))
                                                     }
                                                 }
+                                            }
 
+                                            if (compatibleUnits.size > 1) {
                                                 DropdownMenu(
                                                     expanded = expandedBaseUnit,
                                                     onDismissRequest = { expandedBaseUnit = false }
                                                 ) {
                                                     compatibleUnits.forEach { unitItem ->
                                                         DropdownMenuItem(
-                                                            text = { Text(unitItem, fontSize = 15.sp, fontWeight = FontWeight.Bold) },
+                                                            text = { Text(unitItem, fontSize = 17.sp, fontWeight = FontWeight.Bold) },
                                                             onClick = {
                                                                 selectedBaseUnit = unitItem
                                                                 expandedBaseUnit = false
@@ -7474,162 +7601,101 @@ fun RegisterTandaDialog(
                                                 }
                                             }
                                         }
-
-                                        if (baseQtyEntered > 0.0 && selectedBaseUnit.lowercase().trim() != (baseMp?.unit ?: "").lowercase().trim()) {
-                                            Surface(
-                                                shape = RoundedCornerShape(10.dp),
-                                                color = Color(0xFFEFF6FF),
-                                                border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
-                                                modifier = Modifier.fillMaxWidth()
-                                            ) {
-                                                Row(
-                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    Text("Equivalente en Receta Base (${baseMp?.unit}):", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E40AF))
-                                                    Text("${"%.2f".format(baseQtyInRecipeUnit)} ${baseMp?.unit}", fontSize = 13.sp, fontWeight = FontWeight.Black, color = Color(0xFF1E40AF))
-                                                }
-                                            }
-                                        }
                                     }
-                                }
-
-                                // RESUMEN DE CÁLCULOS PROPORCIONALES Y FINANCIEROS
-                                Surface(
-                                    shape = RoundedCornerShape(14.dp),
-                                    color = ElQadreNavy.copy(alpha = 0.05f),
-                                    border = BorderStroke(1.5.dp, ElQadreNavy.copy(alpha = 0.2f)),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Text("CÁLCULO PROPORCIONAL Y FINANCIERO", fontSize = 14.sp, fontWeight = FontWeight.Black, color = ElQadreNavy)
-
-                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                            Text("Producción esperada:", fontSize = 14.sp, color = Slate700)
-                                            Text("${"%.1f".format(expectedYield)} ${pe.productionUnit}", fontSize = 16.sp, fontWeight = FontWeight.Black, color = ElQadreNavy)
-                                        }
-
-                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                            Text("Costo total de insumos:", fontSize = 14.sp, color = Slate700)
-                                            Text("$${"%.2f".format(totalDirectCost)} CUP", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F766E))
-                                        }
-
-                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                            Text("Costo por unidad:", fontSize = 14.sp, color = Slate700)
-                                            Text("$${"%.2f".format(costPerUnit)} CUP / ${pe.productionUnit}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Slate800)
-                                        }
-
-                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                            Text("Precio de venta por unidad:", fontSize = 14.sp, color = Slate700)
-                                            Text("$${"%.2f".format(salePricePerUnit)} CUP", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Slate800)
-                                        }
-
-                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                            Text("Ingreso esperado:", fontSize = 14.sp, color = Slate700)
-                                            Text("$${"%.2f".format(expectedRevenue)} CUP", fontSize = 15.sp, fontWeight = FontWeight.Black, color = Color(0xFF047857))
-                                        }
-
-                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                            Text("Ganancia estimada:", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = if (estimatedProfit >= 0) Color(0xFF047857) else Color(0xFFDC2626))
-                                            Text("$${"%.2f".format(estimatedProfit)} CUP", fontSize = 16.sp, fontWeight = FontWeight.Black, color = if (estimatedProfit >= 0) Color(0xFF047857) else Color(0xFFDC2626))
-                                        }
-                                    }
-                                }
-
-                                // INGREDIENTES A CONSUMIR
-                                Text("INSUMOS A CONSUMIR (CALCULADOS)", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = ElQadreNavy)
-                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    ingredientConsumptions.forEach { ing ->
-                                        Surface(
-                                            shape = RoundedCornerShape(12.dp),
-                                            color = if (ing.isSufficient) Color.White else Color(0xFFFEF2F2),
-                                            border = BorderStroke(1.5.dp, if (ing.isSufficient) Slate200 else Color(0xFFFECACA)),
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(14.dp),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Column(modifier = Modifier.weight(1f)) {
-                                                    Text(ing.name.uppercase(), fontSize = 15.sp, fontWeight = FontWeight.Black, color = ElQadreNavy)
-                                                    Spacer(modifier = Modifier.height(2.dp))
-                                                    Text("Stock disponible: ${"%.1f".format(ing.stockAvailable)} ${ing.inventoryUnit}", fontSize = 13.sp, color = Slate600)
-                                                }
-                                                Column(horizontalAlignment = Alignment.End) {
-                                                    Text("${"%.1f".format(ing.convertedInventoryQty)} ${ing.inventoryUnit}", fontSize = 16.sp, fontWeight = FontWeight.Black, color = if (ing.isSufficient) ElQadreNavy else Color(0xFFBE123C))
-                                                    if (!ing.isSufficient) {
-                                                        Text("INSUFICIENTE", fontSize = 11.sp, fontWeight = FontWeight.Black, color = Color(0xFFBE123C))
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-
-                                // OBSERVACIONES
-                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Text("OBSERVACIONES (OPCIONAL)", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = ElQadreNavy)
-                                    OutlinedTextField(
-                                        value = observationText,
-                                        onValueChange = { observationText = it },
-                                        placeholder = { Text("Detalles adicionales de la tanda...", fontSize = 15.sp, color = Slate400) },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        minLines = 2,
-                                        maxLines = 3,
-                                        shape = RoundedCornerShape(14.dp),
-                                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = ElQadreNavy, focusedLabelColor = ElQadreNavy)
-                                    )
                                 }
                             }
                         }
                     }
 
-                    // ACCIONES INFERIORES: CANCELAR Y REGISTRAR TANDA
-                    val canConfirm = selectedProductPair != null && hasRecipe && !hasStockErrors && baseQtyEntered > 0.0 && productionFactor > 0.0
+                    // BOTÓN PRINCIPAL ELEVADO Y SEGURO SOBRE LA NAVEGACIÓN ANDROID
+                    val hasRecipe = selectedProductPair != null && activeRecipeIngredients.isNotEmpty()
+                    val canActivate = selectedProductPair != null && hasRecipe && baseQtyEntered > 0.0 && productionFactor > 0.0
+
                     Surface(
                         color = Color.White,
-                        shadowElevation = 10.dp,
-                        border = BorderStroke(1.dp, Slate200),
+                        shadowElevation = 12.dp,
+                        border = BorderStroke(1.5.dp, Slate200),
                         modifier = Modifier
                             .fillMaxWidth()
                             .navigationBarsPadding()
+                            .padding(bottom = 32.dp)
                     ) {
-                        Row(
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 20.dp, vertical = 14.dp),
-                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                                .padding(horizontal = 20.dp, vertical = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            OutlinedButton(
-                                onClick = onDismiss,
-                                shape = RoundedCornerShape(14.dp),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(56.dp)
-                            ) {
-                                Text("CANCELAR", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = Slate700)
-                            }
-
                             Button(
                                 onClick = {
                                     val pair = selectedProductPair ?: return@Button
                                     val (pe, p) = pair
                                     val mp = baseMp ?: return@Button
+                                    if (baseQtyEntered <= 0.0 || productionFactor <= 0.0) return@Button
 
-                                    val now = System.currentTimeMillis()
-                                    val tandaCountToday = uiState.tandas.size + 1
-                                    val batchNumberStr = "%02d".format(tandaCountToday)
-                                    val batchUuid = "TANDA-$batchNumberStr-$now"
+                                    // 1. VALIDACIÓN EXHAUSTIVA DE INVENTARIO ANTES DE ACTIVAR
+                                    val missingList = mutableListOf<InsufficientIngredientDetail>()
+                                    val consumosList = mutableListOf<Triple<Long, Double, String>>()
+                                    val summaryIngredients = mutableListOf<String>()
+                                    var totalDirectCost = 0.0
 
-                                    val consumSummary = ingredientConsumptions.joinToString(", ") { ing ->
-                                        "${ing.name}: ${"%.1f".format(ing.recalculatedRecipeQty)} ${ing.recipeUnit}"
+                                    activeRecipeIngredients.forEach { ing ->
+                                        val raw = uiState.materiasPrimas.find { it.id == ing.materiaPrimaId }
+                                        val rawName = raw?.name ?: "Insumo desconocido"
+                                        val requiredQty = ing.quantity * productionFactor
+                                        val convertedQty = if (raw != null) {
+                                            com.example.ui.viewmodel.UnitConverter.convert(requiredQty, ing.unit, raw.unit) ?: requiredQty
+                                        } else requiredQty
+
+                                        val availableStock = raw?.stock ?: 0.0
+                                        val invUnit = raw?.unit ?: ing.unit
+
+                                        if (availableStock < convertedQty) {
+                                            missingList.add(
+                                                InsufficientIngredientDetail(
+                                                    name = rawName,
+                                                    required = convertedQty,
+                                                    available = availableStock,
+                                                    unit = invUnit
+                                                )
+                                            )
+                                        } else {
+                                            val cost = convertedQty * (raw?.unitCost ?: 0.0)
+                                            totalDirectCost += cost
+                                            consumosList.add(Triple(ing.materiaPrimaId, convertedQty, "${"%.1f".format(requiredQty)} ${ing.unit}"))
+                                            summaryIngredients.add("$rawName: ${"%.1f".format(requiredQty)} ${ing.unit}")
+                                        }
                                     }
+
+                                    // Si uno o varios insumos no alcanzan: NO activar y NO descontar nada
+                                    if (missingList.isNotEmpty()) {
+                                        missingIngredientsAlert = missingList
+                                        return@Button
+                                    }
+
+                                    // Si todos alcanzan: Activar tanda y descontar inventario normalmente
+                                    val now = System.currentTimeMillis()
+                                    val batchUuid = "TANDA-$autoTandaNumberStr-$now"
+                                    val expectedYield = (if (pe.baseYield > 0.0) pe.baseYield else 1.0) * productionFactor
+
+                                    val costSheet = com.example.util.CostCalculationHelper.calculateCostSheet(
+                                        product = p,
+                                        products = uiState.products,
+                                        productosElaborados = uiState.productosElaborados,
+                                        recetaIngredientes = uiState.recetaIngredientes,
+                                        materiasPrimas = uiState.materiasPrimas,
+                                        gastosGenerales = uiState.gastosGenerales,
+                                        inversiones = uiState.inversiones
+                                    )
+                                    val indirectCost = expectedYield * costSheet.gastoIndirectoUnitario
+                                    val totalBatchCost = totalDirectCost + indirectCost
+                                    val realUnitCost = if (expectedYield > 0.0) totalBatchCost / expectedYield else 0.0
+                                    val expectedRevenue = expectedYield * p.price
+                                    val estimatedProfit = expectedRevenue - totalBatchCost
 
                                     val tanda = Tanda(
                                         uuid = batchUuid,
-                                        tandaNumber = batchNumberStr,
+                                        tandaNumber = autoTandaNumberStr,
                                         productId = p.id,
                                         productName = p.name,
                                         date = now,
@@ -7641,14 +7707,14 @@ fun RegisterTandaDialog(
                                         productionFactor = productionFactor,
                                         estimatedYield = expectedYield,
                                         expectedYield = expectedYield,
-                                        actualYield = expectedYield,
+                                        actualYield = 0.0,
                                         yieldPercentage = 100.0,
                                         productionUnit = pe.productionUnit,
-                                        ingredientsConsumedText = consumSummary,
+                                        ingredientsConsumedText = summaryIngredients.joinToString(", "),
                                         status = "ACTIVA",
                                         jornada = uiState.activeJornada?.let { "Jornada #${it.id}" } ?: "Jornada Abierta",
                                         jornadaId = uiState.activeJornada?.id ?: 0L,
-                                        observation = observationText.trim(),
+                                        observation = "",
                                         laborCostType = "NINGUNO",
                                         laborCostValue = 0.0,
                                         totalLaborCost = 0.0,
@@ -7656,9 +7722,9 @@ fun RegisterTandaDialog(
                                         ownerPayValue = 0.0,
                                         totalOwnerPay = 0.0,
                                         totalDirectIngredientsCost = totalDirectCost,
-                                        totalIndirectCostAllocated = 0.0,
-                                        totalBatchCost = totalDirectCost,
-                                        realUnitCost = if (expectedYield > 0.0) totalDirectCost / expectedYield else 0.0,
+                                        totalIndirectCostAllocated = indirectCost,
+                                        totalBatchCost = totalBatchCost,
+                                        realUnitCost = realUnitCost,
                                         expectedRevenue = expectedRevenue,
                                         estimatedProfit = estimatedProfit,
                                         profitMargin = if (expectedRevenue > 0.0) (estimatedProfit / expectedRevenue) * 100.0 else 0.0,
@@ -7669,22 +7735,44 @@ fun RegisterTandaDialog(
                                         deviceId = "DISPOSITIVO-LOCAL"
                                     )
 
-                                    val consumos = ingredientConsumptions.map { ing ->
-                                        Triple(ing.materiaPrimaId, ing.convertedInventoryQty, "${"%.1f".format(ing.recalculatedRecipeQty)} ${ing.recipeUnit}")
-                                    }
-
-                                    viewModel.registrarTanda(tanda, consumos)
+                                    viewModel.registrarTanda(tanda, consumosList)
                                     onDismiss()
                                 },
-                                enabled = canConfirm,
-                                colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
-                                shape = RoundedCornerShape(14.dp),
+                                enabled = canActivate,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFF0F766E),
+                                    disabledContainerColor = Slate300,
+                                    disabledContentColor = Slate500
+                                ),
+                                shape = RoundedCornerShape(16.dp),
                                 modifier = Modifier
-                                    .weight(1.4f)
-                                    .height(56.dp)
+                                    .fillMaxWidth()
+                                    .height(64.dp)
                                     .testTag("submit_tanda_btn")
                             ) {
-                                Text("REGISTRAR TANDA", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = Color.White)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
+                                    Text(
+                                        text = "ACTIVAR TANDA Y DESCONTAR INVENTARIO",
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 16.sp,
+                                        color = Color.White
+                                    )
+                                }
+                            }
+
+                            OutlinedButton(
+                                onClick = onDismiss,
+                                shape = RoundedCornerShape(14.dp),
+                                border = BorderStroke(1.5.dp, Slate300),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp)
+                            ) {
+                                Text("CANCELAR", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Slate600)
                             }
                         }
                     }

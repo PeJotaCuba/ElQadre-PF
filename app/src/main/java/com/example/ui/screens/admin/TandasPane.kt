@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -35,11 +36,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.model.*
+import com.example.ui.screens.dueno.RegisterTandaDialog
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.MainUiState
 import com.example.ui.viewmodel.MainViewModel
 import com.example.ui.viewmodel.UnitConverter
+import com.example.util.CocinaTandasScanResult
 import com.example.util.CostCalculationHelper
+import com.example.util.SmsTandasHelper
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -49,11 +53,61 @@ fun TandasPane(
     uiState: MainUiState,
     viewModel: MainViewModel
 ) {
+    val context = LocalContext.current
     var showAgregarTandaDialog by remember { mutableStateOf(false) }
-    var showImportarTandasDialog by remember { mutableStateOf(false) }
     var selectedTandaForDetail by remember { mutableStateOf<Tanda?>(null) }
     var selectedTandaForEdit by remember { mutableStateOf<Tanda?>(null) }
     var selectedTandaForClose by remember { mutableStateOf<Tanda?>(null) }
+    var importFeedbackMessage by remember { mutableStateOf<String?>(null) }
+    var importFeedbackTitle by remember { mutableStateOf("Importar Tandas") }
+
+    val handleImportarTandasClick: () -> Unit = {
+        val cocinaPhones = mutableListOf<String>()
+        uiState.users.filter { it.role == UserRole.COCINA && it.telefono.isNotBlank() }.forEach { cocinaPhones.add(it.telefono) }
+        uiState.personalContratado.filter { it.role.equals("COCINA", ignoreCase = true) && it.movil.isNotBlank() }.forEach { cocinaPhones.add(it.movil) }
+        val distinctCocinaPhones = cocinaPhones.distinct()
+        val currentNeg = uiState.businessConfig?.codigoNegocio ?: "NEG-000001"
+        val existingUuids = uiState.tandas.map { it.uuid }.toSet()
+
+        val scanResult = SmsTandasHelper.scanInboxForCocinaTandas(
+            context = context,
+            cocinaPhoneNumbers = distinctCocinaPhones,
+            currentCodigoNegocio = currentNeg,
+            existingTandaUuids = existingUuids
+        )
+
+        when (scanResult) {
+            is CocinaTandasScanResult.Success -> {
+                viewModel.importarTandasDesdeCocina(
+                    tandas = scanResult.newTandas,
+                    onSuccess = { count ->
+                        importFeedbackTitle = "Importación Exitosa"
+                        importFeedbackMessage = "Se importaron exitosamente $count tanda(s) desde Cocina (${scanResult.senderPhone})."
+                    },
+                    onError = { err ->
+                        importFeedbackTitle = "Error de Importación"
+                        importFeedbackMessage = err
+                    }
+                )
+            }
+            is CocinaTandasScanResult.AllAlreadyImported -> {
+                importFeedbackTitle = "Tandas Ya Registradas"
+                importFeedbackMessage = "Las ${scanResult.totalInSms} tanda(s) del SMS de Cocina (${scanResult.senderPhone}) ya se encontraban previamente importadas."
+            }
+            is CocinaTandasScanResult.BusinessMismatch -> {
+                importFeedbackTitle = "Negocio No Coincide"
+                importFeedbackMessage = "El mensaje SMS de Cocina pertenece a otro negocio (${scanResult.actual}) y no al negocio activo ($currentNeg). No se importaron datos."
+            }
+            is CocinaTandasScanResult.InvalidFormat -> {
+                importFeedbackTitle = "Formato de SMS Inválido"
+                importFeedbackMessage = "El mensaje recibido desde Cocina está corrupto o incompleto: ${scanResult.reason}"
+            }
+            is CocinaTandasScanResult.NoSmsFound -> {
+                // Flujo alternativo: si no hay SMS válido, abrir directamente el formulario ACTIVAR NUEVA TANDA
+                showAgregarTandaDialog = true
+            }
+        }
+    }
 
     // Categorized Tandas
     val activeTandas = remember(uiState.tandas) {
@@ -144,7 +198,7 @@ fun TandasPane(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Button(
-                        onClick = { showImportarTandasDialog = true },
+                        onClick = handleImportarTandasClick,
                         colors = ButtonDefaults.buttonColors(containerColor = ElQadreGoldDark),
                         shape = RoundedCornerShape(6.dp),
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
@@ -177,44 +231,37 @@ fun TandasPane(
         }
 
         // ==========================================
-        // 4. SECCIÓN TANDAS ACTIVAS (Top of screen)
+        // 4. SECCIÓN TANDAS ACTIVAS (Altura reducida a ~1/3)
         // ==========================================
         Surface(
-            shape = RoundedCornerShape(10.dp),
+            shape = RoundedCornerShape(8.dp),
             color = Color.White,
-            border = BorderStroke(1.5.dp, Amber600),
+            border = BorderStroke(1.dp, Amber600),
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(
-                modifier = Modifier.padding(10.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Icon(Icons.Outlined.HourglassTop, contentDescription = null, tint = Amber700, modifier = Modifier.size(18.dp))
-                        Column {
-                            Text(
-                                text = "TANDAS ACTIVAS",
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 13.sp,
-                                color = ElQadreNavy
-                            )
-                            Text(
-                                text = "Inventario ya descontado • Resultado provisional hasta confirmación de producción real",
-                                fontSize = 10.sp,
-                                color = Slate600
-                            )
-                        }
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Icon(Icons.Outlined.HourglassTop, contentDescription = null, tint = Amber700, modifier = Modifier.size(16.dp))
+                        Text(
+                            text = "TANDAS ACTIVAS",
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 13.sp,
+                            color = ElQadreNavy
+                        )
                     }
 
                     Surface(
                         color = Amber50,
                         border = BorderStroke(1.dp, Amber600),
-                        shape = RoundedCornerShape(6.dp)
+                        shape = RoundedCornerShape(4.dp)
                     ) {
                         Text(
                             text = "${activeTandas.size} En Proceso",
@@ -227,36 +274,27 @@ fun TandasPane(
                 }
 
                 if (activeTandas.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Amber50),
-                        contentAlignment = Alignment.Center
+                    Surface(
+                        color = Amber50.copy(alpha = 0.6f),
+                        shape = RoundedCornerShape(6.dp),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Column(
-                            modifier = Modifier.padding(8.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = Emerald600, modifier = Modifier.size(22.dp))
-                            Spacer(modifier = Modifier.height(2.dp))
+                            Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = Emerald600, modifier = Modifier.size(16.dp))
                             Text(
                                 text = "No hay tandas activas actualmente",
                                 fontWeight = FontWeight.Bold,
                                 color = Slate800,
                                 fontSize = 12.sp
                             )
-                            Text(
-                                text = "Presione 'AGREGAR TANDA' o 'IMPORTAR TANDAS' para iniciar un nuevo lote.",
-                                color = Slate600,
-                                fontSize = 10.sp,
-                                textAlign = TextAlign.Center
-                            )
                         }
                     }
                 } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         activeTandas.forEach { tanda ->
                             ActiveTandaCard(
                                 tanda = tanda,
@@ -444,18 +482,38 @@ fun TandasPane(
 
     // Modal Dialogs
     if (showAgregarTandaDialog) {
-        AgregarTandaDialog(
+        RegisterTandaDialog(
             uiState = uiState,
             viewModel = viewModel,
             onDismiss = { showAgregarTandaDialog = false }
         )
     }
 
-    if (showImportarTandasDialog) {
-        ImportarTandasDialog(
-            uiState = uiState,
-            viewModel = viewModel,
-            onDismiss = { showImportarTandasDialog = false }
+    importFeedbackMessage?.let { msg ->
+        AlertDialog(
+            onDismissRequest = { importFeedbackMessage = null },
+            title = {
+                Text(
+                    text = importFeedbackTitle,
+                    fontWeight = FontWeight.Bold,
+                    color = ElQadreNavy
+                )
+            },
+            text = {
+                Text(
+                    text = msg,
+                    fontSize = 14.sp,
+                    color = Slate700
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = { importFeedbackMessage = null },
+                    colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy)
+                ) {
+                    Text("Aceptar", fontWeight = FontWeight.Bold)
+                }
+            }
         )
     }
 
@@ -514,16 +572,20 @@ fun ActiveTandaCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            // Header: Tanda #, Product, Provisional Badge
+            // Header: Tanda #, Product, Actions
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.weight(1f, fill = false)
+                ) {
                     Surface(
                         color = Amber100,
                         shape = RoundedCornerShape(4.dp)
@@ -533,7 +595,7 @@ fun ActiveTandaCard(
                             color = Amber700,
                             fontWeight = FontWeight.ExtraBold,
                             fontSize = 11.sp,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                         )
                     }
                     Text(
@@ -546,23 +608,37 @@ fun ActiveTandaCard(
                     )
                 }
 
-                Surface(
-                    color = Amber50,
-                    border = BorderStroke(1.dp, Amber600),
-                    shape = RoundedCornerShape(4.dp)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    OutlinedButton(
+                        onClick = onEdit,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = ElQadreNavy),
+                        border = BorderStroke(1.dp, ElQadreNavy),
+                        shape = RoundedCornerShape(4.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                        modifier = Modifier
+                            .height(28.dp)
+                            .testTag("editar_tanda_button_${tanda.uuid}")
                     ) {
-                        Icon(Icons.Outlined.HourglassTop, contentDescription = null, tint = Amber700, modifier = Modifier.size(12.dp))
-                        Text(
-                            text = "RESULTADO PROVISIONAL",
-                            color = Amber700,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 9.sp
-                        )
+                        Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(12.dp))
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Text("EDITAR", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Button(
+                        onClick = onCloseTanda,
+                        colors = ButtonDefaults.buttonColors(containerColor = Emerald600),
+                        shape = RoundedCornerShape(4.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                        modifier = Modifier
+                            .height(28.dp)
+                            .testTag("cerrar_tanda_button_${tanda.uuid}")
+                    ) {
+                        Icon(Icons.Outlined.Lock, contentDescription = null, modifier = Modifier.size(12.dp))
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Text("CERRAR TANDA", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -571,9 +647,10 @@ fun ActiveTandaCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Amber50.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
-                    .padding(8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
+                    .background(Amber50.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 6.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
                     Text("Base Utilizada", fontSize = 9.sp, color = Slate500)
@@ -623,38 +700,6 @@ fun ActiveTandaCard(
                         fontSize = 11.sp,
                         color = ElQadreGoldDark
                     )
-                }
-            }
-
-            // Actions: EDITAR & CERRAR TANDA
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedButton(
-                    onClick = onEdit,
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = ElQadreNavy),
-                    border = BorderStroke(1.dp, ElQadreNavy),
-                    shape = RoundedCornerShape(6.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                    modifier = Modifier.weight(1f).testTag("editar_tanda_button_${tanda.uuid}")
-                ) {
-                    Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("EDITAR", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                }
-
-                Button(
-                    onClick = onCloseTanda,
-                    colors = ButtonDefaults.buttonColors(containerColor = Emerald600),
-                    shape = RoundedCornerShape(6.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                    modifier = Modifier.weight(1f).testTag("cerrar_tanda_button_${tanda.uuid}")
-                ) {
-                    Icon(Icons.Outlined.Lock, contentDescription = null, modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("CERRAR TANDA", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }

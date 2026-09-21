@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -49,11 +50,54 @@ import java.util.Locale
 
 enum class CuadreTab(val label: String) {
     PRODUCCION("PRODUCCIÓN"),
-    MERCADERIA("MERCADERÍA"),
-    TRANSFERENCIA("TRANSFERENCIA"),
+    MERCADERIA("MERCADERÍAS"),
+    TRANSFERENCIA("TRANSFERENCIAS"),
     GENERALES("GENERALES"),
     PAGOS("PAGOS")
 }
+
+@Composable
+private fun CuadreNavCard(
+    label: String,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    testTag: String,
+    modifier: Modifier = Modifier
+) {
+    val bgColor = if (isSelected) ElQadreGold else Color(0xFF1E293B)
+    val contentColor = if (isSelected) ElQadreNavy else Color(0xFFF1F5F9)
+    val borderColor = if (isSelected) ElQadreGoldDark else Color(0xFF334155)
+
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(6.dp),
+        color = bgColor,
+        border = BorderStroke(1.dp, borderColor),
+        modifier = modifier
+            .height(34.dp)
+            .testTag(testTag)
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = label,
+                fontSize = 11.5.sp,
+                fontWeight = if (isSelected) FontWeight.Black else FontWeight.Bold,
+                color = contentColor,
+                textAlign = TextAlign.Center,
+                maxLines = 1
+            )
+        }
+    }
+}
+
+data class ExtraccionItem(
+    val id: Long = System.currentTimeMillis(),
+    var montoStr: String = "",
+    var descripcion: String = ""
+)
 
 data class ProduccionItemState(
     val productId: Long,
@@ -149,6 +193,7 @@ fun CuadreCajaScreen(
 ) {
     val context = LocalContext.current
     var selectedTab by rememberSaveable { mutableStateOf(CuadreTab.PRODUCCION) }
+    var showAvisoPagosDialog by rememberSaveable { mutableStateOf(false) }
 
     val activeJornada = uiState.activeJornada
     val initialCash = activeJornada?.initialCash ?: 0.0
@@ -333,8 +378,15 @@ fun CuadreCajaScreen(
     }
 
     // Extracciones & Cash & Notes State
-    var extraccionesStr by rememberSaveable { mutableStateOf(if (activeJornada?.extracciones ?: 0.0 > 0.0) (activeJornada?.extracciones ?: 0.0).toString() else "0") }
-    var extraccionesNota by rememberSaveable { mutableStateOf("") }
+    val extraccionesList = remember(activeJornadaId) {
+        mutableStateListOf<ExtraccionItem>().apply {
+            if (activeJornada?.extracciones ?: 0.0 > 0.0) {
+                add(ExtraccionItem(montoStr = (activeJornada?.extracciones ?: 0.0).toString(), descripcion = "Extracción registrada"))
+            } else {
+                add(ExtraccionItem())
+            }
+        }
+    }
     var efectivoRealStr by rememberSaveable { mutableStateOf("") }
     var notasCuadre by rememberSaveable { mutableStateOf(activeJornada?.notes ?: "") }
 
@@ -356,7 +408,7 @@ fun CuadreCajaScreen(
     val totalMermasValor = produccionStates.sumOf { it.mermaValor } + mercaderiasStates.sumOf { it.mermaValor }
     val totalMermasUnidades = produccionStates.sumOf { it.mermaTotal } + mercaderiasStates.sumOf { it.mermaTotal }
 
-    val extraccionesVal = extraccionesStr.toDoubleOrNull() ?: 0.0
+    val extraccionesVal = extraccionesList.sumOf { it.montoStr.toDoubleOrNull() ?: 0.0 }
     val efectivoRealVal = efectivoRealStr.toDoubleOrNull() ?: 0.0
 
     // Personal Payments Calculation
@@ -394,6 +446,111 @@ fun CuadreCajaScreen(
     // Dinero final en caja = Efectivo contado − Pagos reales efectuados
     val dineroFinalEnCaja = (efectivoRealVal - (if (pagosConfirmados) totalPagosConfirmados else 0.0)).coerceAtLeast(0.0)
 
+    val performCerrarCaja = {
+        isCuadrado = true
+        val jId = activeJornada?.id ?: 1L
+        val mercCuadreItems = mercaderiasStates.map { m ->
+            com.example.ui.viewmodel.MercaderiaCuadreItem(
+                mercaderiaId = m.mercaderiaId,
+                productId = m.productId,
+                ventas = m.ventas,
+                mermas = m.mermaTotal,
+                price = m.price
+            )
+        }
+        val agCuadreItems = agregadosStates.map { ag ->
+            com.example.ui.viewmodel.AgregadoCuadreItem(
+                materiaPrimaId = ag.materiaPrimaId,
+                name = ag.name,
+                racionesEnviadas = ag.racionesEnviadas,
+                racionesVendidas = ag.racionesVendidas,
+                racionesRegalia = ag.racionesRegalia,
+                racionesSobrantes = ag.racionesSobrantes,
+                precioVenta = ag.precioVenta,
+                costoPorRacion = ag.costoPorRacion,
+                rationQuantity = ag.rationQuantity,
+                unit = ag.unit
+            )
+        }
+        viewModel.registrarCuadreDueno(
+            jornadaId = jId,
+            realCash = efectivoRealVal,
+            expectedCash = efectivoEsperado,
+            diferencia = diferencia,
+            ingresosProduccion = ingresosProduccion,
+            ingresosMercaderias = ingresosMercaderias,
+            mermas = totalMermasValor,
+            transferencias = transferenciasTotalMonto,
+            extracciones = extraccionesVal,
+            notes = notasCuadre,
+            mercaderiaItems = mercCuadreItems,
+            agregadoItems = agCuadreItems
+        )
+        Toast.makeText(context, "¡Cuadre de caja registrado con éxito!", Toast.LENGTH_SHORT).show()
+    }
+
+    if (showAvisoPagosDialog) {
+        AlertDialog(
+            onDismissRequest = { showAvisoPagosDialog = false },
+            icon = {
+                Icon(
+                    Icons.Outlined.Payments,
+                    contentDescription = null,
+                    tint = ElQadreGoldDark,
+                    modifier = Modifier.size(32.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = "Aviso: Pagos de Personal",
+                    fontWeight = FontWeight.Black,
+                    fontSize = 17.sp,
+                    color = ElQadreNavy,
+                    textAlign = TextAlign.Center
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Recuerde configurar y revisar los PAGOS DE PERSONAL para completar la liquidación de la jornada.",
+                        fontSize = 14.sp,
+                        color = Slate700
+                    )
+                    Text(
+                        text = "Los pagos no se ejecutan automáticamente. Puede acceder a la sección PAGOS en cualquier momento para revisar y confirmar.",
+                        fontSize = 12.sp,
+                        color = Slate500
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showAvisoPagosDialog = false
+                        selectedTab = CuadreTab.PAGOS
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.testTag("btn_aviso_ir_a_pagos")
+                ) {
+                    Text("REVISAR PAGOS", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = {
+                        showAvisoPagosDialog = false
+                        performCerrarCaja()
+                    },
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.testTag("btn_aviso_cerrar_caja_ahora")
+                ) {
+                    Text("CERRAR CAJA AHORA", fontWeight = FontWeight.SemiBold, color = Slate700)
+                }
+            }
+        )
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -407,7 +564,7 @@ fun CuadreCajaScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -416,30 +573,30 @@ fun CuadreCajaScreen(
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Surface(
-                            shape = RoundedCornerShape(8.dp),
+                            shape = RoundedCornerShape(6.dp),
                             color = ElQadreGold.copy(alpha = 0.2f)
                         ) {
                             Icon(
                                 Icons.Outlined.PointOfSale,
                                 contentDescription = null,
                                 tint = ElQadreGold,
-                                modifier = Modifier.padding(6.dp).size(22.dp)
+                                modifier = Modifier.padding(4.dp).size(18.dp)
                             )
                         }
                         Column {
                             Text(
                                 text = "CUADRE DE CAJA",
                                 fontWeight = FontWeight.Black,
-                                fontSize = 17.sp,
+                                fontSize = 15.sp,
                                 color = Color.White
                             )
                             val jornadaLabel = if (activeJornada != null) "Jornada #${activeJornada.id} - ${SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(activeJornada.openedAt))}" else "Jornada del día"
                             Text(
                                 text = jornadaLabel,
-                                fontSize = 11.sp,
+                                fontSize = 10.sp,
                                 color = Slate300
                             )
                         }
@@ -447,56 +604,69 @@ fun CuadreCajaScreen(
 
                     IconButton(
                         onClick = onClose,
-                        modifier = Modifier.testTag("btn_cerrar_cuadre_caja")
+                        modifier = Modifier.size(32.dp).testTag("btn_cerrar_cuadre_caja")
                     ) {
-                        Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Color.White)
+                        Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Color.White, modifier = Modifier.size(20.dp))
                     }
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(6.dp))
 
-                // TOP TABS: PRODUCCIÓN | MERCADERÍA | TRANSFERENCIA | GENERALES | PAGOS
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = Color(0xFF0F172A).copy(alpha = 0.6f),
-                    modifier = Modifier.fillMaxWidth()
+                // COMPACT NAVIGATION CARDS
+                // Row 1: PRODUCCIÓN | MERCADERÍAS
+                // Row 2: TRANSFERENCIAS | GENERALES
+                // Row 3: PAGOS (full width)
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(4.dp),
-                        horizontalArrangement = Arrangement.SpaceEvenly
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        CuadreTab.values().forEach { tab ->
-                            val isSelected = selectedTab == tab
-                            val bgModifier = if (isSelected) {
-                                Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(ElQadreGold)
-                            } else {
-                                Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable { selectedTab = tab }
-                            }
-
-                            Box(
-                                modifier = bgModifier
-                                    .weight(1f)
-                                    .padding(vertical = 8.dp, horizontal = 2.dp)
-                                    .testTag("tab_cuadre_${tab.name.lowercase()}"),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = tab.label,
-                                    fontSize = 10.sp,
-                                    fontWeight = if (isSelected) FontWeight.Black else FontWeight.Bold,
-                                    color = if (isSelected) ElQadreNavy else Slate300,
-                                    textAlign = TextAlign.Center,
-                                    maxLines = 1
-                                )
-                            }
-                        }
+                        CuadreNavCard(
+                            label = "PRODUCCIÓN",
+                            isSelected = selectedTab == CuadreTab.PRODUCCION,
+                            onClick = { selectedTab = CuadreTab.PRODUCCION },
+                            testTag = "tab_cuadre_produccion",
+                            modifier = Modifier.weight(1f)
+                        )
+                        CuadreNavCard(
+                            label = "MERCADERÍAS",
+                            isSelected = selectedTab == CuadreTab.MERCADERIA,
+                            onClick = { selectedTab = CuadreTab.MERCADERIA },
+                            testTag = "tab_cuadre_mercaderia",
+                            modifier = Modifier.weight(1f)
+                        )
                     }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        CuadreNavCard(
+                            label = "TRANSFERENCIAS",
+                            isSelected = selectedTab == CuadreTab.TRANSFERENCIA,
+                            onClick = { selectedTab = CuadreTab.TRANSFERENCIA },
+                            testTag = "tab_cuadre_transferencia",
+                            modifier = Modifier.weight(1f)
+                        )
+                        CuadreNavCard(
+                            label = "GENERALES",
+                            isSelected = selectedTab == CuadreTab.GENERALES,
+                            onClick = { selectedTab = CuadreTab.GENERALES },
+                            testTag = "tab_cuadre_generales",
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    CuadreNavCard(
+                        label = "PAGOS",
+                        isSelected = selectedTab == CuadreTab.PAGOS,
+                        onClick = { selectedTab = CuadreTab.PAGOS },
+                        testTag = "tab_cuadre_pagos",
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             }
         }
@@ -511,22 +681,55 @@ fun CuadreCajaScreen(
                 CuadreTab.PRODUCCION -> {
                     CuadreProduccionTab(
                         produccionStates = produccionStates,
-                        agregadosStates = agregadosStates
+                        agregadosStates = agregadosStates,
+                        onConfirmar = { selectedTab = CuadreTab.MERCADERIA }
                     )
                 }
 
                 CuadreTab.MERCADERIA -> {
                     CuadreMercaderiasTab(
-                        mercaderiasStates = mercaderiasStates
+                        mercaderiasStates = mercaderiasStates,
+                        onConfirmar = { selectedTab = CuadreTab.TRANSFERENCIA }
                     )
                 }
 
                 CuadreTab.TRANSFERENCIA -> {
-                    TransferenciasPane(
-                        uiState = uiState,
-                        viewModel = viewModel,
-                        modifier = Modifier.fillMaxSize().padding(8.dp)
-                    )
+                    Column(
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                        ) {
+                            TransferenciasPane(
+                                uiState = uiState,
+                                viewModel = viewModel,
+                                modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                        Surface(
+                            color = Color.White,
+                            shadowElevation = 4.dp,
+                            border = BorderStroke(1.dp, Slate200),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Button(
+                                onClick = { selectedTab = CuadreTab.GENERALES },
+                                colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 10.dp)
+                                    .height(48.dp)
+                                    .testTag("btn_confirmar_transferencias")
+                            ) {
+                                Text("CONFIRMAR TRANSFERENCIAS", fontWeight = FontWeight.Black, fontSize = 13.sp, color = Color.White)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(16.dp), tint = ElQadreGold)
+                            }
+                        }
+                    }
                 }
 
                 CuadreTab.GENERALES -> {
@@ -536,6 +739,9 @@ fun CuadreCajaScreen(
                         initialCash = initialCash,
                         ingresosProduccion = ingresosProduccion,
                         ingresosMercaderias = ingresosMercaderias,
+                        produccionStates = produccionStates,
+                        mercaderiasStates = mercaderiasStates,
+                        agregadosStates = agregadosStates,
                         costoProduccionVal = costoProduccionVal,
                         costoAgregadosVal = costoAgregadosVal,
                         costoMercaderiasVal = costoMercaderiasVal,
@@ -545,10 +751,7 @@ fun CuadreCajaScreen(
                         totalMermasUnidades = totalMermasUnidades,
                         transferenciasMonto = transferenciasTotalMonto,
                         transferenciasCount = transferenciasForJornada.size,
-                        extraccionesStr = extraccionesStr,
-                        onExtraccionesChange = { extraccionesStr = it },
-                        extraccionesNota = extraccionesNota,
-                        onExtraccionesNotaChange = { extraccionesNota = it },
+                        extraccionesList = extraccionesList,
                         efectivoEsperado = efectivoEsperado,
                         efectivoRealStr = efectivoRealStr,
                         onEfectivoRealChange = { efectivoRealStr = it },
@@ -561,46 +764,7 @@ fun CuadreCajaScreen(
                         dineroFinalEnCaja = dineroFinalEnCaja,
                         onIrAPagos = { selectedTab = CuadreTab.PAGOS },
                         onCuadrarCaja = {
-                            isCuadrado = true
-                            val jId = activeJornada?.id ?: 1L
-                            val mercCuadreItems = mercaderiasStates.map { m ->
-                                com.example.ui.viewmodel.MercaderiaCuadreItem(
-                                    mercaderiaId = m.mercaderiaId,
-                                    productId = m.productId,
-                                    ventas = m.ventas,
-                                    mermas = m.mermaTotal,
-                                    price = m.price
-                                )
-                            }
-                            val agCuadreItems = agregadosStates.map { ag ->
-                                com.example.ui.viewmodel.AgregadoCuadreItem(
-                                    materiaPrimaId = ag.materiaPrimaId,
-                                    name = ag.name,
-                                    racionesEnviadas = ag.racionesEnviadas,
-                                    racionesVendidas = ag.racionesVendidas,
-                                    racionesRegalia = ag.racionesRegalia,
-                                    racionesSobrantes = ag.racionesSobrantes,
-                                    precioVenta = ag.precioVenta,
-                                    costoPorRacion = ag.costoPorRacion,
-                                    rationQuantity = ag.rationQuantity,
-                                    unit = ag.unit
-                                )
-                            }
-                            viewModel.registrarCuadreDueno(
-                                jornadaId = jId,
-                                realCash = efectivoRealVal,
-                                expectedCash = efectivoEsperado,
-                                diferencia = diferencia,
-                                ingresosProduccion = ingresosProduccion,
-                                ingresosMercaderias = ingresosMercaderias,
-                                mermas = totalMermasValor,
-                                transferencias = transferenciasTotalMonto,
-                                extracciones = extraccionesVal,
-                                notes = notasCuadre,
-                                mercaderiaItems = mercCuadreItems,
-                                agregadoItems = agCuadreItems
-                            )
-                            Toast.makeText(context, "¡Cuadre de caja registrado con éxito!", Toast.LENGTH_SHORT).show()
+                            showAvisoPagosDialog = true
                         },
                         onDescargarPdf = {
                             val cocinaPdfRows = produccionStates.map { p ->
@@ -644,7 +808,7 @@ fun CuadreCajaScreen(
                                 transferenciasMonto = transferenciasTotalMonto,
                                 transferenciasCount = transferenciasForJornada.size,
                                 extracciones = extraccionesVal,
-                                extraccionesNotas = extraccionesNota,
+                                extraccionesNotas = extraccionesList.filter { (it.montoStr.toDoubleOrNull() ?: 0.0) > 0 }.joinToString("; ") { "${it.montoStr} CUP: ${it.descripcion}" },
                                 efectivoEsperado = efectivoEsperado,
                                 efectivoReal = efectivoRealVal,
                                 diferencia = diferencia,
@@ -776,6 +940,9 @@ fun CuadreGeneralesTab(
     initialCash: Double,
     ingresosProduccion: Double,
     ingresosMercaderias: Double,
+    produccionStates: List<ProduccionItemState> = emptyList(),
+    mercaderiasStates: List<MercaderiaItemState> = emptyList(),
+    agregadosStates: List<AgregadoCuadreItemState> = emptyList(),
     costoProduccionVal: Double = 0.0,
     costoAgregadosVal: Double = 0.0,
     costoMercaderiasVal: Double = 0.0,
@@ -785,10 +952,7 @@ fun CuadreGeneralesTab(
     totalMermasUnidades: Double,
     transferenciasMonto: Double,
     transferenciasCount: Int,
-    extraccionesStr: String,
-    onExtraccionesChange: (String) -> Unit,
-    extraccionesNota: String,
-    onExtraccionesNotaChange: (String) -> Unit,
+    extraccionesList: androidx.compose.runtime.snapshots.SnapshotStateList<ExtraccionItem>,
     efectivoEsperado: Double,
     efectivoRealStr: String,
     onEfectivoRealChange: (String) -> Unit,
@@ -806,55 +970,49 @@ fun CuadreGeneralesTab(
     val scrollState = rememberScrollState()
 
     val totalIngresosGenerales = ingresosProduccion + ingresosMercaderias
+    val extraccionesVal = extraccionesList.sumOf { it.montoStr.toDoubleOrNull() ?: 0.0 }
 
-    val difColor = when {
+    val ingresosEsperadosPotencial = produccionStates.sumOf { it.totalProduced * it.price } +
+            mercaderiasStates.sumOf { it.existenciaDisponible * it.price } +
+            agregadosStates.sumOf { it.racionesEnviadas * it.precioVenta }
+
+    val ingresosEsperadosDisplay = if (ingresosEsperadosPotencial > 0.0) ingresosEsperadosPotencial else totalIngresosGenerales
+
+    val difEfectivoColor = when {
         diferencia > 0.01 -> Color(0xFF047857)
         diferencia < -0.01 -> Color(0xFFDC2626)
         else -> ElQadreNavy
     }
-    val difText = when {
-        diferencia > 0.01 -> "+$${"%.2f".format(diferencia)} CUP"
-        diferencia < -0.01 -> "-$${"%.2f".format(-diferencia)} CUP"
-        else -> "$0.00 CUP"
-    }
-    val difBadgeLabel = when {
-        diferencia > 0.01 -> "SOBRANTE"
-        diferencia < -0.01 -> "FALTANTE"
-        else -> "CUADRE EXACTO"
+    val difEfectivoBadge = when {
+        diferencia > 0.01 -> "SOBRANTE (+ $${"%.2f".format(diferencia)} CUP)"
+        diferencia < -0.01 -> "FALTANTE (- $${"%.2f".format(-diferencia)} CUP)"
+        else -> "CUADRE EXACTO ($0.00 CUP)"
     }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(scrollState)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         // ==========================================
-        // 1. VALORES PRINCIPALES (HERO CARDS)
+        // 1. EXTRACCIONES
         // ==========================================
-        Text(
-            text = "VALORES PRINCIPALES DEL CUADRE",
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Black,
-            color = Slate600,
-            letterSpacing = 0.5.sp,
-            modifier = Modifier.padding(horizontal = 2.dp)
-        )
 
-        // CARD 1: EFECTIVO CONTADO (ENTRADA DIRECTA)
+        // CARD 1: EXTRACCIONES
         Surface(
             shape = RoundedCornerShape(16.dp),
             color = Color.White,
-            border = BorderStroke(1.5.dp, Color(0xFF0284C7).copy(alpha = 0.5f)),
-            shadowElevation = 2.dp,
+            border = BorderStroke(1.dp, Slate200),
+            shadowElevation = 1.dp,
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -867,187 +1025,273 @@ fun CuadreGeneralesTab(
                     ) {
                         Surface(
                             shape = RoundedCornerShape(8.dp),
-                            color = Color(0xFF0284C7).copy(alpha = 0.12f),
-                            modifier = Modifier.size(34.dp)
+                            color = Color(0xFFD97706).copy(alpha = 0.12f),
+                            modifier = Modifier.size(32.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
-                                    imageVector = Icons.Outlined.Payments,
+                                    imageVector = Icons.Outlined.MoneyOff,
                                     contentDescription = null,
-                                    tint = Color(0xFF0284C7),
+                                    tint = Color(0xFFD97706),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                        Text(
+                            text = "EXTRACCIONES",
+                            fontWeight = FontWeight.Black,
+                            fontSize = 14.sp,
+                            color = ElQadreNavy
+                        )
+                    }
+
+                    if (extraccionesVal > 0) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFFFEF3C7)
+                        ) {
+                            Text(
+                                text = "TOTAL: -$${"%.2f".format(extraccionesVal)} CUP",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFF92400E),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+                }
+
+                Text(
+                    text = "Registre todas las extracciones directas de efectivo de la caja.",
+                    fontSize = 11.sp,
+                    color = Slate500
+                )
+
+                HorizontalDivider(color = Slate100)
+
+                // List of extractions
+                extraccionesList.forEachIndexed { index, item ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = item.montoStr,
+                            onValueChange = { newVal ->
+                                val clean = newVal.filter { c -> c.isDigit() || c == '.' }
+                                extraccionesList[index] = item.copy(montoStr = clean)
+                            },
+                            label = { Text("Importe CUP", fontSize = 11.sp) },
+                            placeholder = { Text("0.00", fontSize = 12.sp) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            singleLine = true,
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("input_extraccion_monto_$index")
+                        )
+
+                        OutlinedTextField(
+                            value = item.descripcion,
+                            onValueChange = { newVal ->
+                                extraccionesList[index] = item.copy(descripcion = newVal)
+                            },
+                            label = { Text("Motivo (~2 palabras)", fontSize = 11.sp) },
+                            placeholder = { Text("Ej: Compra hielo", fontSize = 11.sp) },
+                            singleLine = true,
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .weight(1.5f)
+                                .testTag("input_extraccion_desc_$index")
+                        )
+
+                        if (extraccionesList.size > 1) {
+                            IconButton(
+                                onClick = { extraccionesList.removeAt(index) },
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .testTag("btn_remove_extraccion_$index")
+                            ) {
+                                Icon(
+                                    Icons.Outlined.Delete,
+                                    contentDescription = "Eliminar",
+                                    tint = Color(0xFFDC2626),
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
                         }
-                        Column {
+                    }
+                }
+
+                Button(
+                    onClick = {
+                        extraccionesList.add(ExtraccionItem())
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Slate100, contentColor = ElQadreNavy),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(40.dp)
+                        .testTag("btn_add_extraccion")
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("+ AGREGAR EXTRACCIÓN", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                }
+            }
+        }
+
+        // ==========================================
+        // 2. EFECTIVO
+        // ==========================================
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = Color.White,
+            border = BorderStroke(1.5.dp, Color(0xFF0284C7).copy(alpha = 0.4f)),
+            shadowElevation = 2.dp,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFF0284C7).copy(alpha = 0.12f),
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Outlined.Payments,
+                                contentDescription = null,
+                                tint = Color(0xFF0284C7),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                    Text(
+                        text = "EFECTIVO",
+                        fontWeight = FontWeight.Black,
+                        fontSize = 14.sp,
+                        color = ElQadreNavy
+                    )
+                }
+
+                HorizontalDivider(color = Slate100)
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // EFECTIVO ESPERADO
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFFF8FAFC),
+                        border = BorderStroke(1.dp, Slate200),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
                             Text(
-                                text = "EFECTIVO CONTADO",
+                                text = "EFECTIVO ESPERADO",
+                                fontSize = 11.sp,
                                 fontWeight = FontWeight.Black,
-                                fontSize = 13.sp,
+                                color = Slate600
+                            )
+                            Text(
+                                text = "$${"%.2f".format(efectivoEsperado)} CUP",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Black,
                                 color = ElQadreNavy
                             )
                             Text(
-                                text = "Dinero físico contado en la caja",
-                                fontSize = 11.sp,
-                                color = Slate500
+                                text = "Fondo ($${"%.0f".format(initialCash)}) + Ventas ($${"%.0f".format(totalIngresosGenerales)}) - Transf ($${"%.0f".format(transferenciasMonto)}) - Extrac ($${"%.0f".format(extraccionesVal)})",
+                                fontSize = 9.sp,
+                                color = Slate500,
+                                lineHeight = 11.sp
                             )
                         }
                     }
 
+                    // EFECTIVO CONTADO
                     Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = Color(0xFFE0F2FE)
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFFEFF6FF),
+                        border = BorderStroke(1.dp, Color(0xFF93C5FD)),
+                        modifier = Modifier.weight(1f)
                     ) {
-                        Text(
-                            text = "FÍSICO REAL",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Black,
-                            color = Color(0xFF0369A1),
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                        )
-                    }
-                }
-
-                OutlinedTextField(
-                    value = efectivoRealStr,
-                    onValueChange = { onEfectivoRealChange(it.filter { c -> c.isDigit() || c == '.' }) },
-                    label = { Text("Efectivo real en Caja (CUP)", fontWeight = FontWeight.SemiBold, fontSize = 13.sp) },
-                    placeholder = { Text("0.00", fontSize = 15.sp) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    singleLine = true,
-                    shape = RoundedCornerShape(10.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Color(0xFF0284C7),
-                        focusedLabelColor = Color(0xFF0284C7)
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("input_efectivo_real_cuadre")
-                )
-            }
-        }
-
-        // ROW WITH 2 KEY METRICS: EFECTIVO ESPERADO & DIFERENCIA
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            // CARD 2: EFECTIVO ESPERADO
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = Color.White,
-                border = BorderStroke(1.5.dp, Slate200),
-                shadowElevation = 2.dp,
-                modifier = Modifier.weight(1f)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "EFECTIVO ESPERADO",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Black,
-                            color = Slate600
-                        )
-                        Icon(
-                            imageVector = Icons.Outlined.Calculate,
-                            contentDescription = null,
-                            tint = ElQadreNavy,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-
-                    Text(
-                        text = "$${"%.2f".format(efectivoEsperado)}",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Black,
-                        color = ElQadreNavy
-                    )
-
-                    Text(
-                        text = "CUP calculado en sistema",
-                        fontSize = 10.sp,
-                        color = Slate500
-                    )
-                }
-            }
-
-            // CARD 3: DIFERENCIA
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = difColor.copy(alpha = 0.06f),
-                border = BorderStroke(1.5.dp, difColor.copy(alpha = 0.35f)),
-                shadowElevation = 2.dp,
-                modifier = Modifier.weight(1f)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "DIFERENCIA",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Black,
-                            color = difColor
-                        )
-                        Surface(
-                            shape = RoundedCornerShape(4.dp),
-                            color = difColor.copy(alpha = 0.15f)
+                        Column(
+                            modifier = Modifier.padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             Text(
-                                text = difBadgeLabel,
-                                fontSize = 9.sp,
+                                text = "EFECTIVO CONTADO",
+                                fontSize = 11.sp,
                                 fontWeight = FontWeight.Black,
-                                color = difColor,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                color = Color(0xFF1E40AF)
+                            )
+                            OutlinedTextField(
+                                value = efectivoRealStr,
+                                onValueChange = { onEfectivoRealChange(it.filter { c -> c.isDigit() || c == '.' }) },
+                                placeholder = { Text("0.00", fontSize = 16.sp) },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                singleLine = true,
+                                shape = RoundedCornerShape(8.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = Color(0xFF1E40AF),
+                                    unfocusedBorderColor = Color(0xFF60A5FA)
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("input_efectivo_real_cuadre")
                             )
                         }
                     }
+                }
 
-                    Text(
-                        text = difText,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Black,
-                        color = difColor
-                    )
-
-                    Text(
-                        text = if (diferencia == 0.0) "Caja perfectamente cuadrada" else "Físico vs Esperado",
-                        fontSize = 10.sp,
-                        color = difColor.copy(alpha = 0.8f)
-                    )
+                // DIFERENCIA EFECTIVO
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = difEfectivoColor.copy(alpha = 0.08f),
+                    border = BorderStroke(1.dp, difEfectivoColor.copy(alpha = 0.3f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "DIFERENCIA:",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Black,
+                            color = difEfectivoColor
+                        )
+                        Text(
+                            text = difEfectivoBadge,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Black,
+                            color = difEfectivoColor
+                        )
+                    }
                 }
             }
         }
 
         // ==========================================
-        // 2. DESGLOSE EXISTENTE (BLOQUES SEPARADOS)
+        // 3. TRANSFERENCIAS
         // ==========================================
-        Text(
-            text = "DESGLOSE Y COMPONENTES DEL CUADRE",
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Black,
-            color = Slate600,
-            letterSpacing = 0.5.sp,
-            modifier = Modifier.padding(horizontal = 2.dp)
-        )
-
-        // BLOQUE 1: VENTAS E INGRESOS ESPERADOS
         Surface(
             shape = RoundedCornerShape(16.dp),
             color = Color.White,
@@ -1059,7 +1303,120 @@ fun CuadreGeneralesTab(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFF0284C7).copy(alpha = 0.12f),
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Outlined.SwapHoriz,
+                                contentDescription = null,
+                                tint = Color(0xFF0284C7),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                    Text(
+                        text = "TRANSFERENCIAS",
+                        fontWeight = FontWeight.Black,
+                        fontSize = 14.sp,
+                        color = ElQadreNavy
+                    )
+                }
+
+                HorizontalDivider(color = Slate100)
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "TRANSFERENCIAS ESPERADAS",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Slate500
+                        )
+                        Text(
+                            text = "$${"%.2f".format(transferenciasMonto)} CUP",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Slate800
+                        )
+                    }
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "TRANSFERENCIAS REGISTRADAS",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF0284C7)
+                        )
+                        Text(
+                            text = "$${"%.2f".format(transferenciasMonto)} CUP",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color(0xFF0284C7)
+                        )
+                        Text(
+                            text = "$transferenciasCount operaciones",
+                            fontSize = 10.sp,
+                            color = Slate400
+                        )
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFFF1F5F9),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "DIFERENCIA TRANSFERENCIAS:",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Slate600
+                        )
+                        Text(
+                            text = "$0.00 CUP",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color(0xFF15803D)
+                        )
+                    }
+                }
+            }
+        }
+
+        // ==========================================
+        // 4. INGRESOS
+        // ==========================================
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = Color.White,
+            border = BorderStroke(1.dp, Slate200),
+            shadowElevation = 1.dp,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -1080,47 +1437,99 @@ fun CuadreGeneralesTab(
                         }
                     }
                     Text(
-                        text = "VENTAS E INGRESOS ESPERADOS",
+                        text = "INGRESOS",
                         fontWeight = FontWeight.Black,
-                        fontSize = 13.sp,
+                        fontSize = 14.sp,
                         color = ElQadreNavy
                     )
                 }
 
                 HorizontalDivider(color = Slate100)
 
-                CuadreMetricRow(
-                    label = "Fondo Inicial en Caja",
-                    value = "$${"%.2f".format(initialCash)} CUP",
-                    color = Slate700
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "INGRESOS ESPERADOS",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Slate500
+                        )
+                        Text(
+                            text = "$${"%.2f".format(ingresosEsperadosDisplay)} CUP",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Slate700
+                        )
+                        Text(
+                            text = "Potencial ventas teórico",
+                            fontSize = 9.sp,
+                            color = Slate400
+                        )
+                    }
 
-                CuadreMetricRow(
-                    label = "Ingresos esperados de Producción",
-                    value = "+$${"%.2f".format(ingresosProduccion)} CUP",
-                    color = Color(0xFF15803D),
-                    isBold = true
-                )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "INGRESOS REALES",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF15803D)
+                        )
+                        Text(
+                            text = "$${"%.2f".format(totalIngresosGenerales)} CUP",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color(0xFF15803D)
+                        )
+                        Text(
+                            text = "Ventas reales ejecutadas",
+                            fontSize = 9.sp,
+                            color = Color(0xFF15803D)
+                        )
+                    }
+                }
 
-                CuadreMetricRow(
-                    label = "Ingresos esperados de Mercaderías",
-                    value = "+$${"%.2f".format(ingresosMercaderias)} CUP",
-                    color = Color(0xFF15803D),
-                    isBold = true
-                )
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFFDCFCE7),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "DIFERENCIA INGRESOS:",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF166534)
+                        )
+                        val difIng = totalIngresosGenerales - ingresosEsperadosDisplay
+                        Text(
+                            text = "${if (difIng >= 0) "+" else ""}$${"%.2f".format(difIng)} CUP",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color(0xFF166534)
+                        )
+                    }
+                }
 
-                HorizontalDivider(color = Slate100)
-
-                CuadreMetricRow(
-                    label = "TOTAL INGRESOS ESPERADOS",
-                    value = "$${"%.2f".format(totalIngresosGenerales)} CUP",
-                    color = Color(0xFF15803D),
-                    isBold = true
+                Text(
+                    text = "Los ingresos reales corresponden exclusivamente a ventas reales.",
+                    fontSize = 10.sp,
+                    color = Slate500
                 )
             }
         }
 
-        // BLOQUE COSTOS TEÓRICOS Y UTILIDAD
+        // ==========================================
+        // 5. COSTOS
+        // ==========================================
         Surface(
             shape = RoundedCornerShape(16.dp),
             color = Color.White,
@@ -1140,22 +1549,22 @@ fun CuadreGeneralesTab(
                 ) {
                     Surface(
                         shape = RoundedCornerShape(8.dp),
-                        color = Color(0xFFD97706).copy(alpha = 0.12f),
+                        color = Color(0xFFB91C1C).copy(alpha = 0.12f),
                         modifier = Modifier.size(32.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 imageVector = Icons.Outlined.PieChart,
                                 contentDescription = null,
-                                tint = Color(0xFFD97706),
+                                tint = Color(0xFFB91C1C),
                                 modifier = Modifier.size(18.dp)
                             )
                         }
                     }
                     Text(
-                        text = "COSTOS Y UTILIDAD TEÓRICA",
+                        text = "COSTOS",
                         fontWeight = FontWeight.Black,
-                        fontSize = 13.sp,
+                        fontSize = 14.sp,
                         color = ElQadreNavy
                     )
                 }
@@ -1163,21 +1572,13 @@ fun CuadreGeneralesTab(
                 HorizontalDivider(color = Slate100)
 
                 CuadreMetricRow(
-                    label = "Costo estimado Producción",
-                    value = "$${"%.2f".format(costoProduccionVal)} CUP",
+                    label = "Costos de Producción",
+                    value = "$${"%.2f".format(costoProduccionVal + costoAgregadosVal)} CUP",
                     color = Slate700
                 )
 
-                if (costoAgregadosVal > 0.0) {
-                    CuadreMetricRow(
-                        label = "Costo estimado Agregados",
-                        value = "$${"%.2f".format(costoAgregadosVal)} CUP",
-                        color = Slate700
-                    )
-                }
-
                 CuadreMetricRow(
-                    label = "Costo estimado Mercaderías",
+                    label = "Costos de Mercaderías",
                     value = "$${"%.2f".format(costoMercaderiasVal)} CUP",
                     color = Slate700
                 )
@@ -1185,7 +1586,7 @@ fun CuadreGeneralesTab(
                 HorizontalDivider(color = Slate100)
 
                 CuadreMetricRow(
-                    label = "TOTAL COSTOS ESTIMADOS",
+                    label = "COSTOS TOTALES DE JORNADA",
                     value = "$${"%.2f".format(costoTotalTotal)} CUP",
                     color = Color(0xFFB91C1C),
                     isBold = true
@@ -1197,21 +1598,12 @@ fun CuadreGeneralesTab(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = "Nota: Los costos teóricos incluyen los pagos de personal configurados en las Fichas de Costo. No se vuelven a sumar como costo adicional.",
-                        fontSize = 11.sp,
+                        text = "Costos provenientes de Fichas de Costo. No se duplican gastos generales ni pagos de personal.",
+                        fontSize = 10.sp,
                         color = Slate600,
                         modifier = Modifier.padding(8.dp)
                     )
                 }
-
-                HorizontalDivider(color = Slate100)
-
-                CuadreMetricRow(
-                    label = "UTILIDAD TEÓRICA (Ingresos − Costos)",
-                    value = "$${"%.2f".format(utilidadTeorica)} CUP",
-                    color = if (utilidadTeorica >= 0) Color(0xFF15803D) else Color(0xFFDC2626),
-                    isBold = true
-                )
             }
         }
 
@@ -1335,7 +1727,9 @@ fun CuadreGeneralesTab(
             }
         }
 
-        // BLOQUE 2: MERMAS REGISTRADAS
+        // ==========================================
+        // 6. MERMAS
+        // ==========================================
         Surface(
             shape = RoundedCornerShape(16.dp),
             color = Color.White,
@@ -1368,9 +1762,9 @@ fun CuadreGeneralesTab(
                         }
                     }
                     Text(
-                        text = "MERMAS DE LA JORNADA",
+                        text = "MERMAS",
                         fontWeight = FontWeight.Black,
-                        fontSize = 13.sp,
+                        fontSize = 14.sp,
                         color = ElQadreNavy
                     )
                 }
@@ -1378,110 +1772,109 @@ fun CuadreGeneralesTab(
                 HorizontalDivider(color = Slate100)
 
                 CuadreMetricRow(
-                    label = "Mermas registradas (${"%.1f".format(totalMermasUnidades)} unid.)",
+                    label = "Ingresos/Valor asociado a Mermas (${"%.1f".format(totalMermasUnidades)} unid.)",
                     value = "$${"%.2f".format(totalMermasValor)} CUP",
                     color = Color(0xFFB91C1C),
                     isBold = true
                 )
+
+                Text(
+                    text = "Mermas registradas en la jornada. No se convierten en ventas ni se suman a Ingresos Reales.",
+                    fontSize = 10.sp,
+                    color = Slate500
+                )
             }
         }
 
-        // BLOQUE 3: TRANSFERENCIAS Y EXTRACCIONES (SALIDAS DE CAJA)
+        // ==========================================
+        // 7. UTILIDADES (HERO CARD DESTACADA)
+        // ==========================================
         Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = Color.White,
-            border = BorderStroke(1.dp, Slate200),
-            shadowElevation = 1.dp,
+            shape = RoundedCornerShape(18.dp),
+            color = ElQadreNavy,
+            border = BorderStroke(2.dp, ElQadreGold),
+            shadowElevation = 6.dp,
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
+                    .padding(18.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = Color(0xFF0284C7).copy(alpha = 0.12f),
-                        modifier = Modifier.size(32.dp)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = ElQadreGold.copy(alpha = 0.25f)
+                        ) {
                             Icon(
-                                imageVector = Icons.Outlined.SwapHoriz,
+                                imageVector = Icons.Outlined.MonetizationOn,
                                 contentDescription = null,
-                                tint = Color(0xFF0284C7),
-                                modifier = Modifier.size(18.dp)
+                                tint = ElQadreGold,
+                                modifier = Modifier
+                                    .padding(6.dp)
+                                    .size(24.dp)
                             )
                         }
+                        Text(
+                            text = "UTILIDADES DE LA JORNADA",
+                            fontWeight = FontWeight.Black,
+                            fontSize = 15.sp,
+                            color = Color.White
+                        )
                     }
-                    Text(
-                        text = "TRANSFERENCIAS Y EXTRACCIONES",
-                        fontWeight = FontWeight.Black,
-                        fontSize = 13.sp,
-                        color = ElQadreNavy
-                    )
-                }
 
-                HorizontalDivider(color = Slate100)
-
-                CuadreMetricRow(
-                    label = "Transferencias ($transferenciasCount operaciones)",
-                    value = "-$${"%.2f".format(transferenciasMonto)} CUP",
-                    color = Color(0xFF0284C7),
-                    isBold = true
-                )
-
-                // Subsección Extracciones
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = Color(0xFFFEF3C7).copy(alpha = 0.45f),
-                    border = BorderStroke(1.dp, Color(0xFFFDE68A)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = ElQadreGold
                     ) {
                         Text(
-                            text = "Extracciones de Caja (reducen el efectivo)",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF92400E)
+                            text = "RESULTADO FINAL",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Black,
+                            color = ElQadreNavy,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                         )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            OutlinedTextField(
-                                value = extraccionesStr,
-                                onValueChange = { onExtraccionesChange(it.filter { c -> c.isDigit() || c == '.' }) },
-                                label = { Text("Monto CUP", fontSize = 11.sp) },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                singleLine = true,
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("input_extracciones_cuadre")
-                            )
-                            OutlinedTextField(
-                                value = extraccionesNota,
-                                onValueChange = onExtraccionesNotaChange,
-                                label = { Text("Motivo / Destino", fontSize = 11.sp) },
-                                singleLine = true,
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier
-                                    .weight(1.5f)
-                                    .testTag("input_extracciones_motivo_cuadre")
-                            )
-                        }
                     }
+                }
+
+                HorizontalDivider(color = Color.White.copy(alpha = 0.15f))
+
+                Text(
+                    text = "INGRESOS ($${"%.2f".format(totalIngresosGenerales)}) − COSTOS ($${"%.2f".format(costoTotalTotal)}) = UTILIDAD",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Slate300
+                )
+
+                val utilColor = if (utilidadTeorica >= 0) Color(0xFF4ADE80) else Color(0xFFF87171)
+                Text(
+                    text = "$${"%.2f".format(utilidadTeorica)} CUP",
+                    fontSize = 32.sp,
+                    fontWeight = FontWeight.Black,
+                    color = utilColor,
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color.White.copy(alpha = 0.10f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Los pagos de personal no se restan nuevamente si ya están contemplados en los costos teóricos de las Fichas de Costo.",
+                        fontSize = 10.sp,
+                        color = Slate300,
+                        modifier = Modifier.padding(8.dp)
+                    )
                 }
             }
         }
@@ -1560,7 +1953,7 @@ fun CuadreGeneralesTab(
                 Icon(Icons.Filled.CheckCircle, contentDescription = null, modifier = Modifier.size(20.dp), tint = ElQadreGold)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "CUADRAR CAJA",
+                    text = "CERRAR CAJA",
                     fontWeight = FontWeight.Black,
                     fontSize = 15.sp,
                     color = Color.White
@@ -1714,7 +2107,8 @@ private fun CuadreMetricRow(
 @Composable
 fun CuadreProduccionTab(
     produccionStates: List<ProduccionItemState>,
-    agregadosStates: List<AgregadoCuadreItemState> = emptyList()
+    agregadosStates: List<AgregadoCuadreItemState> = emptyList(),
+    onConfirmar: () -> Unit = {}
 ) {
     if (produccionStates.isEmpty() && agregadosStates.isEmpty()) {
         Box(
@@ -1725,7 +2119,7 @@ fun CuadreProduccionTab(
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Icon(
                     Icons.Outlined.SoupKitchen,
@@ -1739,6 +2133,19 @@ fun CuadreProduccionTab(
                     color = Slate600,
                     fontSize = 14.sp
                 )
+                Button(
+                    onClick = onConfirmar,
+                    colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth(0.85f)
+                        .height(44.dp)
+                        .testTag("btn_confirmar_produccion_empty")
+                ) {
+                    Text("CONFIRMAR Y CONTINUAR", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(16.dp), tint = ElQadreGold)
+                }
             }
         }
         return
@@ -1801,6 +2208,22 @@ fun CuadreProduccionTab(
             }
             items(agregadosStates) { item ->
                 AgregadoCuadreCard(item = item)
+            }
+        }
+
+        item {
+            Button(
+                onClick = onConfirmar,
+                colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .testTag("btn_confirmar_produccion")
+            ) {
+                Text("CONFIRMAR PRODUCCIÓN", fontWeight = FontWeight.Black, fontSize = 13.sp, color = Color.White)
+                Spacer(modifier = Modifier.width(6.dp))
+                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(16.dp), tint = ElQadreGold)
             }
         }
 
@@ -2149,7 +2572,8 @@ fun ProduccionCuadreCard(
 // -------------------------------------------------------------
 @Composable
 fun CuadreMercaderiasTab(
-    mercaderiasStates: List<MercaderiaItemState>
+    mercaderiasStates: List<MercaderiaItemState>,
+    onConfirmar: () -> Unit = {}
 ) {
     if (mercaderiasStates.isEmpty()) {
         Box(
@@ -2160,7 +2584,7 @@ fun CuadreMercaderiasTab(
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Icon(
                     Icons.Outlined.Storefront,
@@ -2174,6 +2598,19 @@ fun CuadreMercaderiasTab(
                     color = Slate600,
                     fontSize = 14.sp
                 )
+                Button(
+                    onClick = onConfirmar,
+                    colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth(0.85f)
+                        .height(44.dp)
+                        .testTag("btn_confirmar_mercaderias_empty")
+                ) {
+                    Text("CONFIRMAR Y CONTINUAR", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(16.dp), tint = ElQadreGold)
+                }
             }
         }
         return
@@ -2210,6 +2647,22 @@ fun CuadreMercaderiasTab(
 
         items(mercaderiasStates) { item ->
             MercaderiaCuadreCard(item = item)
+        }
+
+        item {
+            Button(
+                onClick = onConfirmar,
+                colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .testTag("btn_confirmar_mercaderias")
+            ) {
+                Text("CONFIRMAR MERCADERÍAS", fontWeight = FontWeight.Black, fontSize = 13.sp, color = Color.White)
+                Spacer(modifier = Modifier.width(6.dp))
+                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(16.dp), tint = ElQadreGold)
+            }
         }
 
         item {
@@ -3523,21 +3976,22 @@ fun CuadrePagosTab(
         }
 
         // =============================================================
-        // 4. ESTADO DE EFECTIVO Y DINERO FINAL EN CAJA (Sin doble contabilización)
+        // 4. ESTADO DE EFECTIVO Y DINERO FINAL EN CAJA (Sin doble誕生)
         // =============================================================
         Surface(
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(20.dp),
             color = Color.White,
-            border = BorderStroke(1.5.dp, Color(0xFF16A34A).copy(alpha = 0.5f)),
-            shadowElevation = 2.dp,
+            border = BorderStroke(1.5.dp, Slate200),
+            shadowElevation = 3.dp,
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                // ENCABEZADO DE SECCIÓN
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -3545,80 +3999,245 @@ fun CuadrePagosTab(
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = Color(0xFF16A34A).copy(alpha = 0.12f),
-                            modifier = Modifier.size(34.dp)
+                            shape = RoundedCornerShape(10.dp),
+                            color = ElQadreNavy.copy(alpha = 0.1f),
+                            modifier = Modifier.size(38.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Outlined.AccountBalanceWallet, contentDescription = null, tint = Color(0xFF16A34A), modifier = Modifier.size(20.dp))
+                                Icon(
+                                    imageVector = Icons.Outlined.AccountBalanceWallet,
+                                    contentDescription = null,
+                                    tint = ElQadreNavy,
+                                    modifier = Modifier.size(22.dp)
+                                )
                             }
                         }
                         Column {
                             Text(
-                                text = "ESTADO DE EFECTIVO Y DINERO FINAL",
+                                text = "BALANCE FINAL DE CAJA",
                                 fontWeight = FontWeight.Black,
-                                fontSize = 13.sp,
+                                fontSize = 15.sp,
                                 color = ElQadreNavy
                             )
                             Text(
-                                text = "Dinero final en caja = Efectivo contado − Pagos reales",
-                                fontSize = 10.sp,
+                                text = "Efectivo disponible tras liquidar pagos",
+                                fontSize = 11.sp,
                                 color = Slate500
                             )
                         }
                     }
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = Color(0xFFDCFCE7)
-                    ) {
-                        Text(
-                            text = "SALIDA FÍSICA",
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Black,
-                            color = Color(0xFF166534),
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
+                    if (pagosConfirmados) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFFDCFCE7)
+                        ) {
+                            Text(
+                                text = "PAGOS REALIZADOS",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFF166534),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+                    } else {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFFFEF3C7)
+                        ) {
+                            Text(
+                                text = "PENDIENTE PAGOS",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFF92400E),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
                     }
                 }
 
                 HorizontalDivider(color = Slate100)
 
-                CuadreMetricRow(
-                    label = "Efectivo Contado en Caja",
-                    value = "$${"%.2f".format(efectivoRealVal)} CUP",
-                    color = ElQadreNavy
-                )
+                // PRIMER BLOQUE: EFECTIVO CONTADO EN CAJA + TOTAL PAGOS DE PERSONAL
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // TARJETA 1: EFECTIVO CONTADO EN CAJA
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = Color(0xFFF8FAFC),
+                        border = BorderStroke(1.dp, Slate200),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Payments,
+                                    contentDescription = null,
+                                    tint = ElQadreNavy,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = "EFECTIVO CONTADO",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Slate600
+                                )
+                            }
+                            Text(
+                                text = "$${"%.2f".format(efectivoRealVal)} CUP",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Black,
+                                color = ElQadreNavy
+                            )
+                            Text(
+                                text = "Físico en caja",
+                                fontSize = 10.sp,
+                                color = Slate500
+                            )
+                        }
+                    }
 
-                CuadreMetricRow(
-                    label = "Total Pagos de Personal (Salida física de caja)",
-                    value = "-$${"%.2f".format(totalPagoPersonal)} CUP",
-                    color = Color(0xFFDC2626),
-                    isBold = true
-                )
+                    // TARJETA 2: TOTAL PAGOS DE PERSONAL
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = Color(0xFFFEF2F2),
+                        border = BorderStroke(1.dp, Color(0xFFFCA5A5)),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Badge,
+                                    contentDescription = null,
+                                    tint = Color(0xFFDC2626),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = "PAGOS PERSONAL",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Color(0xFF991B1B)
+                                )
+                            }
+                            Text(
+                                text = "-$${"%.2f".format(totalPagoPersonal)} CUP",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFFDC2626)
+                            )
+                            Text(
+                                text = if (pagosConfirmados) "Salida real confirmada" else "Salida por pagar",
+                                fontSize = 10.sp,
+                                color = Color(0xFF991B1B).copy(alpha = 0.8f)
+                            )
+                        }
+                    }
+                }
 
-                HorizontalDivider(color = Slate100)
-
-                CuadreMetricRow(
-                    label = "DINERO FINAL EN CAJA",
-                    value = "$${"%.2f".format(dineroFinalEnCaja)} CUP",
-                    color = Color(0xFF15803D),
-                    isBold = true
-                )
-
+                // TARJETA DE MAYOR PRESENCIA VISUAL (HERO): DINERO FINAL EN CAJA
                 Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = Color(0xFFF8FAFC),
+                    shape = RoundedCornerShape(16.dp),
+                    color = ElQadreNavy,
+                    border = BorderStroke(2.dp, ElQadreGold),
+                    shadowElevation = 6.dp,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
-                        text = "Nota (Sin doble contabilización): La Utilidad Teórica ($${"%.2f".format(utilidadTeorica)} CUP) calcula el margen comercial considerando la tarifa de personal incluida en el costo unitario. El pago de personal aquí representa una salida física real de efectivo de la caja.",
-                        fontSize = 11.sp,
-                        color = Slate600,
-                        modifier = Modifier.padding(8.dp)
-                    )
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = ElQadreGold.copy(alpha = 0.25f)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.AccountBalance,
+                                        contentDescription = null,
+                                        tint = ElQadreGold,
+                                        modifier = Modifier
+                                            .padding(6.dp)
+                                            .size(24.dp)
+                                    )
+                                }
+                                Text(
+                                    text = "DINERO FINAL EN CAJA",
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 16.sp,
+                                    color = Color.White
+                                )
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = ElQadreGold
+                            ) {
+                                Text(
+                                    text = "EFECTIVO RESTANTE",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = ElQadreNavy,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
+                        }
+
+                        HorizontalDivider(color = Color.White.copy(alpha = 0.15f))
+
+                        Text(
+                            text = "EFECTIVO CONTADO ($${"%.2f".format(efectivoRealVal)}) − PAGOS REALES ($${"%.2f".format(if (pagosConfirmados) totalPagoPersonal else totalPagoPersonal)}) = DINERO FINAL",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Slate300
+                        )
+
+                        Text(
+                            text = "$${"%.2f".format(dineroFinalEnCaja)} CUP",
+                            fontSize = 36.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color(0xFF4ADE80),
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
+
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color.White.copy(alpha = 0.10f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "Los pagos de personal representan la salida física real de efectivo de la caja. No se vuelven a descontar como costo para calcular la utilidad del negocio.",
+                                fontSize = 10.sp,
+                                color = Slate300,
+                                modifier = Modifier.padding(8.dp)
+                            )
+                        }
+                    }
                 }
             }
         }

@@ -3526,6 +3526,54 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // 1.5.8: Ajustar Tanda Activa
+    fun importarTandasDesdeCocina(
+        tandas: List<Tanda>,
+        onSuccess: (Int) -> Unit = {},
+        onError: (String) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            try {
+                var importedCount = 0
+                val activeJornada = _uiState.value.activeJornada
+                tandas.forEach { rawTanda ->
+                    val existing = _uiState.value.tandas.find { it.uuid == rawTanda.uuid }
+                    if (existing == null) {
+                        val tandaToInsert = if (rawTanda.jornadaId == 0L && activeJornada != null) {
+                            rawTanda.copy(
+                                jornada = "Jornada #${activeJornada.id}",
+                                jornadaId = activeJornada.id,
+                                inventoryDeducted = true
+                            )
+                        } else rawTanda.copy(inventoryDeducted = true)
+
+                        repository.insertTanda(tandaToInsert)
+                        importedCount++
+                    }
+                }
+
+                if (importedCount > 0) {
+                    repository.insertBitacora(
+                        BitacoraEntry(
+                            title = "Importación de Tandas desde Cocina",
+                            content = "Se importaron $importedCount tandas recibidas por SMS desde Cocina sin duplicar inventario.",
+                            category = "PRODUCCIÓN",
+                            authorUsername = _uiState.value.currentUser?.username ?: "Dueño"
+                        )
+                    )
+                    _uiState.update {
+                        it.copy(successMessage = "Se importaron $importedCount tandas desde Cocina correctamente")
+                    }
+                    onSuccess(importedCount)
+                } else {
+                    onSuccess(0)
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "Error al importar tandas: ${e.message}") }
+                onError(e.message ?: "Error desconocido")
+            }
+        }
+    }
+
     fun ajustarTanda(tanda: Tanda) {
         viewModelScope.launch {
             try {
