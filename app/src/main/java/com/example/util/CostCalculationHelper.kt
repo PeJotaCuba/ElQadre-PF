@@ -74,6 +74,34 @@ data class AllocatedInversionItem(
     val allocatedUnitAmount: Double
 )
 
+data class ProrrateoBaseItem(
+    val id: Long,
+    val name: String,
+    val type: String, // "PRODUCCION" o "MERCADERIAS"
+    val productId: Long,
+    val quantity: Double, // Cantidad de base (producción diaria planificada o existencia actual)
+    val costoDirectoUnitario: Double,
+    val valorBase: Double, // quantity * costoDirectoUnitario
+    val porcentajeParticipacion: Double, // % sobre la base total
+    val gastoGeneralAsignado: Double, // Gasto general diario total * % participacion
+    val gastoGeneralUnitario: Double // Gasto asignado / cantidad de base
+)
+
+data class ProrrateoGastosGeneralesResult(
+    val gastoGeneralDiarioTotal: Double,
+    val baseProduccion: List<ProrrateoBaseItem>,
+    val baseMercaderias: List<ProrrateoBaseItem>,
+    val baseTotal: Double,
+    val itemsProrrateo: List<ProrrateoBaseItem>,
+    val isValid: Boolean,
+    val reason: String?,
+    val sumaPorcentajes: Double = 0.0
+) {
+    val baseProduccionTotal: Double get() = baseProduccion.sumOf { it.valorBase }
+    val baseMercaderiasTotal: Double get() = baseMercaderias.sumOf { it.valorBase }
+    val gastoTotalAsignado: Double get() = itemsProrrateo.sumOf { it.gastoGeneralAsignado }
+}
+
 data class MercaderiaCostSheet(
     val mercaderia: Mercaderia,
     val product: Product,
@@ -150,6 +178,444 @@ object CostCalculationHelper {
             }
         }
         return if (totalPpd > 0.0) totalPpd else 1.0
+    }
+
+    /**
+     * Calcula la BASE DE PRORRATEO DE GASTOS GENERALES según el Prompt 2.
+     * 
+     * Para PRODUCCIÓN: Base = cantidad diaria planificada/esperada × costo directo unitario
+     * Para MERCADERÍAS: Base = existencia actual × costo directo unitario
+     * 
+     * NO se incluyen insumos/materias primas en el prorrateo.
+     * Los productos con cantidad de base igual a cero son excluidos.
+     * 
+     * @param products Lista de todos los productos
+     * @param productosElaborados Datos de producción con PPD planificada
+     * @param mercaderias Lista de mercaderías con costos de adquisición
+     * @param movimientosMercaderia Movimientos para calcular existencia actual
+     * @param gastosGenerales Gastos generales activos para obtener el total diario
+     * @return Resultado completo del prorrateo o null si la base total es cero
+     * @deprecated Usar la versión completa con recetaIngredientes y materiasPrimas
+     */
+    @Deprecated(
+        "Usar la versión completa con recetaIngredientes y materiasPrimas",
+        ReplaceWith(
+            "calcularBaseProrrateoGastosGenerales(products, productosElaborados, mercaderias, movimientosMercaderia, gastosGenerales, recetaIngredientes, materiasPrimas)",
+            "com.example.util.CostCalculationHelper"
+        )
+    )
+    fun calcularBaseProrrateoGastosGenerales(
+        products: List<Product>,
+        productosElaborados: List<ProductoElaborado>,
+        mercaderias: List<Mercaderia>,
+        movimientosMercaderia: List<MovimientoMercaderia>,
+        gastosGenerales: List<GastoGeneral>
+    ): ProrrateoGastosGeneralesResult? {
+        return ProrrateoGastosGeneralesResult(
+            gastoGeneralDiarioTotal = 0.0,
+            baseProduccion = emptyList(),
+            baseMercaderias = emptyList(),
+            baseTotal = 0.0,
+            itemsProrrateo = emptyList(),
+            isValid = false,
+            reason = "Función obsoleta. Usar la versión completa con recetaIngredientes y materiasPrimas.",
+            sumaPorcentajes = 0.0
+        )
+    }
+
+    /**
+     * Calcula la BASE DE PRORRATEO DE GASTOS GENERALES según el Prompt 2.
+     * Versión completa que incluye el cálculo real del costo directo.
+     * 
+     * Para PRODUCCIÓN: Base = cantidad diaria planificada/esperada × costo directo unitario
+     * Para MERCADERÍAS: Base = existencia actual × costo directo unitario
+     * 
+     * NO se incluyen insumos/materias primas en el prorrateo.
+     * Los productos con cantidad de base igual a cero son excluidos.
+     * 
+     * @param products Lista de todos los productos
+     * @param productosElaborados Datos de producción con PPD planificada
+     * @param mercaderias Lista de mercaderías con costos de adquisición
+     * @param movimientosMercaderia Movimientos para calcular existencia actual
+     * @param gastosGenerales Gastos generales activos para obtener el total diario
+     * @param recetaIngredientes Recetas para calcular costos directos de producción
+     * @param materiasPrimas Materias primas para calcular costos directos
+     * @return Resultado completo del prorrateo
+     */
+    fun calcularBaseProrrateoGastosGenerales(
+        products: List<Product>,
+        productosElaborados: List<ProductoElaborado>,
+        mercaderias: List<Mercaderia>,
+        movimientosMercaderia: List<MovimientoMercaderia>,
+        gastosGenerales: List<GastoGeneral>
+    ): ProrrateoGastosGeneralesResult? {
+        val prodElabMap = productosElaborados.associateBy { it.productId }
+        
+        // 1. GASTO GENERAL DIARIO TOTAL (solo scope PRODUCCION, activos, sin inversiones)
+        val gastoGeneralDiarioTotal = calculateTotalDailyOverheads(gastosGenerales)
+        
+        // 2. BASE DE PRODUCCIÓN
+        val baseProduccionItems = mutableListOf<ProrrateoBaseItem>()
+        for (product in products) {
+            if (product.destination == "COCINA" && product.isAvailable) {
+                val prodElaborado = prodElabMap[product.id]
+                val cantidadDiariaPlanificada = prodElaborado?.effectivePpd ?: 0.0
+                
+                if (cantidadDiariaPlanificada > 0.0) {
+                    // Calcular costo directo unitario desde la ficha de costo existente
+                    val costoDirectoUnitario = calcularCostoDirectoUnitarioProduccion(
+                        product.id,
+                        productosElaborados,
+                        prodElabMap
+                    )
+                    
+                    if (costoDirectoUnitario > 0.0) {
+                        val valorBase = cantidadDiariaPlanificada * costoDirectoUnitario
+                        baseProduccionItems.add(
+                            ProrrateoBaseItem(
+                                id = product.id,
+                                name = product.name,
+                                type = "PRODUCCION",
+                                productId = product.id,
+                                quantity = cantidadDiariaPlanificada,
+                                costoDirectoUnitario = costoDirectoUnitario,
+                                valorBase = valorBase,
+                                porcentajeParticipacion = 0.0, // Se calcula después
+                                gastoGeneralAsignado = 0.0,    // Se calcula después
+                                gastoGeneralUnitario = 0.0     // Se calcula después
+                            )
+                        )
+                    }
+                }
+            }
+        }
+        
+        // 3. BASE DE MERCADERÍAS
+        val baseMercaderiasItems = mutableListOf<ProrrateoBaseItem>()
+        for (mercaderia in mercaderias) {
+            if (mercaderia.isActive) {
+                val existenciaActual = getMercaderiaCurrentStock(
+                    mercaderia.id,
+                    mercaderia.initialStock,
+                    movimientosMercaderia
+                )
+                
+                if (existenciaActual > 0.0) {
+                    val costoDirectoUnitario = mercaderia.acquisitionCost + mercaderia.directExpenses
+                    val valorBase = existenciaActual * costoDirectoUnitario
+                    
+                    if (valorBase > 0.0) {
+                        baseMercaderiasItems.add(
+                            ProrrateoBaseItem(
+                                id = mercaderia.id,
+                                name = mercaderia.productId.toString(), // Se actualizará con el nombre del producto
+                                type = "MERCADERIAS",
+                                productId = mercaderia.productId,
+                                quantity = existenciaActual,
+                                costoDirectoUnitario = costoDirectoUnitario,
+                                valorBase = valorBase,
+                                porcentajeParticipacion = 0.0, // Se calcula después
+                                gastoGeneralAsignado = 0.0,    // Se calcula después
+                                gastoGeneralUnitario = 0.0     // Se calcula después
+                            )
+                        )
+                    }
+                }
+            }
+        }
+        
+        // Actualizar nombres de mercaderías con los nombres de productos
+        val productMap = products.associateBy { it.id }
+        val baseMercaderiasConNombres = baseMercaderiasItems.map { item ->
+            val productName = productMap[item.productId]?.name ?: "Mercadería #${item.productId}"
+            item.copy(name = productName)
+        }.toMutableList()
+        
+        // 4. BASE TOTAL
+        val baseTotal = baseProduccionItems.sumOf { it.valorBase } + baseMercaderiasConNombres.sumOf { it.valorBase }
+        
+        // Si la BASE TOTAL es cero, no realizar prorrateo
+        if (baseTotal <= 0.0) {
+            return ProrrateoGastosGeneralesResult(
+                gastoGeneralDiarioTotal = gastoGeneralDiarioTotal,
+                baseProduccion = emptyList(),
+                baseMercaderias = emptyList(),
+                baseTotal = 0.0,
+                itemsProrrateo = emptyList(),
+                isValid = false,
+                reason = "BASE TOTAL es cero. No hay productos con valor directo para prorratear."
+            )
+        }
+        
+        // 5. PORCENTAJE DE CADA PRODUCTO Y PRORRATEO
+        val allItems = mutableListOf<ProrrateoBaseItem>()
+        
+        for (item in baseProduccionItems) {
+            val porcentajeParticipacion = (item.valorBase / baseTotal) * 100.0
+            val gastoGeneralAsignado = gastoGeneralDiarioTotal * (porcentajeParticipacion / 100.0)
+            val gastoGeneralUnitario = if (item.quantity > 0.0) gastoGeneralAsignado / item.quantity else 0.0
+            
+            allItems.add(
+                item.copy(
+                    porcentajeParticipacion = porcentajeParticipacion,
+                    gastoGeneralAsignado = gastoGeneralAsignado,
+                    gastoGeneralUnitario = gastoGeneralUnitario
+                )
+            )
+        }
+        
+        for (item in baseMercaderiasConNombres) {
+            val porcentajeParticipacion = (item.valorBase / baseTotal) * 100.0
+            val gastoGeneralAsignado = gastoGeneralDiarioTotal * (porcentajeParticipacion / 100.0)
+            val gastoGeneralUnitario = if (item.quantity > 0.0) gastoGeneralAsignado / item.quantity else 0.0
+            
+            allItems.add(
+                item.copy(
+                    porcentajeParticipacion = porcentajeParticipacion,
+                    gastoGeneralAsignado = gastoGeneralAsignado,
+                    gastoGeneralUnitario = gastoGeneralUnitario
+                )
+            )
+        }
+        
+        // Verificar que la suma de porcentajes sea 100%
+        val sumaPorcentajes = allItems.sumOf { it.porcentajeParticipacion }
+        
+        return ProrrateoGastosGeneralesResult(
+            gastoGeneralDiarioTotal = gastoGeneralDiarioTotal,
+            baseProduccion = baseProduccionItems.map { item ->
+                val porcentajeParticipacion = (item.valorBase / baseTotal) * 100.0
+                val gastoGeneralAsignado = gastoGeneralDiarioTotal * (porcentajeParticipacion / 100.0)
+                val gastoGeneralUnitario = if (item.quantity > 0.0) gastoGeneralAsignado / item.quantity else 0.0
+                item.copy(
+                    porcentajeParticipacion = porcentajeParticipacion,
+                    gastoGeneralAsignado = gastoGeneralAsignado,
+                    gastoGeneralUnitario = gastoGeneralUnitario
+                )
+            },
+            baseMercaderias = baseMercaderiasConNombres.map { item ->
+                val porcentajeParticipacion = (item.valorBase / baseTotal) * 100.0
+                val gastoGeneralAsignado = gastoGeneralDiarioTotal * (porcentajeParticipacion / 100.0)
+                val gastoGeneralUnitario = if (item.quantity > 0.0) gastoGeneralAsignado / item.quantity else 0.0
+                item.copy(
+                    porcentajeParticipacion = porcentajeParticipacion,
+                    gastoGeneralAsignado = gastoGeneralAsignado,
+                    gastoGeneralUnitario = gastoGeneralUnitario
+                )
+            },
+            baseTotal = baseTotal,
+            itemsProrrateo = allItems,
+            isValid = true,
+            reason = null,
+            sumaPorcentajes = sumaPorcentajes
+        )
+    }
+    
+    /**
+     * Calcula el costo directo unitario de un producto de producción basado en su receta.
+     * Utiliza la estructura existente de cálculo de costos (calculateCostSheet).
+     */
+    private fun calcularCostoDirectoUnitarioProduccion(
+        productId: Long,
+        productosElaborados: List<ProductoElaborado>,
+        prodElabMap: Map<Long, ProductoElaborado>,
+        recetaIngredientes: List<RecetaIngrediente>,
+        materiasPrimas: List<MateriaPrima>
+    ): Double {
+        val prodElaborado = prodElabMap[productId] ?: return 0.0
+        
+        // Calcular detalles de ingredientes para este producto
+        val ingredientDetails = calculateIngredientDetails(productId, recetaIngredientes, materiasPrimas)
+        
+        if (ingredientDetails.isEmpty()) {
+            return 0.0 // Sin receta definida
+        }
+        
+        // Calcular costo directo total de la receta
+        val totalDirectRecipeCost = ingredientDetails.sumOf { it.totalCost }
+        
+        // Obtener rendimiento base
+        val baseYield = prodElaborado.baseYield.takeIf { it > 0.0 } ?: 1.0
+        
+        // Calcular costo directo unitario
+        return totalDirectRecipeCost / baseYield
+    }
+
+    /**
+     * Versión completa de calcularBaseProrrateoGastosGenerales que incluye el cálculo real del costo directo.
+     */
+    fun calcularBaseProrrateoGastosGenerales(
+        products: List<Product>,
+        productosElaborados: List<ProductoElaborado>,
+        mercaderias: List<Mercaderia>,
+        movimientosMercaderia: List<MovimientoMercaderia>,
+        gastosGenerales: List<GastoGeneral>,
+        recetaIngredientes: List<RecetaIngrediente>,
+        materiasPrimas: List<MateriaPrima>
+    ): ProrrateoGastosGeneralesResult {
+        val prodElabMap = productosElaborados.associateBy { it.productId }
+        
+        // 1. GASTO GENERAL DIARIO TOTAL (solo scope PRODUCCION, activos, sin inversiones)
+        val gastoGeneralDiarioTotal = calculateTotalDailyOverheads(gastosGenerales)
+        
+        // 2. BASE DE PRODUCCIÓN
+        val baseProduccionItems = mutableListOf<ProrrateoBaseItem>()
+        for (product in products) {
+            if (product.destination == "COCINA" && product.isAvailable) {
+                val prodElaborado = prodElabMap[product.id]
+                val cantidadDiariaPlanificada = prodElaborado?.effectivePpd ?: 0.0
+                
+                if (cantidadDiariaPlanificada > 0.0) {
+                    // Calcular costo directo unitario desde la ficha de costo existente
+                    val costoDirectoUnitario = calcularCostoDirectoUnitarioProduccion(
+                        product.id,
+                        productosElaborados,
+                        prodElabMap,
+                        recetaIngredientes,
+                        materiasPrimas
+                    )
+                    
+                    if (costoDirectoUnitario > 0.0) {
+                        val valorBase = cantidadDiariaPlanificada * costoDirectoUnitario
+                        baseProduccionItems.add(
+                            ProrrateoBaseItem(
+                                id = product.id,
+                                name = product.name,
+                                type = "PRODUCCION",
+                                productId = product.id,
+                                quantity = cantidadDiariaPlanificada,
+                                costoDirectoUnitario = costoDirectoUnitario,
+                                valorBase = valorBase,
+                                porcentajeParticipacion = 0.0, // Se calcula después
+                                gastoGeneralAsignado = 0.0,    // Se calcula después
+                                gastoGeneralUnitario = 0.0     // Se calcula después
+                            )
+                        )
+                    }
+                }
+            }
+        }
+        
+        // 3. BASE DE MERCADERÍAS
+        val baseMercaderiasItems = mutableListOf<ProrrateoBaseItem>()
+        for (mercaderia in mercaderias) {
+            if (mercaderia.isActive) {
+                val existenciaActual = getMercaderiaCurrentStock(
+                    mercaderia.id,
+                    mercaderia.initialStock,
+                    movimientosMercaderia
+                )
+                
+                if (existenciaActual > 0.0) {
+                    val costoDirectoUnitario = mercaderia.acquisitionCost + mercaderia.directExpenses
+                    val valorBase = existenciaActual * costoDirectoUnitario
+                    
+                    if (valorBase > 0.0) {
+                        baseMercaderiasItems.add(
+                            ProrrateoBaseItem(
+                                id = mercaderia.id,
+                                name = mercaderia.productId.toString(), // Se actualizará con el nombre del producto
+                                type = "MERCADERIAS",
+                                productId = mercaderia.productId,
+                                quantity = existenciaActual,
+                                costoDirectoUnitario = costoDirectoUnitario,
+                                valorBase = valorBase,
+                                porcentajeParticipacion = 0.0, // Se calcula después
+                                gastoGeneralAsignado = 0.0,    // Se calcula después
+                                gastoGeneralUnitario = 0.0     // Se calcula después
+                            )
+                        )
+                    }
+                }
+            }
+        }
+        
+        // Actualizar nombres de mercaderías con los nombres de productos
+        val productMap = products.associateBy { it.id }
+        val baseMercaderiasConNombres = baseMercaderiasItems.map { item ->
+            val productName = productMap[item.productId]?.name ?: "Mercadería #${item.productId}"
+            item.copy(name = productName)
+        }.toMutableList()
+        
+        // 4. BASE TOTAL
+        val baseTotal = baseProduccionItems.sumOf { it.valorBase } + baseMercaderiasConNombres.sumOf { it.valorBase }
+        
+        // Si la BASE TOTAL es cero, retornar resultado inválido
+        if (baseTotal <= 0.0) {
+            return ProrrateoGastosGeneralesResult(
+                gastoGeneralDiarioTotal = gastoGeneralDiarioTotal,
+                baseProduccion = emptyList(),
+                baseMercaderias = emptyList(),
+                baseTotal = 0.0,
+                itemsProrrateo = emptyList(),
+                isValid = false,
+                reason = "BASE TOTAL es cero. No hay productos con valor directo para prorratear.",
+                sumaPorcentajes = 0.0
+            )
+        }
+        
+        // 5. PORCENTAJE DE CADA PRODUCTO Y PRORRATEO
+        val allItems = mutableListOf<ProrrateoBaseItem>()
+        
+        for (item in baseProduccionItems) {
+            val porcentajeParticipacion = (item.valorBase / baseTotal) * 100.0
+            val gastoGeneralAsignado = gastoGeneralDiarioTotal * (porcentajeParticipacion / 100.0)
+            val gastoGeneralUnitario = if (item.quantity > 0.0) gastoGeneralAsignado / item.quantity else 0.0
+            
+            allItems.add(
+                item.copy(
+                    porcentajeParticipacion = porcentajeParticipacion,
+                    gastoGeneralAsignado = gastoGeneralAsignado,
+                    gastoGeneralUnitario = gastoGeneralUnitario
+                )
+            )
+        }
+        
+        for (item in baseMercaderiasConNombres) {
+            val porcentajeParticipacion = (item.valorBase / baseTotal) * 100.0
+            val gastoGeneralAsignado = gastoGeneralDiarioTotal * (porcentajeParticipacion / 100.0)
+            val gastoGeneralUnitario = if (item.quantity > 0.0) gastoGeneralAsignado / item.quantity else 0.0
+            
+            allItems.add(
+                item.copy(
+                    porcentajeParticipacion = porcentajeParticipacion,
+                    gastoGeneralAsignado = gastoGeneralAsignado,
+                    gastoGeneralUnitario = gastoGeneralUnitario
+                )
+            )
+        }
+        
+        // Verificar que la suma de porcentajes sea 100%
+        val sumaPorcentajes = allItems.sumOf { it.porcentajeParticipacion }
+        
+        return ProrrateoGastosGeneralesResult(
+            gastoGeneralDiarioTotal = gastoGeneralDiarioTotal,
+            baseProduccion = baseProduccionItems.map { item ->
+                val porcentajeParticipacion = (item.valorBase / baseTotal) * 100.0
+                val gastoGeneralAsignado = gastoGeneralDiarioTotal * (porcentajeParticipacion / 100.0)
+                val gastoGeneralUnitario = if (item.quantity > 0.0) gastoGeneralAsignado / item.quantity else 0.0
+                item.copy(
+                    porcentajeParticipacion = porcentajeParticipacion,
+                    gastoGeneralAsignado = gastoGeneralAsignado,
+                    gastoGeneralUnitario = gastoGeneralUnitario
+                )
+            },
+            baseMercaderias = baseMercaderiasConNombres.map { item ->
+                val porcentajeParticipacion = (item.valorBase / baseTotal) * 100.0
+                val gastoGeneralAsignado = gastoGeneralDiarioTotal * (porcentajeParticipacion / 100.0)
+                val gastoGeneralUnitario = if (item.quantity > 0.0) gastoGeneralAsignado / item.quantity else 0.0
+                item.copy(
+                    porcentajeParticipacion = porcentajeParticipacion,
+                    gastoGeneralAsignado = gastoGeneralAsignado,
+                    gastoGeneralUnitario = gastoGeneralUnitario
+                )
+            },
+            baseTotal = baseTotal,
+            itemsProrrateo = allItems,
+            isValid = true,
+            reason = null,
+            sumaPorcentajes = sumaPorcentajes
+        )
     }
 
     /**
