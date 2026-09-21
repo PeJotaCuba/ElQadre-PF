@@ -61,7 +61,12 @@ data class ProduccionItemState(
     val qtyPerTanda: Double,
     var defectuosoStr: String = "0",
     var consumoStr: String = "0",
-    var regaliaStr: String = "0"
+    var regaliaStr: String = "0",
+    val costoUnitarioTeorico: Double = 0.0,
+    val pagoCocinaUnitario: Double = 0.0,
+    val pagoDependienteUnitario: Double = 0.0,
+    val pagoCajeroUnitario: Double = 0.0,
+    val presentaciones: List<com.example.data.local.model.PresentacionEspecial> = emptyList()
 ) {
     val defectuoso: Double get() = defectuosoStr.toDoubleOrNull() ?: 0.0
     val consumo: Double get() = consumoStr.toDoubleOrNull() ?: 0.0
@@ -69,7 +74,11 @@ data class ProduccionItemState(
     val mermaTotal: Double get() = defectuoso + consumo + regalia
     val vendible: Double get() = (totalProduced - mermaTotal).coerceAtLeast(0.0)
     val ingresoEstimado: Double get() = vendible * price
+    val costoEstimado: Double get() = vendible * costoUnitarioTeorico
     val mermaValor: Double get() = mermaTotal * price
+    val pagoCocinaEstimado: Double get() = vendible * pagoCocinaUnitario
+    val pagoDependienteEstimado: Double get() = vendible * pagoDependienteUnitario
+    val pagoCajeroEstimado: Double get() = vendible * pagoCajeroUnitario
 }
 
 data class MercaderiaItemState(
@@ -78,12 +87,16 @@ data class MercaderiaItemState(
     val productName: String,
     val unit: String,
     val price: Double,
+    val isConfitura: Boolean = false,
     var existenciaInicialStr: String = "0",
     var entradasStr: String = "0",
     var existenciaFinalStr: String = "0",
     var defectuosoStr: String = "0",
     var consumoStr: String = "0",
-    var regaliaStr: String = "0"
+    var regaliaStr: String = "0",
+    val costoUnitarioTeorico: Double = 0.0,
+    val pagoDependienteUnitario: Double = 0.0,
+    val pagoCajeroUnitario: Double = 0.0
 ) {
     val existenciaInicial: Double get() = existenciaInicialStr.toDoubleOrNull() ?: 0.0
     val entradas: Double get() = entradasStr.toDoubleOrNull() ?: 0.0
@@ -92,10 +105,13 @@ data class MercaderiaItemState(
     val consumo: Double get() = consumoStr.toDoubleOrNull() ?: 0.0
     val regalia: Double get() = regaliaStr.toDoubleOrNull() ?: 0.0
     val mermaTotal: Double get() = defectuoso + consumo + regalia
-    // Ventas = Existencia inicial + Entradas - Existencia final - Mermas
-    val ventas: Double get() = ((existenciaInicial + entradas - existenciaFinal) - mermaTotal).coerceAtLeast(0.0)
+    val existenciaDisponible: Double get() = existenciaInicial + entradas
+    val ventas: Double get() = (existenciaDisponible - existenciaFinal - mermaTotal).coerceAtLeast(0.0)
     val ingresoEstimado: Double get() = ventas * price
+    val costoEstimado: Double get() = ventas * costoUnitarioTeorico
     val mermaValor: Double get() = mermaTotal * price
+    val pagoDependienteEstimado: Double get() = ventas * pagoDependienteUnitario
+    val pagoCajeroEstimado: Double get() = ventas * pagoCajeroUnitario
 }
 
 data class AgregadoCuadreItemState(
@@ -148,16 +164,44 @@ fun CuadreCajaScreen(
     }
 
     // Build Produccion item states from registered tandas
-    val produccionStates = remember(jornadaTandas, uiState.products) {
+    val produccionStates = remember(
+        jornadaTandas, uiState.products, uiState.productosElaborados, uiState.recetaIngredientes,
+        uiState.materiasPrimas, uiState.gastosGenerales, uiState.inversiones
+    ) {
         val grouped = jornadaTandas.groupBy { it.productId }
         grouped.map { (prodId, tandas) ->
             val product = uiState.products.find { it.id == prodId }
+            val prodElab = uiState.productosElaborados.find { it.productId == prodId }
             val prodName = product?.name ?: tandas.firstOrNull()?.productName ?: "Producto #$prodId"
-            val price = product?.price ?: tandas.firstOrNull()?.salePrice ?: 0.0
-            val unit = product?.unitOfMeasure ?: tandas.firstOrNull()?.productionUnit ?: "U"
+
+            val price = if (prodElab?.hasPrecioDefinitivo == true && prodElab.precioDefinitivo > 0.0) {
+                prodElab.precioDefinitivo
+            } else {
+                product?.price ?: tandas.firstOrNull()?.salePrice ?: 0.0
+            }
+
+            val unit = prodElab?.productionUnit?.ifBlank { product?.unitOfMeasure } ?: tandas.firstOrNull()?.productionUnit ?: "U"
             val totalQty = tandas.sumOf { if (it.actualYield > 0) it.actualYield else it.estimatedYield }
             val count = tandas.size
             val perTanda = if (count > 0) totalQty / count else 0.0
+
+            val costSheet = if (product != null) {
+                com.example.util.CostCalculationHelper.calculateCostSheet(
+                    product = product,
+                    products = uiState.products,
+                    productosElaborados = uiState.productosElaborados,
+                    recetaIngredientes = uiState.recetaIngredientes,
+                    materiasPrimas = uiState.materiasPrimas,
+                    gastosGenerales = uiState.gastosGenerales,
+                    inversiones = uiState.inversiones
+                )
+            } else null
+
+            val costoUnitario = costSheet?.costoRealUnitario ?: product?.cost ?: 0.0
+            val pagoCocinaUnit = costSheet?.totalPagoCocinaUnitario ?: prodElab?.totalPagoCocinaUnitario ?: 0.0
+            val pagoDepUnit = costSheet?.totalPagoDependienteUnitario ?: prodElab?.totalPagoDependienteUnitario ?: 0.0
+            val pagoCajUnit = costSheet?.totalPagoCajeroUnitario ?: prodElab?.totalPagoCajeroUnitario ?: 0.0
+            val presList = product?.let { com.example.data.local.model.parsePresentacionesEspeciales(it.presentacionesEspeciales) } ?: emptyList()
 
             ProduccionItemState(
                 productId = prodId,
@@ -166,18 +210,49 @@ fun CuadreCajaScreen(
                 price = price,
                 tandasCount = count,
                 totalProduced = totalQty,
-                qtyPerTanda = perTanda
+                qtyPerTanda = perTanda,
+                costoUnitarioTeorico = costoUnitario,
+                pagoCocinaUnitario = pagoCocinaUnit,
+                pagoDependienteUnitario = pagoDepUnit,
+                pagoCajeroUnitario = pagoCajUnit,
+                presentaciones = presList
             )
         }.toMutableStateList()
     }
 
     // Build Mercaderias item states from active mercaderias
-    val mercaderiasStates = remember(uiState.mercaderias, uiState.products) {
+    val mercaderiasStates = remember(
+        uiState.mercaderias, uiState.products, uiState.movimientosMercaderia,
+        uiState.tarifasPagoBebidas, uiState.gastosGenerales, uiState.inversiones, activeJornada
+    ) {
         uiState.mercaderias.filter { it.isActive }.map { merc ->
             val product = uiState.products.find { it.id == merc.productId }
             val prodName = product?.name ?: "Mercadería #${merc.id}"
             val price = product?.price ?: 0.0
             val unit = merc.unitOfMeasure.ifBlank { product?.unitOfMeasure ?: "U" }
+
+            val entradasJornada = if (activeJornada != null) {
+                uiState.movimientosMercaderia.filter {
+                    it.mercaderiaId == merc.id &&
+                    (it.type.uppercase() == "ENTRADA" || it.type.uppercase() == "PARA VENTA" || it.type.uppercase() == "ENTRADA_STOCK") &&
+                    (it.jornadaId == activeJornada.id || (activeJornada.openedAt > 0 && it.date >= activeJornada.openedAt))
+                }.sumOf { it.quantity }
+            } else 0.0
+
+            val isConfitura = (product?.category?.uppercase() == "CONFITURAS")
+
+            val mercCostSheet = if (product != null) {
+                com.example.util.CostCalculationHelper.calculateMercaderiaCostSheet(
+                    mercaderia = merc,
+                    mercaderias = uiState.mercaderias,
+                    products = uiState.products,
+                    movimientos = uiState.movimientosMercaderia,
+                    gastosGenerales = uiState.gastosGenerales,
+                    inversiones = uiState.inversiones
+                )
+            } else null
+
+            val costoUnitario = mercCostSheet?.costoRealUnitario ?: merc.acquisitionCost
 
             MercaderiaItemState(
                 mercaderiaId = merc.id,
@@ -185,8 +260,13 @@ fun CuadreCajaScreen(
                 productName = prodName,
                 unit = unit,
                 price = price,
-                existenciaInicialStr = "0",
-                existenciaFinalStr = "0"
+                isConfitura = isConfitura,
+                existenciaInicialStr = if (merc.initialStock > 0.0) "%.1f".format(merc.initialStock).replace(',', '.') else "0",
+                entradasStr = if (entradasJornada > 0.0) "%.1f".format(entradasJornada).replace(',', '.') else "0",
+                existenciaFinalStr = "0",
+                costoUnitarioTeorico = costoUnitario,
+                pagoDependienteUnitario = if (isConfitura) 0.0 else uiState.tarifasPagoBebidas.pagoDependientePorUnidad,
+                pagoCajeroUnitario = if (isConfitura) 0.0 else uiState.tarifasPagoBebidas.pagoCajeroPorUnidad
             )
         }.toMutableStateList()
     }
@@ -247,6 +327,14 @@ fun CuadreCajaScreen(
     val ingresosAgregados = agregadosStates.sumOf { it.ingresoEstimado }
     val ingresosProduccion = produccionStates.sumOf { it.ingresoEstimado } + ingresosAgregados
     val ingresosMercaderias = mercaderiasStates.sumOf { it.ingresoEstimado }
+    val totalIngresosGenerales = ingresosProduccion + ingresosMercaderias
+
+    val costoProduccionVal = produccionStates.sumOf { it.costoEstimado }
+    val costoAgregadosVal = agregadosStates.sumOf { it.costoVendido }
+    val costoMercaderiasVal = mercaderiasStates.sumOf { it.costoEstimado }
+    val costoTotalTotal = costoProduccionVal + costoAgregadosVal + costoMercaderiasVal
+    val utilidadTeorica = totalIngresosGenerales - costoTotalTotal
+
     val totalMermasValor = produccionStates.sumOf { it.mermaValor } + mercaderiasStates.sumOf { it.mermaValor }
     val totalMermasUnidades = produccionStates.sumOf { it.mermaTotal } + mercaderiasStates.sumOf { it.mermaTotal }
 
@@ -400,6 +488,11 @@ fun CuadreCajaScreen(
                         initialCash = initialCash,
                         ingresosProduccion = ingresosProduccion,
                         ingresosMercaderias = ingresosMercaderias,
+                        costoProduccionVal = costoProduccionVal,
+                        costoAgregadosVal = costoAgregadosVal,
+                        costoMercaderiasVal = costoMercaderiasVal,
+                        costoTotalTotal = costoTotalTotal,
+                        utilidadTeorica = utilidadTeorica,
                         totalMermasValor = totalMermasValor,
                         totalMermasUnidades = totalMermasUnidades,
                         transferenciasMonto = transferenciasTotalMonto,
@@ -529,7 +622,8 @@ fun CuadreCajaScreen(
                 CuadreTab.PAGOS -> {
                     CuadrePagosTab(
                         produccionStates = produccionStates,
-                        mercaderiasStates = mercaderiasStates
+                        mercaderiasStates = mercaderiasStates,
+                        tarifasBebidas = uiState.tarifasPagoBebidas
                     )
                 }
             }
@@ -538,16 +632,20 @@ fun CuadreCajaScreen(
 }
 
 // -------------------------------------------------------------
-// -------------------------------------------------------------
-// TAB 1: INICIO (Resumen de la Jornada, Cuadrar y PDF)
+// TAB GENERALES (Resumen General, Caja, Utilidad y Cuadre)
 // -------------------------------------------------------------
 @Composable
-fun CuadreInicioTab(
+fun CuadreGeneralesTab(
     uiState: MainUiState,
     activeJornada: Jornada?,
     initialCash: Double,
     ingresosProduccion: Double,
     ingresosMercaderias: Double,
+    costoProduccionVal: Double = 0.0,
+    costoAgregadosVal: Double = 0.0,
+    costoMercaderiasVal: Double = 0.0,
+    costoTotalTotal: Double = 0.0,
+    utilidadTeorica: Double = 0.0,
     totalMermasValor: Double,
     totalMermasUnidades: Double,
     transferenciasMonto: Double,
@@ -567,6 +665,8 @@ fun CuadreInicioTab(
     onDescargarPdf: () -> Unit
 ) {
     val scrollState = rememberScrollState()
+
+    val totalIngresosGenerales = ingresosProduccion + ingresosMercaderias
 
     val difColor = when {
         diferencia > 0.01 -> Color(0xFF047857)
@@ -867,6 +967,110 @@ fun CuadreInicioTab(
                     label = "Ingresos esperados de Mercaderías",
                     value = "+$${"%.2f".format(ingresosMercaderias)} CUP",
                     color = Color(0xFF15803D),
+                    isBold = true
+                )
+
+                HorizontalDivider(color = Slate100)
+
+                CuadreMetricRow(
+                    label = "TOTAL INGRESOS ESPERADOS",
+                    value = "$${"%.2f".format(totalIngresosGenerales)} CUP",
+                    color = Color(0xFF15803D),
+                    isBold = true
+                )
+            }
+        }
+
+        // BLOQUE COSTOS TEÓRICOS Y UTILIDAD
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = Color.White,
+            border = BorderStroke(1.dp, Slate200),
+            shadowElevation = 1.dp,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFFD97706).copy(alpha = 0.12f),
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Outlined.PieChart,
+                                contentDescription = null,
+                                tint = Color(0xFFD97706),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                    Text(
+                        text = "COSTOS Y UTILIDAD TEÓRICA",
+                        fontWeight = FontWeight.Black,
+                        fontSize = 13.sp,
+                        color = ElQadreNavy
+                    )
+                }
+
+                HorizontalDivider(color = Slate100)
+
+                CuadreMetricRow(
+                    label = "Costo estimado Producción",
+                    value = "$${"%.2f".format(costoProduccionVal)} CUP",
+                    color = Slate700
+                )
+
+                if (costoAgregadosVal > 0.0) {
+                    CuadreMetricRow(
+                        label = "Costo estimado Agregados",
+                        value = "$${"%.2f".format(costoAgregadosVal)} CUP",
+                        color = Slate700
+                    )
+                }
+
+                CuadreMetricRow(
+                    label = "Costo estimado Mercaderías",
+                    value = "$${"%.2f".format(costoMercaderiasVal)} CUP",
+                    color = Slate700
+                )
+
+                HorizontalDivider(color = Slate100)
+
+                CuadreMetricRow(
+                    label = "TOTAL COSTOS ESTIMADOS",
+                    value = "$${"%.2f".format(costoTotalTotal)} CUP",
+                    color = Color(0xFFB91C1C),
+                    isBold = true
+                )
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFFF1F5F9),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Nota: Los costos teóricos incluyen los pagos de personal configurados en las Fichas de Costo. No se vuelven a sumar como costo adicional.",
+                        fontSize = 11.sp,
+                        color = Slate600,
+                        modifier = Modifier.padding(8.dp)
+                    )
+                }
+
+                HorizontalDivider(color = Slate100)
+
+                CuadreMetricRow(
+                    label = "UTILIDAD TEÓRICA (Ingresos − Costos)",
+                    value = "$${"%.2f".format(utilidadTeorica)} CUP",
+                    color = if (utilidadTeorica >= 0) Color(0xFF15803D) else Color(0xFFDC2626),
                     isBold = true
                 )
             }
@@ -1467,6 +1671,47 @@ fun ProduccionCuadreCard(
                 }
             }
 
+            if (item.presentaciones.isNotEmpty()) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFFF8FAFC),
+                    border = BorderStroke(1.dp, Slate200),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "Presentaciones Configuraradas (Equivalencias):",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Slate600
+                        )
+                        item.presentaciones.forEach { pres ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = " • ${pres.name} (Equivalencia: ${pres.baseEquivalence} ${item.unit})",
+                                    fontSize = 11.sp,
+                                    color = Slate700
+                                )
+                                Text(
+                                    text = " $${"%.2f".format(item.price * pres.baseEquivalence)} CUP",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = ElQadreNavy
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // MERMAS SECTION
             Column(
                 modifier = Modifier
@@ -1633,6 +1878,7 @@ fun MercaderiaCuadreCard(
     item: MercaderiaItemState
 ) {
     var inicialText by remember { mutableStateOf(item.existenciaInicialStr) }
+    var entradasText by remember { mutableStateOf(item.entradasStr) }
     var finalText by remember { mutableStateOf(item.existenciaFinalStr) }
     var defectuosoText by remember { mutableStateOf(item.defectuosoStr) }
     var consumoText by remember { mutableStateOf(item.consumoStr) }
@@ -1676,10 +1922,10 @@ fun MercaderiaCuadreCard(
 
             HorizontalDivider(color = Slate200)
 
-            // EXISTENCIAS LOCAL DE VENTAS
+            // EXISTENCIAS LOCAL DE VENTAS: Inicio, Entradas, Final
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 OutlinedTextField(
                     value = inicialText,
@@ -1688,7 +1934,20 @@ fun MercaderiaCuadreCard(
                         inicialText = clean
                         item.existenciaInicialStr = clean
                     },
-                    label = { Text("Existencia inicial", fontSize = 11.sp) },
+                    label = { Text("Inicio", fontSize = 10.sp) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    singleLine = true,
+                    modifier = Modifier.weight(1f)
+                )
+
+                OutlinedTextField(
+                    value = entradasText,
+                    onValueChange = {
+                        val clean = it.filter { c -> c.isDigit() || c == '.' }
+                        entradasText = clean
+                        item.entradasStr = clean
+                    },
+                    label = { Text("Entradas", fontSize = 10.sp) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
                     modifier = Modifier.weight(1f)
@@ -1701,11 +1960,38 @@ fun MercaderiaCuadreCard(
                         finalText = clean
                         item.existenciaFinalStr = clean
                     },
-                    label = { Text("Existencia final", fontSize = 11.sp) },
+                    label = { Text("Final", fontSize = 10.sp) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
                     modifier = Modifier.weight(1f)
                 )
+            }
+
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = Color(0xFFEFF6FF),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Disponible (Inicio + Entradas):",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF1E40AF)
+                    )
+                    Text(
+                        text = "${"%.1f".format(item.existenciaDisponible)} ${item.unit}",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color(0xFF1E40AF)
+                    )
+                }
             }
 
             // MERMAS SECTION
@@ -1792,5 +2078,359 @@ fun MercaderiaCuadreCard(
                 )
             }
         }
+    }
+}
+
+// -------------------------------------------------------------
+// TAB 5: PAGOS (Cálculos de pagos a personal)
+// -------------------------------------------------------------
+@Composable
+fun CuadrePagosTab(
+    produccionStates: List<ProduccionItemState>,
+    mercaderiasStates: List<MercaderiaItemState>,
+    tarifasBebidas: com.example.util.TarifasPagoBebidas = com.example.util.TarifasPagoBebidas()
+) {
+    val scrollState = rememberScrollState()
+
+    // 1. CÁLCULO DE PAGOS COCINA (Producción)
+    val totalPagoCocina = produccionStates.sumOf { item ->
+        item.vendible * item.pagoCocinaUnitario
+    }
+
+    // 2. CÁLCULO DE PAGOS DEPENDIENTE Y CAJERO
+    val pagoDependienteProduccion = produccionStates.sumOf { item ->
+        item.vendible * item.pagoDependienteUnitario
+    }
+    val pagoCajeroProduccion = produccionStates.sumOf { item ->
+        item.vendible * item.pagoCajeroUnitario
+    }
+
+    val pagoDependienteMercaderia = mercaderiasStates.sumOf { item ->
+        if (item.isConfitura) {
+            0.0
+        } else {
+            val depTarifa = if (item.pagoDependienteUnitario > 0.0) item.pagoDependienteUnitario else tarifasBebidas.pagoDependientePorUnidad
+            item.ventas * depTarifa
+        }
+    }
+
+    val pagoCajeroMercaderia = mercaderiasStates.sumOf { item ->
+        if (item.isConfitura) {
+            0.0
+        } else {
+            val cajTarifa = if (item.pagoCajeroUnitario > 0.0) item.pagoCajeroUnitario else tarifasBebidas.pagoCajeroPorUnidad
+            item.ventas * cajTarifa
+        }
+    }
+
+    val totalPagoDependiente = pagoDependienteProduccion + pagoDependienteMercaderia
+    val totalPagoCajero = pagoCajeroProduccion + pagoCajeroMercaderia
+    val totalPagoPersonal = totalPagoCocina + totalPagoDependiente + totalPagoCajero
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(scrollState)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // BANNER DE RESUMEN
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = Color(0xFFEFF6FF),
+            border = BorderStroke(1.5.dp, Color(0xFF3B82F6).copy(alpha = 0.4f)),
+            shadowElevation = 1.dp,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFF3B82F6).copy(alpha = 0.15f),
+                    modifier = Modifier.size(42.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Outlined.Badge,
+                            contentDescription = null,
+                            tint = Color(0xFF1D4ED8),
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+                Column {
+                    Text(
+                        text = "PAGOS DE PERSONAL DE LA JORNADA",
+                        fontWeight = FontWeight.Black,
+                        fontSize = 14.sp,
+                        color = ElQadreNavy
+                    )
+                    Text(
+                        text = "Cálculo automático de estipendios para Cocina, Dependiente y Cajero según unidades producidas y vendidas.",
+                        fontSize = 12.sp,
+                        color = Slate600
+                    )
+                }
+            }
+        }
+
+        // BLOQUE 1: RESUMEN DE COCINEROS (PRODUCCIÓN)
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = Color.White,
+            border = BorderStroke(1.dp, Slate200),
+            shadowElevation = 1.dp,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Restaurant,
+                            contentDescription = null,
+                            tint = ElQadreGoldDark,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Text(
+                            text = "PAGOS DE COCINA (PRODUCCIÓN)",
+                            fontWeight = FontWeight.Black,
+                            fontSize = 13.sp,
+                            color = ElQadreNavy
+                        )
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = ElQadreGoldSoft
+                    ) {
+                        Text(
+                            text = "COCINEROS",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Black,
+                            color = ElQadreGoldDark,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                }
+
+                HorizontalDivider(color = Slate100)
+
+                if (produccionStates.isEmpty()) {
+                    Text(
+                        text = "No hay productos de producción registrados en la jornada.",
+                        fontSize = 12.sp,
+                        color = Slate500,
+                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                    )
+                } else {
+                    produccionStates.forEach { item ->
+                        val itemPagoCocina = item.vendible * item.pagoCocinaUnitario
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = item.productName,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    color = ElQadreNavy
+                                )
+                                Text(
+                                    text = "Producidos (vendibles): ${"%.1f".format(item.vendible)} ${item.unit} × $${"%.2f".format(item.pagoCocinaUnitario)}/u",
+                                    fontSize = 11.sp,
+                                    color = Slate500
+                                )
+                            }
+                            Text(
+                                text = "$${"%.2f".format(itemPagoCocina)} CUP",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ElQadreNavy
+                            )
+                        }
+                    }
+
+                    HorizontalDivider(color = Slate100)
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "TOTAL COCINA",
+                            fontWeight = FontWeight.Black,
+                            fontSize = 12.sp,
+                            color = ElQadreNavy
+                        )
+                        Text(
+                            text = "$${"%.2f".format(totalPagoCocina)} CUP",
+                            fontWeight = FontWeight.Black,
+                            fontSize = 13.sp,
+                            color = Color(0xFF15803D)
+                        )
+                    }
+                }
+            }
+        }
+
+        // BLOQUE 2: RESUMEN DE DEPENDIENTES Y CAJERO
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = Color.White,
+            border = BorderStroke(1.dp, Slate200),
+            shadowElevation = 1.dp,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.People,
+                            contentDescription = null,
+                            tint = ElQadreNavy,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Text(
+                            text = "DEPENDIENTE Y CAJERO",
+                            fontWeight = FontWeight.Black,
+                            fontSize = 13.sp,
+                            color = ElQadreNavy
+                        )
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = Color(0xFFF1F5F9)
+                    ) {
+                        Text(
+                            text = "SERVICIOS",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Slate700,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                }
+
+                HorizontalDivider(color = Slate100)
+
+                // DESGLOSE DEPENDIENTE
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = "DEPENDIENTE:",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Slate700
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(text = " • Producción", fontSize = 11.sp, color = Slate600)
+                        Text(text = "$${"%.2f".format(pagoDependienteProduccion)} CUP", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Slate800)
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(text = " • Bebidas (Mercaderías)", fontSize = 11.sp, color = Slate600)
+                        Text(text = "$${"%.2f".format(pagoDependienteMercaderia)} CUP", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Slate800)
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(text = "TOTAL DEPENDIENTE", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = ElQadreNavy)
+                        Text(text = "$${"%.2f".format(totalPagoDependiente)} CUP", fontSize = 12.sp, fontWeight = FontWeight.Black, color = Color(0xFF15803D))
+                    }
+                }
+
+                HorizontalDivider(color = Slate100)
+
+                // DESGLOSE CAJERO
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = "CAJERO:",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Slate700
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(text = " • Producción", fontSize = 11.sp, color = Slate600)
+                        Text(text = "$${"%.2f".format(pagoCajeroProduccion)} CUP", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Slate800)
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(text = " • Bebidas (Mercaderías)", fontSize = 11.sp, color = Slate600)
+                        Text(text = "$${"%.2f".format(pagoCajeroMercaderia)} CUP", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Slate800)
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(text = "TOTAL CAJERO", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = ElQadreNavy)
+                        Text(text = "$${"%.2f".format(totalPagoCajero)} CUP", fontSize = 12.sp, fontWeight = FontWeight.Black, color = Color(0xFF15803D))
+                    }
+                }
+
+                HorizontalDivider(color = Slate200)
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "TOTAL GENERAL PAGOS A PERSONAL",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Black,
+                        color = ElQadreNavy
+                    )
+                    Text(
+                        text = "$${"%.2f".format(totalPagoPersonal)} CUP",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color(0xFF15803D)
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(56.dp).navigationBarsPadding())
     }
 }
