@@ -359,6 +359,33 @@ fun CuadreCajaScreen(
     val extraccionesVal = extraccionesStr.toDoubleOrNull() ?: 0.0
     val efectivoRealVal = efectivoRealStr.toDoubleOrNull() ?: 0.0
 
+    // Personal Payments Calculation
+    val totalPagoCocina = produccionStates.sumOf { item ->
+        item.vendible * item.pagoCocinaUnitario * (if (item.cantidadCocineros > 0) item.cantidadCocineros else 1)
+    }
+    val pagoDependienteProduccion = produccionStates.sumOf { item ->
+        item.vendible * item.pagoDependienteUnitario
+    }
+    val pagoCajeroProduccion = produccionStates.sumOf { item ->
+        item.vendible * item.pagoCajeroUnitario
+    }
+    val pagoDependienteMercaderia = mercaderiasStates.sumOf { item ->
+        if (item.isConfitura) 0.0 else {
+            val depTarifa = if (item.pagoDependienteUnitario > 0.0) item.pagoDependienteUnitario else uiState.tarifasPagoBebidas.pagoDependientePorUnidad
+            item.ventas * depTarifa
+        }
+    }
+    val pagoCajeroMercaderia = mercaderiasStates.sumOf { item ->
+        if (item.isConfitura) 0.0 else {
+            val cajTarifa = if (item.pagoCajeroUnitario > 0.0) item.pagoCajeroUnitario else uiState.tarifasPagoBebidas.pagoCajeroPorUnidad
+            item.ventas * cajTarifa
+        }
+    }
+    val totalPagoDependiente = pagoDependienteProduccion + pagoDependienteMercaderia
+    val totalPagoCajero = pagoCajeroProduccion + pagoCajeroMercaderia
+    val totalPagoPersonalCalculado = totalPagoCocina + totalPagoDependiente + totalPagoCajero
+    val totalPagosEfectivos = if (pagosConfirmados) totalPagosConfirmados else totalPagoPersonalCalculado
+
     // Efectivo Esperado en Caja:
     // Fondo Inicial + Ingresos Producción + Ingresos Mercaderías - Transferencias Recibidas - Extracciones
     val efectivoEsperado = (initialCash + ingresosProduccion + ingresosMercaderias - transferenciasTotalMonto - extraccionesVal).coerceAtLeast(0.0)
@@ -576,6 +603,32 @@ fun CuadreCajaScreen(
                             Toast.makeText(context, "¡Cuadre de caja registrado con éxito!", Toast.LENGTH_SHORT).show()
                         },
                         onDescargarPdf = {
+                            val cocinaPdfRows = produccionStates.map { p ->
+                                CuadreCajaPdfExporter.CocinaPagoPdfRow(
+                                    productName = p.productName,
+                                    vendible = p.vendible,
+                                    unit = p.unit,
+                                    pagoUnitario = p.pagoCocinaUnitario,
+                                    cantidadCocineros = if (p.cantidadCocineros > 0) p.cantidadCocineros else 1,
+                                    totalPago = p.vendible * p.pagoCocinaUnitario * (if (p.cantidadCocineros > 0) p.cantidadCocineros else 1)
+                                )
+                            }
+                            val cajeroPdfInfo = CuadreCajaPdfExporter.CajeroPagoPdfInfo(
+                                pagoProduccion = pagoCajeroProduccion,
+                                pagoMercaderias = pagoCajeroMercaderia,
+                                totalPago = totalPagoCajero
+                            )
+                            val dependientesPdfList = savedPagos?.dependientes ?: listOf(
+                                DependientePagoDistribucion(
+                                    id = 1,
+                                    name = "Dependiente 1",
+                                    ventasProduccion = produccionStates.sumOf { it.vendible },
+                                    ventasBebidas = mercaderiasStates.filter { !it.isConfitura }.sumOf { it.ventas },
+                                    ventasTotales = produccionStates.sumOf { it.vendible } + mercaderiasStates.filter { !it.isConfitura }.sumOf { it.ventas },
+                                    montoPago = totalPagoDependiente
+                                )
+                            )
+
                             val reportData = CuadreCajaPdfExporter.CuadreCajaReportData(
                                 businessName = uiState.businessConfig?.nombreNegocio ?: "EL QADRE",
                                 duenoName = uiState.currentUser?.username ?: "DUEÑO",
@@ -585,6 +638,8 @@ fun CuadreCajaScreen(
                                 initialCash = initialCash,
                                 ingresosProduccion = ingresosProduccion,
                                 ingresosMercaderias = ingresosMercaderias,
+                                ingresosAgregados = ingresosAgregados,
+                                totalIngresos = totalIngresosGenerales,
                                 mermasTotalValor = totalMermasValor,
                                 transferenciasMonto = transferenciasTotalMonto,
                                 transferenciasCount = transferenciasForJornada.size,
@@ -593,6 +648,20 @@ fun CuadreCajaScreen(
                                 efectivoEsperado = efectivoEsperado,
                                 efectivoReal = efectivoRealVal,
                                 diferencia = diferencia,
+                                costoProduccion = costoProduccionVal,
+                                costoMercaderias = costoMercaderiasVal,
+                                costoAgregados = costoAgregadosVal,
+                                costoTotal = costoTotalTotal,
+                                utilidadTeorica = utilidadTeorica,
+                                pagosConfirmados = pagosConfirmados,
+                                totalPagosPersonal = totalPagosEfectivos,
+                                totalPagoCocina = if (pagosConfirmados && savedPagos != null) savedPagos.totalCocina else totalPagoCocina,
+                                totalPagoCajero = if (pagosConfirmados && savedPagos != null) savedPagos.totalCajero else totalPagoCajero,
+                                totalPagoDependientes = if (pagosConfirmados && savedPagos != null) savedPagos.totalDependiente else totalPagoDependiente,
+                                cocinaPagoRows = cocinaPdfRows,
+                                cajeroPagoInfo = cajeroPdfInfo,
+                                dependientesRows = dependientesPdfList,
+                                dineroFinalEnCaja = dineroFinalEnCaja,
                                 notas = notasCuadre,
                                 produccionRows = produccionStates.map { p ->
                                     CuadreCajaPdfExporter.ProduccionPdfRow(
