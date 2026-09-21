@@ -29,6 +29,7 @@ data class ProductCostSheet(
     val depreciacionAsignada: Double,
     val gastoIndirectoAsignado: Double,
     val gastoIndirectoUnitario: Double,
+    val gastoGeneralUnitarioProrrateo: Double = 0.0, // Gasto general prorrateado por unidad (Prompt 2)
     val pagoCocinaUnitario: Double = 0.0,
     val cantidadCocineros: Int = 1,
     val totalPagoCocinaUnitario: Double = 0.0,
@@ -37,6 +38,7 @@ data class ProductCostSheet(
     val pagoCajeroUnitario: Double = 0.0,
     val totalPagoCajeroUnitario: Double = 0.0,
     val totalPagoPersonalUnitario: Double = 0.0,
+    val costoTotalUnitario: Double, // costoDirectoUnitario + gastoGeneralUnitarioProrrateo
     val costoRealUnitario: Double,
     val precioReferencia: Double,
     val precioDefinitivo: Double,
