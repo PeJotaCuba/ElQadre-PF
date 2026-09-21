@@ -1344,6 +1344,40 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun confirmarPagosPersonal(
+        jornadaId: Long,
+        totalPagos: Double,
+        totalCocina: Double,
+        totalCajero: Double,
+        totalDependiente: Double,
+        efectivoContado: Double,
+        dineroFinalEnCaja: Double,
+        detallesDistribucion: String
+    ) {
+        viewModelScope.launch {
+            val username = _uiState.value.currentUser?.username ?: "dueno"
+            val active = repository.getActiveJornadaSync()
+            if (active != null && active.id == jornadaId) {
+                val updated = active.copy(
+                    liquidezFinal = dineroFinalEnCaja
+                )
+                repository.updateJornada(updated)
+            }
+
+            repository.insertBitacora(
+                com.example.data.local.model.BitacoraEntry(
+                    title = "Pagos de Personal Confirmados",
+                    content = "Pagos de personal confirmados para jornada #$jornadaId por $username. Total Pagos: $${"%.2f".format(totalPagos)} CUP (Cocina: $${"%.2f".format(totalCocina)} CUP, Cajero: $${"%.2f".format(totalCajero)} CUP, Dependientes: $${"%.2f".format(totalDependiente)} CUP). Efectivo contado: $${"%.2f".format(efectivoContado)} CUP. Salida física de efectivo: -$${"%.2f".format(totalPagos)} CUP. Dinero final en caja: $${"%.2f".format(dineroFinalEnCaja)} CUP. Detalle: $detallesDistribucion",
+                    category = "CUADRE",
+                    authorUsername = username,
+                    priority = "NORMAL"
+                )
+            )
+
+            _uiState.update { it.copy(successMessage = "Pagos de personal confirmados y registrados correctamente.") }
+        }
+    }
+
     fun resetCuadreSalon(jornadaId: Long) {
         viewModelScope.launch {
             sharedPreferences.edit()
