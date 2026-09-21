@@ -640,6 +640,14 @@ object CostCalculationHelper {
         // 6. COSTO REAL UNITARIO / COSTO TEÓRICO (Materias Primas + Gastos Indirectos + Pagos de Personal)
         val costoRealUnitario = cdu + gastoIndirectoUnitario + totalPagoPersonal
 
+        // Gasto general prorrateado por unidad y Costo total unitario (Prompt 3)
+        val gastoGeneralUnitarioProrrateo = if (productPpd > 0.0 && product.isAvailable) {
+            gastoGeneralAsignado / productPpd
+        } else {
+            0.0
+        }
+        val costoTotalUnitario = cdu + gastoGeneralUnitarioProrrateo
+
         // 7. PRECIO DE REFERENCIA (+30% margen sugerido)
         val targetMarginPct = prodElaborado?.targetMarginPct ?: 30.0
         val precioReferencia = if (costoRealUnitario > 0.0) {
@@ -670,6 +678,7 @@ object CostCalculationHelper {
             depreciacionAsignada = depreciacionAsignada,
             gastoIndirectoAsignado = gastoIndirectoAsignado,
             gastoIndirectoUnitario = gastoIndirectoUnitario,
+            gastoGeneralUnitarioProrrateo = gastoGeneralUnitarioProrrateo,
             pagoCocinaUnitario = pagoCocinaUnitario,
             cantidadCocineros = cantidadCocineros,
             totalPagoCocinaUnitario = totalPagoCocina,
@@ -678,6 +687,7 @@ object CostCalculationHelper {
             pagoCajeroUnitario = pagoCajeroUnitario,
             totalPagoCajeroUnitario = totalPagoCajero,
             totalPagoPersonalUnitario = totalPagoPersonal,
+            costoTotalUnitario = costoTotalUnitario,
             costoRealUnitario = costoRealUnitario,
             precioReferencia = precioReferencia,
             precioDefinitivo = definitivePrice,
