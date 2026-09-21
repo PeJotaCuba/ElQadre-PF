@@ -92,6 +92,8 @@ import com.example.ui.screens.barra.BarraProductItem
 import androidx.compose.material.icons.filled.Edit
 import com.example.ui.screens.admin.AddEditMateriaPrimaDialog
 import com.example.ui.screens.admin.AddEditMercaderiaDialog
+import com.example.ui.screens.admin.ConfigurarPagosBebidasDialog
+import androidx.compose.material.icons.filled.Payments
 import com.example.ui.screens.admin.AddEditProductoElaboradoDialog
 import com.example.ui.screens.admin.AddEditGastoGeneralDialog
 import com.example.ui.screens.admin.FichaCostoMercaderiaDialog
@@ -114,6 +116,7 @@ import com.example.ui.viewmodel.MainUiState
 import com.example.ui.viewmodel.MainViewModel
 import com.example.ui.screens.admin.CatalogoSubScreen
 import com.example.ui.screens.admin.GestionSubScreen
+import com.example.ui.screens.admin.TandasPane
 import com.example.ui.screens.admin.UsuariosSubScreen
 import com.example.util.BarraBackupManager
 import com.example.util.CajeroBackupManager
@@ -123,6 +126,8 @@ import kotlinx.coroutines.launch
 
 enum class DuenoView {
     INICIO,
+    TANDAS,
+    CUADRE_CAJA,
     INVENTARIO,
     CATALOGO,
     INVERSIONES,
@@ -144,6 +149,7 @@ fun DuenoScreen(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var currentView by remember { mutableStateOf(DuenoView.INICIO) }
+    var previousView by remember { mutableStateOf<DuenoView?>(null) }
     var showQuickActions by remember { mutableStateOf(false) }
 
     val ownerUsername = uiState.currentUser?.username ?: "dueno"
@@ -198,7 +204,10 @@ fun DuenoScreen(
             showRestoreBarraModal -> showRestoreBarraModal = false
             showRestoreCajeroModal -> showRestoreCajeroModal = false
             showQuickActions -> showQuickActions = false
-            currentView != DuenoView.INICIO -> currentView = DuenoView.INICIO
+            currentView != DuenoView.INICIO -> {
+                currentView = previousView ?: DuenoView.INICIO
+                previousView = null
+            }
         }
     }
 
@@ -266,18 +275,12 @@ fun DuenoScreen(
                         // Navigation Items
                         val allNavItems = listOf(
                             Triple(DuenoView.INICIO, "Inicio", Icons.Outlined.Home),
-                            Triple(DuenoView.INVENTARIO, "Inventario", Icons.Outlined.Inventory2),
-                            Triple(DuenoView.CATALOGO, "Catálogo", Icons.Outlined.MenuBook),
-                            Triple(DuenoView.INVERSIONES, "Inversiones", Icons.Outlined.AttachMoney),
-                            Triple(DuenoView.GASTOS, "Gastos Corrientes", Icons.Outlined.ReceiptLong),
-                            Triple(DuenoView.CONTROL_NEGOCIO, "Control del Negocio", Icons.Outlined.Analytics),
-                            Triple(DuenoView.PERSONAL, "Personal", Icons.Outlined.Group),
+                            Triple(DuenoView.TANDAS, "Tandas", Icons.Outlined.History),
+                            Triple(DuenoView.CUADRE_CAJA, "Cuadre de Caja", Icons.Outlined.PointOfSale),
                             Triple(DuenoView.AJUSTES, "Ajustes", Icons.Outlined.Settings)
                         )
 
-                        val navItems = allNavItems.filter { item ->
-                            item.first == DuenoView.INICIO || item.first == DuenoView.AJUSTES || com.example.util.DuenoSessionPreferences.isModuleVisible(visibleModules, item.first.name)
-                        }
+                        val navItems = allNavItems
 
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             navItems.forEach { item ->
@@ -630,23 +633,6 @@ fun DuenoScreen(
                                                 Spacer(modifier = Modifier.width(8.dp))
                                                 Text("Cerrar Jornada & Generar Q_jornada.json", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                                             }
-
-                                            Button(
-                                                onClick = { showCuadreCajaModal = true },
-                                                colors = ButtonDefaults.buttonColors(
-                                                    containerColor = Color(0xFF0284C7),
-                                                    contentColor = Color.White
-                                                ),
-                                                shape = RoundedCornerShape(14.dp),
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .height(50.dp)
-                                                    .testTag("btn_cuadre_caja_dueno")
-                                            ) {
-                                                Icon(Icons.Outlined.PointOfSale, contentDescription = null, modifier = Modifier.size(18.dp))
-                                                Spacer(modifier = Modifier.width(8.dp))
-                                                Text("CUADRE DE CAJA", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                            }
                                         }
                                     }
                                 } else {
@@ -738,9 +724,45 @@ fun DuenoScreen(
                                     isWide = isWide,
                                     visibleModules = visibleModules
                                 ) { selectedView ->
+                                    previousView = DuenoView.INICIO
                                     currentView = selectedView
                                 }
                             }
+                        }
+
+                        DuenoView.TANDAS -> {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                DuenoSubscreenHeader(
+                                    title = "Tandas de Producción",
+                                    subtitle = "Lotes de producción, control de costos y rendimientos",
+                                    icon = Icons.Outlined.History,
+                                    onBack = {
+                                        currentView = previousView ?: DuenoView.INICIO
+                                        previousView = null
+                                    }
+                                )
+                                TandasPane(
+                                    uiState = uiState,
+                                    viewModel = viewModel
+                                )
+                            }
+                        }
+
+                        DuenoView.CUADRE_CAJA -> {
+                            CuadreCajaScreen(
+                                uiState = uiState,
+                                viewModel = viewModel,
+                                modifier = Modifier.fillMaxSize(),
+                                onClose = {
+                                    currentView = previousView ?: DuenoView.INICIO
+                                    previousView = null
+                                }
+                            )
                         }
 
                         DuenoView.INVENTARIO -> {
@@ -749,7 +771,10 @@ fun DuenoScreen(
                                 viewModel = viewModel,
                                 isWide = isWide,
                                 visibleModules = visibleModules,
-                                onBack = { currentView = DuenoView.INICIO }
+                                onBack = {
+                                    currentView = previousView ?: DuenoView.GESTION
+                                    previousView = null
+                                }
                             )
                         }
 
@@ -764,7 +789,10 @@ fun DuenoScreen(
                                     title = "Catálogo",
                                     subtitle = "Gestión de productos, categorías y precios de venta",
                                     icon = Icons.Outlined.MenuBook,
-                                    onBack = { currentView = DuenoView.INICIO }
+                                    onBack = {
+                                        currentView = previousView ?: DuenoView.GESTION
+                                        previousView = null
+                                    }
                                 )
                                 CatalogoSubScreen(
                                     uiState = uiState,
@@ -778,7 +806,10 @@ fun DuenoScreen(
                                 uiState = uiState,
                                 viewModel = viewModel,
                                 isWide = isWide,
-                                onBack = { currentView = DuenoView.INICIO }
+                                onBack = {
+                                    currentView = previousView ?: DuenoView.GESTION
+                                    previousView = null
+                                }
                             )
                         }
 
@@ -786,7 +817,10 @@ fun DuenoScreen(
                             DuenoGastosSubScreen(
                                 uiState = uiState,
                                 viewModel = viewModel,
-                                onBack = { currentView = DuenoView.INICIO }
+                                onBack = {
+                                    currentView = previousView ?: DuenoView.GESTION
+                                    previousView = null
+                                }
                             )
                         }
 
@@ -795,7 +829,10 @@ fun DuenoScreen(
                                 uiState = uiState,
                                 viewModel = viewModel,
                                 isWide = isWide,
-                                onBack = { currentView = DuenoView.INICIO }
+                                onBack = {
+                                    currentView = previousView ?: DuenoView.GESTION
+                                    previousView = null
+                                }
                             )
                         }
 
@@ -804,7 +841,10 @@ fun DuenoScreen(
                                 uiState = uiState,
                                 viewModel = viewModel,
                                 isWide = isWide,
-                                onBack = { currentView = DuenoView.INICIO }
+                                onBack = {
+                                    currentView = previousView ?: DuenoView.GESTION
+                                    previousView = null
+                                }
                             )
                         }
 
@@ -817,7 +857,15 @@ fun DuenoScreen(
                                 onVisibleModulesChanged = { newSet ->
                                     visibleModules = newSet
                                 },
-                                onBack = { currentView = DuenoView.INICIO }
+                                initialSection = if (currentView == DuenoView.GESTION) "GESTION" else "PREFERENCIAS",
+                                onNavigate = { targetView ->
+                                    previousView = DuenoView.GESTION
+                                    currentView = targetView
+                                },
+                                onBack = {
+                                    currentView = DuenoView.INICIO
+                                    previousView = null
+                                }
                             )
                         }
                     }
@@ -1305,21 +1353,11 @@ fun DuenoCardsGrid(
     visibleModules: Set<String> = com.example.util.DuenoSessionPreferences.ALL_MODULES,
     onCardClick: (DuenoView) -> Unit
 ) {
-    val currentUser = uiState.currentUser
-    val isDueno = currentUser?.role == UserRole.DUENO
-    val hasPersonalPerm = !isDueno || (currentUser?.permisoPersonal ?: true)
-
-    val allItems = listOf(
-        Triple(DuenoView.INVENTARIO, "INVENTARIO", "Producción, Mercaderías e Historial"),
-        Triple(DuenoView.CATALOGO, "CATÁLOGO", "Productos, categorías y precios de venta"),
-        Triple(DuenoView.INVERSIONES, "INVERSIONES", "Control de inversiones y activos"),
-        Triple(DuenoView.GASTOS, "GASTOS", "Gastos corrientes y costos operativos"),
-        Triple(DuenoView.CONTROL_NEGOCIO, "CONTROL DEL NEGOCIO", "Ventas, resultados y estadísticas"),
-        Triple(DuenoView.PERSONAL, "PERSONAL", if (hasPersonalPerm) "Trabajadores, nómina y usuarios" else "Acceso no autorizado"),
-        Triple(DuenoView.AJUSTES, "AJUSTES", "Información del negocio, tasas, respaldos y archivo")
+    val items = listOf(
+        Triple(DuenoView.TANDAS, "TANDAS", "Lotes de producción, control de costos y rendimientos"),
+        Triple(DuenoView.CUADRE_CAJA, "CUADRE DE CAJA", "Arqueo de efectivo, balances e ingresos"),
+        Triple(DuenoView.AJUSTES, "AJUSTES", "Preferencias del sistema y Gestión operativa")
     )
-
-    val items = allItems.filter { com.example.util.DuenoSessionPreferences.isModuleVisible(visibleModules, it.first.name) }
 
     if (items.isEmpty()) {
         Card(
@@ -1357,8 +1395,7 @@ fun DuenoCardsGrid(
             items.chunked(2).forEach { rowItems ->
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     rowItems.forEach { item ->
-                        val enabled = if (item.first == DuenoView.PERSONAL) hasPersonalPerm else true
-                        DuenoBigCard(item, Modifier.weight(1f), isEnabled = enabled, onClick = onCardClick)
+                        DuenoBigCard(item, Modifier.weight(1f), isEnabled = true, onClick = onCardClick)
                     }
                     if (rowItems.size == 1) {
                         Spacer(modifier = Modifier.weight(1f))
@@ -1369,8 +1406,7 @@ fun DuenoCardsGrid(
     } else {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
             items.forEach { item ->
-                val enabled = if (item.first == DuenoView.PERSONAL) hasPersonalPerm else true
-                DuenoBigCard(item, Modifier.fillMaxWidth(), isEnabled = enabled, onClick = onCardClick)
+                DuenoBigCard(item, Modifier.fillMaxWidth(), isEnabled = true, onClick = onCardClick)
             }
         }
     }
@@ -1385,6 +1421,8 @@ fun DuenoBigCard(
 ) {
     val (view, title, subtitle) = item
     val icon = when (view) {
+        DuenoView.TANDAS -> Icons.Outlined.History
+        DuenoView.CUADRE_CAJA -> Icons.Outlined.PointOfSale
         DuenoView.INVENTARIO -> Icons.Outlined.Inventory2
         DuenoView.CATALOGO -> Icons.Outlined.MenuBook
         DuenoView.INVERSIONES -> Icons.Outlined.AttachMoney
@@ -3683,6 +3721,7 @@ fun DuenoMercaderiasSubscreen(
     val mercaderias = uiState.mercaderias
     val movimientos = uiState.movimientosMercaderia
     var showNewProductDialog by remember { mutableStateOf(false) }
+    var showPagosBebidasDialog by remember { mutableStateOf(false) }
     var editingMercaderia by remember { mutableStateOf<Mercaderia?>(null) }
     var selectedMercForCostSheet by remember { mutableStateOf<Mercaderia?>(null) }
     var selectedMercForEntrada by remember { mutableStateOf<Mercaderia?>(null) }
@@ -3703,19 +3742,39 @@ fun DuenoMercaderiasSubscreen(
             onBack = onBack
         )
 
-        Button(
-            onClick = { showNewProductDialog = true },
-            colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
-            shape = RoundedCornerShape(12.dp),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(50.dp)
-                .testTag("btn_nuevo_producto_mercaderia")
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(20.dp), tint = Color.White)
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("NUEVO PRODUCTO", fontSize = 14.sp, fontWeight = FontWeight.Black, color = Color.White)
+            Button(
+                onClick = { showNewProductDialog = true },
+                colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+                modifier = Modifier
+                    .weight(1.3f)
+                    .height(50.dp)
+                    .testTag("btn_nuevo_producto_mercaderia")
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(20.dp), tint = Color.White)
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("NUEVO PRODUCTO", fontSize = 13.sp, fontWeight = FontWeight.Black, color = Color.White)
+            }
+
+            Button(
+                onClick = { showPagosBebidasDialog = true },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5)),
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(50.dp)
+                    .testTag("btn_pagos_mercaderias")
+            ) {
+                Icon(Icons.Default.Payments, contentDescription = null, modifier = Modifier.size(20.dp), tint = Color.White)
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("PAGOS", fontSize = 13.sp, fontWeight = FontWeight.Black, color = Color.White)
+            }
         }
 
         if (mercaderias.isEmpty()) {
@@ -3739,6 +3798,8 @@ fun DuenoMercaderiasSubscreen(
                     val product = uiState.products.find { it.id == merc.productId }
                     val currentAlmacenStock = viewModel.getMercaderiaCurrentStock(merc.id, merc.initialStock)
                     val price = product?.price ?: 0.0
+                    val isBebida = com.example.util.MercaderiaCategoryHelper.isBebida(product)
+                    val isConfitura = com.example.util.MercaderiaCategoryHelper.isConfitura(product)
 
                     Surface(
                         shape = RoundedCornerShape(16.dp),
@@ -3753,19 +3814,51 @@ fun DuenoMercaderiasSubscreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 16.dp),
+                                .padding(horizontal = 16.dp, vertical = 14.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = (product?.name ?: "MERCADERÍA #${merc.id}").uppercase(),
-                                    fontWeight = FontWeight.Black,
-                                    fontSize = 16.sp,
-                                    color = ElQadreNavy,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = (product?.name ?: "MERCADERÍA #${merc.id}").uppercase(),
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 15.sp,
+                                        color = ElQadreNavy,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    if (isBebida) {
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = Color(0xFFEEF2FF)
+                                        ) {
+                                            Text(
+                                                text = "BEBIDAS",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = Color(0xFF4338CA),
+                                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    } else if (isConfitura) {
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = Color(0xFFFDF2F8)
+                                        ) {
+                                            Text(
+                                                text = "CONFITURAS",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = Color(0xFFBE185D),
+                                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                }
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
@@ -3773,30 +3866,39 @@ fun DuenoMercaderiasSubscreen(
                                 ) {
                                     Text(
                                         text = "Stock: ${"%.1f".format(currentAlmacenStock)} ${merc.unitOfMeasure}",
-                                        fontSize = 14.sp,
+                                        fontSize = 13.sp,
                                         fontWeight = FontWeight.Black,
                                         color = ElQadreNavy
                                     )
                                     Text(
                                         text = "•",
-                                        fontSize = 13.sp,
+                                        fontSize = 12.sp,
                                         color = Slate400
                                     )
                                     Text(
                                         text = "Precio: $${"%.2f".format(price)} CUP",
-                                        fontSize = 13.sp,
+                                        fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = Color(0xFF047857)
                                     )
                                     Text(
                                         text = "•",
-                                        fontSize = 13.sp,
+                                        fontSize = 12.sp,
                                         color = Slate400
                                     )
                                     Text(
                                         text = "Costo: $${"%.2f".format(merc.acquisitionCost)} CUP",
-                                        fontSize = 13.sp,
+                                        fontSize = 12.sp,
                                         color = Slate600
+                                    )
+                                }
+                                if (isBebida && uiState.tarifasPagoBebidas.totalPagoPersonalPorUnidad > 0.0) {
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = "Pago Personal: $${"%.2f".format(uiState.tarifasPagoBebidas.totalPagoPersonalPorUnidad)} CUP/u (Dep: $${"%.2f".format(uiState.tarifasPagoBebidas.pagoDependientePorUnidad)} + Caj: $${"%.2f".format(uiState.tarifasPagoBebidas.pagoCajeroPorUnidad)})",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color(0xFF4F46E5)
                                     )
                                 }
                             }
@@ -3826,19 +3928,26 @@ fun DuenoMercaderiasSubscreen(
             val realCost = merc.acquisitionCost
             val price = product?.price ?: 0.0
             val marginPct = if (realCost > 0.0) ((price - realCost) / realCost) * 100.0 else 0.0
+            val isBebida = com.example.util.MercaderiaCategoryHelper.isBebida(product)
+            val isConfitura = com.example.util.MercaderiaCategoryHelper.isConfitura(product)
 
             AlertDialog(
                 onDismissRequest = { selectedMercaderiaForDetail = null },
                 title = {
                     Column {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = (product?.name ?: "MERCADERÍA #${merc.id}").uppercase(),
+                                fontWeight = FontWeight.Black,
+                                fontSize = 18.sp,
+                                color = ElQadreNavy
+                            )
+                        }
                         Text(
-                            text = (product?.name ?: "MERCADERÍA #${merc.id}").uppercase(),
-                            fontWeight = FontWeight.Black,
-                            fontSize = 18.sp,
-                            color = ElQadreNavy
-                        )
-                        Text(
-                            text = "Detalle de Producto y Gestión de Almacén",
+                            text = "Categoría: ${product?.category ?: "Mercadería"} • Almacén y Costos",
                             fontSize = 13.sp,
                             color = Slate500
                         )
@@ -3876,6 +3985,127 @@ fun DuenoMercaderiasSubscreen(
                                     color = Color(0xFF047857),
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                 )
+                            }
+                        }
+
+                        // SECCIÓN DE PAGOS DE PERSONAL (SOLO LECTURA)
+                        if (isBebida) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color(0xFFEEF2FF),
+                                border = BorderStroke(1.dp, Color(0xFFC7D2FE)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Payments,
+                                                contentDescription = null,
+                                                tint = Color(0xFF4F46E5),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Text(
+                                                text = "PAGOS DE PERSONAL ASOCIADOS",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF312E81)
+                                            )
+                                        }
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = Color(0xFFE0E7FF)
+                                        ) {
+                                            Text(
+                                                text = "SOLO LECTURA • GLOBAL",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF3730A3),
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text("• Pago Dependiente por unidad:", fontSize = 11.5.sp, color = Slate700)
+                                        Text("$${"%.2f".format(uiState.tarifasPagoBebidas.pagoDependientePorUnidad)} CUP", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F766E))
+                                    }
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text("• Pago Cajero por unidad:", fontSize = 11.5.sp, color = Slate700)
+                                        Text("$${"%.2f".format(uiState.tarifasPagoBebidas.pagoCajeroPorUnidad)} CUP", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB45309))
+                                    }
+
+                                    HorizontalDivider(color = Color(0xFFC7D2FE))
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "TOTAL PAGO PERSONAL:",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = Color(0xFF312E81)
+                                        )
+                                        Text(
+                                            text = "$${"%.2f".format(uiState.tarifasPagoBebidas.totalPagoPersonalPorUnidad)} CUP / u",
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = Color(0xFF4338CA)
+                                        )
+                                    }
+
+                                    Text(
+                                        text = "Tarifas globales configuradas desde Mercaderías → Pagos.",
+                                        fontSize = 10.sp,
+                                        color = Slate500,
+                                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                                    )
+                                }
+                            }
+                        } else if (isConfitura) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color(0xFFFDF2F8),
+                                border = BorderStroke(1.dp, Color(0xFFFBCFE8)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Info,
+                                        contentDescription = null,
+                                        tint = Color(0xFFBE185D),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = "Confituras: Sin pagos de personal asociados (sin comisión de dependiente ni cajero).",
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF9D174D),
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
                             }
                         }
 
@@ -4025,6 +4255,14 @@ fun DuenoMercaderiasSubscreen(
                         Text("CERRAR", fontWeight = FontWeight.Bold, color = Slate700)
                     }
                 }
+            )
+        }
+
+        if (showPagosBebidasDialog) {
+            ConfigurarPagosBebidasDialog(
+                uiState = uiState,
+                viewModel = viewModel,
+                onDismiss = { showPagosBebidasDialog = false }
             )
         }
 
@@ -11744,6 +11982,14 @@ fun DetalleJornadaCerradaDialog(
     )
 }
 
+private data class GestionModuleItem(
+    val view: DuenoView,
+    val title: String,
+    val subtitle: String,
+    val icon: ImageVector,
+    val tag: String
+)
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DuenoAjustesView(
@@ -11752,56 +11998,21 @@ fun DuenoAjustesView(
     isWide: Boolean,
     visibleModules: Set<String> = com.example.util.DuenoSessionPreferences.ALL_MODULES,
     onVisibleModulesChanged: (Set<String>) -> Unit = {},
+    initialSection: String = "PREFERENCIAS",
+    onNavigate: (DuenoView) -> Unit = {},
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    var selectedAjustesSection by remember { mutableStateOf(initialSection) }
 
-    // 1. Datos del negocio (Draft State)
-    var nombreNegocio by remember { mutableStateOf("") }
-    var direccion by remember { mutableStateOf("") }
-    var telefono by remember { mutableStateOf("") }
-    var logoPath by remember { mutableStateOf("") }
-    val codigoNegocio = uiState.businessConfig?.codigoNegocio ?: "NEG-000001"
-
-    // 2. Configuración general y Divisas (Draft State)
-    var moneda by remember { mutableStateOf("CUP") }
-    var metodosPagoList by remember { mutableStateOf(listOf("Efectivo")) }
+    // Configuración general y Divisas (exclusivamente Tasa de Cambio)
     var tasaUsdText by remember { mutableStateOf("") }
     var tasaEurText by remember { mutableStateOf("") }
 
-    // 3. Configuración de jornada y caja (Draft State)
-    var aperturaAutomatica by remember { mutableStateOf(false) }
-    var notasObligatoriasCierre by remember { mutableStateOf(true) }
-    var denominacionesList by remember { mutableStateOf(listOf(1000, 500, 200, 100, 50, 20, 10)) }
-    var nuevaDenominacionText by remember { mutableStateOf("") }
-
-    // Synchronize draft states when DB loaded
-    LaunchedEffect(uiState.businessConfig) {
-        uiState.businessConfig?.let { config ->
-            nombreNegocio = config.nombreNegocio
-            direccion = config.direccion
-            telefono = config.telefono
-            logoPath = config.logoPath ?: ""
-        }
-    }
-
     LaunchedEffect(uiState.generalConfig) {
         uiState.generalConfig?.let { config ->
-            moneda = config.moneda
-            metodosPagoList = config.metodosPago.split(",").map { it.trim() }.filter { it.isNotEmpty() }
             tasaUsdText = if (config.tasaUsd > 0) config.tasaUsd.toString() else ""
             tasaEurText = if (config.tasaEur > 0) config.tasaEur.toString() else ""
-            
-            val params = config.parametrosJornada.split(",").associate {
-                val parts = it.split(":")
-                if (parts.size == 2) parts[0].trim() to parts[1].trim() else "" to ""
-            }
-            aperturaAutomatica = params["Apertura automatica"] == "verdadero"
-            notasObligatoriasCierre = params["Obligatorio notas de cierre"] != "falso"
-
-            denominacionesList = config.denominacionesCaja.split(",")
-                .mapNotNull { it.trim().toIntOrNull() }
-                .sortedDescending()
         }
     }
 
@@ -11810,6 +12021,36 @@ fun DuenoAjustesView(
     var restoreJsonText by remember { mutableStateOf("") }
     var restoreSummary by remember { mutableStateOf<String?>(null) }
     var isRestoring by remember { mutableStateOf(false) }
+
+    // State for Legacy Produccion Import
+    var showImportLegacyProduccionModal by remember { mutableStateOf(false) }
+    var legacyProduccionJsonText by remember { mutableStateOf("") }
+    var legacyProduccionSummary by remember { mutableStateOf<String?>(null) }
+    var isImportingLegacyProduccion by remember { mutableStateOf(false) }
+
+    // File picker launcher for Legacy Produccion
+    val legacyProduccionFilePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                val inputStream = context.contentResolver.openInputStream(uri)
+                val content = inputStream?.bufferedReader()?.use { it.readText() } ?: ""
+                if (content.isNotBlank()) {
+                    legacyProduccionJsonText = content
+                    val summaryRes = viewModel.getLegacyProduccionBackupSummary(content)
+                    if (summaryRes.isSuccess) {
+                        legacyProduccionSummary = summaryRes.getOrNull()
+                    } else {
+                        legacyProduccionSummary = null
+                        Toast.makeText(context, "Archivo inválido para Producción: ${summaryRes.exceptionOrNull()?.localizedMessage}", Toast.LENGTH_LONG).show()
+                    }
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Error al leer archivo: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 
     // File picker launcher for Restore
     val restoreFilePicker = rememberLauncherForActivityResult(
@@ -11886,7 +12127,7 @@ fun DuenoAjustesView(
     ) {
         DuenoSubscreenHeader(
             title = "Ajustes del Negocio",
-            subtitle = "Información general, tasas, licencias, respaldos y archivo de jornadas",
+            subtitle = "Tasas de cambio, contraseñas, respaldos y archivo de jornadas",
             icon = Icons.Outlined.Settings,
             onBack = onBack
         )
@@ -11922,179 +12163,52 @@ fun DuenoAjustesView(
         }
 
         // -------------------------------------------------------------
-        // SECCIÓN ACTUALIZACIÓN DE APK Y VERSIÓN DE LA APLICACIÓN
+        // DOS ENTRADAS PRINCIPALES INDEPENDIENTES: PREFERENCIAS Y GESTIÓN
         // -------------------------------------------------------------
-        com.example.ui.components.AppVersionSettingsCard()
-
-        // -------------------------------------------------------------
-        // SECCIÓN PERSONALIZAR MI SESIÓN (MÓDULOS VISIBLES PARA CADA DUEÑO)
-        // -------------------------------------------------------------
-        val currentOwnerUsername = uiState.currentUser?.username ?: "dueno"
-        val currentOwnerFullName = uiState.currentUser?.fullName ?: "Dueño"
-
-        PersonalizarSesionCard(
-            username = currentOwnerUsername,
-            fullName = currentOwnerFullName,
-            visibleModules = visibleModules,
-            onVisibleModulesChanged = onVisibleModulesChanged
-        )
-
-        // -------------------------------------------------------------
-        // SECTION 1: INFORMACIÓN Y DATOS DEL NEGOCIO
-        // -------------------------------------------------------------
-        SettingsSectionCard(
-            title = "INFORMACIÓN Y DATOS DEL NEGOCIO",
-            icon = Icons.Outlined.Store
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text(
-                text = "Identificación pública y datos del establecimiento.",
-                fontSize = 12.sp,
-                color = Slate600
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-
-            OutlinedTextField(
-                value = nombreNegocio,
-                onValueChange = { nombreNegocio = it },
-                label = { Text("Nombre del Negocio") },
-                singleLine = true,
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth().testTag("input_nombre_negocio"),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = ElQadreNavy,
-                    unfocusedBorderColor = ElQadreBorder,
-                    focusedLabelColor = ElQadreNavy,
-                    cursorColor = ElQadreNavy
-                )
+            AjustesHubCard(
+                title = "PREFERENCIAS",
+                subtitle = "Tasa de cambio, seguridad, respaldos y archivo",
+                icon = Icons.Outlined.Settings,
+                isSelected = selectedAjustesSection == "PREFERENCIAS",
+                modifier = Modifier.weight(1f).testTag("card_ajustes_preferencias"),
+                onClick = { selectedAjustesSection = "PREFERENCIAS" }
             )
 
-            Spacer(modifier = Modifier.height(10.dp))
-
-            OutlinedTextField(
-                value = direccion,
-                onValueChange = { direccion = it },
-                label = { Text("Dirección") },
-                singleLine = true,
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth().testTag("input_direccion_negocio"),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = ElQadreNavy,
-                    unfocusedBorderColor = ElQadreBorder,
-                    focusedLabelColor = ElQadreNavy,
-                    cursorColor = ElQadreNavy
-                )
+            AjustesHubCard(
+                title = "GESTIÓN",
+                subtitle = "Módulos operativos y administración",
+                icon = Icons.Outlined.Tune,
+                isSelected = selectedAjustesSection == "GESTION",
+                modifier = Modifier.weight(1f).testTag("card_ajustes_gestion"),
+                onClick = { selectedAjustesSection = "GESTION" }
             )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            OutlinedTextField(
-                value = telefono,
-                onValueChange = { telefono = it },
-                label = { Text("Teléfono Principal") },
-                singleLine = true,
-                shape = RoundedCornerShape(14.dp),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                modifier = Modifier.fillMaxWidth().testTag("input_telefono_negocio"),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = ElQadreNavy,
-                    unfocusedBorderColor = ElQadreBorder,
-                    focusedLabelColor = ElQadreNavy,
-                    cursorColor = ElQadreNavy
-                )
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedTextField(
-                    value = codigoNegocio,
-                    onValueChange = {},
-                    label = { Text("Código de Negocio") },
-                    readOnly = true,
-                    enabled = false,
-                    singleLine = true,
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.weight(1f),
-                    colors = OutlinedTextFieldDefaults.colors(disabledBorderColor = Slate300, disabledLabelColor = Slate600)
-                )
-
-                OutlinedTextField(
-                    value = uiState.deviceId,
-                    onValueChange = {},
-                    label = { Text("DVC Dispositivo") },
-                    readOnly = true,
-                    enabled = false,
-                    singleLine = true,
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.weight(1f),
-                    colors = OutlinedTextFieldDefaults.colors(disabledBorderColor = Slate300, disabledLabelColor = Slate600)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            Button(
-                onClick = {
-                    val finalLogoPath = if (logoPath.isBlank()) null else logoPath
-                    viewModel.updateBusinessConfig(
-                        ConfiguracionNegocio(
-                            id = 1,
-                            nombreNegocio = nombreNegocio.ifBlank { "Mi Negocio" },
-                            direccion = direccion,
-                            telefono = telefono,
-                            logoPath = finalLogoPath,
-                            codigoNegocio = codigoNegocio,
-                            fechaCreacion = uiState.businessConfig?.fechaCreacion ?: System.currentTimeMillis(),
-                            fechaActualizacion = System.currentTimeMillis()
-                        )
-                    )
-                    Toast.makeText(context, "Datos del negocio guardados correctamente.", Toast.LENGTH_SHORT).show()
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy, contentColor = Color.White),
-                modifier = Modifier.fillMaxWidth().height(50.dp).testTag("btn_guardar_datos_negocio"),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Icon(Icons.Outlined.Save, contentDescription = null, modifier = Modifier.size(20.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("GUARDAR DATOS DEL NEGOCIO", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-            }
         }
 
+        if (selectedAjustesSection == "PREFERENCIAS") {
+            // -------------------------------------------------------------
+            // SECCIÓN ACTUALIZACIÓN DE APK Y VERSIÓN DE LA APLICACIÓN
+            // -------------------------------------------------------------
+            com.example.ui.components.AppVersionSettingsCard()
+
         // -------------------------------------------------------------
-        // SECTION 2: CONFIGURACIÓN GENERAL, MONEDA Y TASAS DE CAMBIO
+        // SECCIÓN: CONFIGURACIÓN GENERAL Y DIVISAS (TASA DE CAMBIO)
         // -------------------------------------------------------------
+        val currentOwnerUsername = uiState.currentUser?.username ?: "dueno"
+
         SettingsSectionCard(
             title = "CONFIGURACIÓN GENERAL Y DIVISAS",
             icon = Icons.Outlined.AttachMoney
         ) {
             Text(
-                text = "Configure la moneda base, tasas de cambio para USD y EUR, y métodos de cobro aceptados.",
+                text = "Configure las tasas de cambio de referencia para USD y EUR.",
                 fontSize = 12.sp,
                 color = Slate600
             )
             Spacer(modifier = Modifier.height(12.dp))
-
-            // Moneda principal
-            Text("Moneda Principal de Operación:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = ElQadreNavy)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                listOf("CUP", "USD", "EUR").forEach { curr ->
-                    FilterChip(
-                        selected = (moneda == curr),
-                        onClick = { moneda = curr },
-                        label = { Text(curr, fontWeight = FontWeight.Bold) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = ElQadreNavy,
-                            selectedLabelColor = Color.White
-                        ),
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
 
             // Tasas de cambio
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
@@ -12129,56 +12243,18 @@ fun DuenoAjustesView(
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Métodos de pago
-            Text("Métodos de Cobro Aceptados:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = ElQadreNavy)
-            val availableMethods = listOf("Efectivo", "Transfermóvil", "EnZona", "Tarjeta BANCARD", "USD / Divisa")
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                availableMethods.forEach { method ->
-                    val isChecked = metodosPagoList.contains(method)
-                    FilterChip(
-                        selected = isChecked,
-                        onClick = {
-                            metodosPagoList = if (isChecked) {
-                                if (metodosPagoList.size > 1) metodosPagoList - method else metodosPagoList
-                            } else {
-                                metodosPagoList + method
-                            }
-                        },
-                        label = { Text(method, fontSize = 11.sp) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = ElQadreNavy,
-                            selectedLabelColor = Color.White
-                        )
-                    )
-                }
-            }
-
             Spacer(modifier = Modifier.height(14.dp))
 
             Button(
                 onClick = {
-                    val metodosPagoString = if (metodosPagoList.isEmpty()) "Efectivo" else metodosPagoList.joinToString(",")
-                    val currentParams = "Apertura automatica:${if (aperturaAutomatica) "verdadero" else "falso"},Obligatorio notas de cierre:${if (notasObligatoriasCierre) "verdadero" else "falso"}"
-                    val denominacionesString = denominacionesList.joinToString(",")
-
                     val baseConfig = uiState.generalConfig ?: ConfiguracionGeneral()
                     viewModel.updateGeneralConfig(
                         baseConfig.copy(
-                            moneda = moneda,
-                            metodosPago = metodosPagoString,
-                            parametrosJornada = currentParams,
-                            denominacionesCaja = denominacionesString,
                             tasaUsd = tasaUsdText.toDoubleOrNull() ?: 0.0,
                             tasaEur = tasaEurText.toDoubleOrNull() ?: 0.0
                         )
                     )
-                    Toast.makeText(context, "Configuración general guardada correctamente.", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Tasa de cambio guardada correctamente.", Toast.LENGTH_SHORT).show()
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy, contentColor = Color.White),
                 modifier = Modifier.fillMaxWidth().height(50.dp).testTag("btn_guardar_config_general"),
@@ -12186,147 +12262,7 @@ fun DuenoAjustesView(
             ) {
                 Icon(Icons.Outlined.Save, contentDescription = null, modifier = Modifier.size(20.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("GUARDAR CONFIGURACIÓN GENERAL", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-            }
-        }
-
-        // -------------------------------------------------------------
-        // SECTION 3: PARÁMETROS DE JORNADA Y CAJA
-        // -------------------------------------------------------------
-        SettingsSectionCard(
-            title = "PARÁMETROS DE JORNADA Y CAJA",
-            icon = Icons.Outlined.Schedule
-        ) {
-            Text(
-                text = "Reglas de apertura/cierre de jornadas y denominaciones de billetes en caja.",
-                fontSize = 12.sp,
-                color = Slate600
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Apertura Automática de Jornada", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = ElQadreNavy)
-                    Text("Inicia una nueva jornada automáticamente al abrir la app.", fontSize = 11.sp, color = Slate600)
-                }
-                Switch(
-                    checked = aperturaAutomatica,
-                    onCheckedChange = { aperturaAutomatica = it },
-                    colors = SwitchDefaults.colors(checkedThumbColor = ElQadreGold, checkedTrackColor = ElQadreNavy)
-                )
-            }
-
-            HorizontalDivider(color = Slate200, modifier = Modifier.padding(vertical = 8.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Notas Obligatorias al Cierre", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = ElQadreNavy)
-                    Text("Exige ingresar una nota u observación al cerrar la jornada.", fontSize = 11.sp, color = Slate600)
-                }
-                Switch(
-                    checked = notasObligatoriasCierre,
-                    onCheckedChange = { notasObligatoriasCierre = it },
-                    colors = SwitchDefaults.colors(checkedThumbColor = ElQadreGold, checkedTrackColor = ElQadreNavy)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Denominaciones de billetes
-            Text("Denominaciones de Billetes en Caja:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = ElQadreNavy)
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                denominacionesList.forEach { den ->
-                    InputChip(
-                        selected = true,
-                        onClick = {
-                            if (denominacionesList.size > 1) {
-                                denominacionesList = denominacionesList - den
-                            }
-                        },
-                        label = { Text("$den CUP", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                        trailingIcon = {
-                            Icon(Icons.Default.Close, contentDescription = "Eliminar", modifier = Modifier.size(14.dp))
-                        }
-                    )
-                }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedTextField(
-                    value = nuevaDenominacionText,
-                    onValueChange = { nuevaDenominacionText = it },
-                    label = { Text("Nueva Denominación") },
-                    placeholder = { Text("Ej: 2000") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true,
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.weight(1f),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = ElQadreNavy,
-                        unfocusedBorderColor = ElQadreBorder,
-                        cursorColor = ElQadreNavy
-                    )
-                )
-                Button(
-                    onClick = {
-                        val num = nuevaDenominacionText.trim().toIntOrNull()
-                        if (num != null && num > 0 && !denominacionesList.contains(num)) {
-                            denominacionesList = (denominacionesList + num).sortedDescending()
-                            nuevaDenominacionText = ""
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy, contentColor = Color.White),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.height(48.dp)
-                ) {
-                    Text("Añadir", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            Button(
-                onClick = {
-                    val metodosPagoString = if (metodosPagoList.isEmpty()) "Efectivo" else metodosPagoList.joinToString(",")
-                    val currentParams = "Apertura automatica:${if (aperturaAutomatica) "verdadero" else "falso"},Obligatorio notas de cierre:${if (notasObligatoriasCierre) "verdadero" else "falso"}"
-                    val denominacionesString = denominacionesList.joinToString(",")
-
-                    val baseConfig = uiState.generalConfig ?: ConfiguracionGeneral()
-                    viewModel.updateGeneralConfig(
-                        baseConfig.copy(
-                            moneda = moneda,
-                            metodosPago = metodosPagoString,
-                            parametrosJornada = currentParams,
-                            denominacionesCaja = denominacionesString,
-                            tasaUsd = tasaUsdText.toDoubleOrNull() ?: 0.0,
-                            tasaEur = tasaEurText.toDoubleOrNull() ?: 0.0
-                        )
-                    )
-                    Toast.makeText(context, "Parámetros de jornada y caja guardados.", Toast.LENGTH_SHORT).show()
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy, contentColor = Color.White),
-                modifier = Modifier.fillMaxWidth().height(50.dp).testTag("btn_guardar_params_jornada"),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Icon(Icons.Outlined.Save, contentDescription = null, modifier = Modifier.size(20.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("GUARDAR PARÁMETROS DE JORNADA Y CAJA", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                Text("GUARDAR TASA DE CAMBIO", fontWeight = FontWeight.Bold, fontSize = 13.sp)
             }
         }
 
@@ -12460,6 +12396,30 @@ fun DuenoAjustesView(
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("RESTAURAR", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+            HorizontalDivider(color = ElQadreBorder, thickness = 1.dp)
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = "Recuperar exclusivamente Datos de Producción (Insumos, Productos, Recetas, Categorías) desde JSON antiguos de ElQadre. No afecta licencias, contraseñas, jornadas ni usuarios.",
+                fontSize = 11.sp,
+                color = Slate600
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            Button(
+                onClick = {
+                    legacyProduccionJsonText = ""
+                    legacyProduccionSummary = null
+                    showImportLegacyProduccionModal = true
+                },
+                modifier = Modifier.fillMaxWidth().height(50.dp).testTag("btn_importar_legacy_produccion"),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706), contentColor = Color.White),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(Icons.Outlined.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("IMPORTAR PRODUCCIÓN (JSON ANTIGUO)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
         }
 
@@ -12799,6 +12759,129 @@ fun DuenoAjustesView(
                 }
             }
         }
+    } else {
+            // -------------------------------------------------------------
+            // SECCIÓN: GESTIÓN OPERATIVA
+            // Punto de entrada a los módulos operativos del negocio
+            // -------------------------------------------------------------
+            SettingsSectionCard(
+                title = "MÓDULOS DE GESTIÓN OPERATIVA",
+                icon = Icons.Outlined.Tune
+            ) {
+                Text(
+                    text = "Punto de entrada a los módulos operativos del negocio.",
+                    fontSize = 12.sp,
+                    color = Slate600
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+
+                val gestionModules = listOf(
+                    GestionModuleItem(
+                        view = DuenoView.INVENTARIO,
+                        title = "Inventario",
+                        subtitle = "Producción, Mercaderías y Control de Stock",
+                        icon = Icons.Outlined.Inventory2,
+                        tag = "btn_nav_gestion_inventario"
+                    ),
+                    GestionModuleItem(
+                        view = DuenoView.INVERSIONES,
+                        title = "Inversiones",
+                        subtitle = "Control de inversiones y activos del negocio",
+                        icon = Icons.Outlined.AttachMoney,
+                        tag = "btn_nav_gestion_inversiones"
+                    ),
+                    GestionModuleItem(
+                        view = DuenoView.CATALOGO,
+                        title = "Catálogo",
+                        subtitle = "Productos, categorías y precios de venta",
+                        icon = Icons.Outlined.MenuBook,
+                        tag = "btn_nav_gestion_catalogo"
+                    ),
+                    GestionModuleItem(
+                        view = DuenoView.GASTOS,
+                        title = "Gastos",
+                        subtitle = "Registro de gastos y costos de operación",
+                        icon = Icons.Outlined.ReceiptLong,
+                        tag = "btn_nav_gestion_gastos"
+                    ),
+                    GestionModuleItem(
+                        view = DuenoView.PERSONAL,
+                        title = "Personal",
+                        subtitle = "Trabajadores, nómina y gestión de usuarios",
+                        icon = Icons.Outlined.Group,
+                        tag = "btn_nav_gestion_personal"
+                    ),
+                    GestionModuleItem(
+                        view = DuenoView.CONTROL_NEGOCIO,
+                        title = "Control del Negocio",
+                        subtitle = "Ventas, balances, estadísticas y arqueo",
+                        icon = Icons.Outlined.Analytics,
+                        tag = "btn_nav_gestion_control_negocio"
+                    )
+                )
+
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    gestionModules.forEach { mod ->
+                        Card(
+                            onClick = { onNavigate(mod.view) },
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(containerColor = Slate50),
+                            border = BorderStroke(1.dp, Slate200),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag(mod.tag)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = ElQadreNavy.copy(alpha = 0.08f),
+                                    modifier = Modifier.size(44.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = mod.icon,
+                                            contentDescription = null,
+                                            tint = ElQadreNavy,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.width(14.dp))
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = mod.title,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp,
+                                        color = ElQadreNavy
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = mod.subtitle,
+                                        fontSize = 12.sp,
+                                        color = Slate500,
+                                        lineHeight = 16.sp
+                                    )
+                                }
+
+                                Icon(
+                                    imageVector = Icons.Default.ChevronRight,
+                                    contentDescription = "Acceder a ${mod.title}",
+                                    tint = Slate400,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         Spacer(modifier = Modifier.height(32.dp))
     }
@@ -12970,6 +13053,210 @@ fun DuenoAjustesView(
             },
             containerColor = Color.White
         )
+    }
+
+    // Modal for Importar Producción (JSON Antiguo)
+    if (showImportLegacyProduccionModal) {
+        AlertDialog(
+            onDismissRequest = { showImportLegacyProduccionModal = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Outlined.Refresh, contentDescription = null, tint = Color(0xFFD97706))
+                    Text("Importar Producción (JSON Antiguo)", fontWeight = FontWeight.Black, color = Color(0xFFD97706), fontSize = 16.sp)
+                }
+            },
+            text = {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.verticalScroll(rememberScrollState())
+                ) {
+                    if (legacyProduccionSummary == null) {
+                        Text(
+                            "Seleccione un archivo de respaldo .json antiguo o pegue su contenido para recuperar selectivamente la producción (Insumos, Productos y Recetas).",
+                            fontSize = 12.sp,
+                            color = Slate600
+                        )
+
+                        Button(
+                            onClick = {
+                                legacyProduccionFilePicker.launch(arrayOf("application/json", "text/*", "*/*"))
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth().height(42.dp).testTag("btn_pick_legacy_file")
+                        ) {
+                            Icon(Icons.Outlined.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("SELECCIONAR ARCHIVO (.JSON)", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Text("O pegue el contenido JSON:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Slate700)
+
+                        OutlinedTextField(
+                            value = legacyProduccionJsonText,
+                            onValueChange = { legacyProduccionJsonText = it },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(130.dp)
+                                .testTag("legacy_paste_field"),
+                            placeholder = { Text("Pegue el JSON antiguo aquí...") },
+                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 10.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color(0xFFD97706),
+                                cursorColor = Color(0xFFD97706)
+                            )
+                        )
+                    } else {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Slate100),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text("RESUMEN DE PRODUCCIÓN DETECTADO:", fontSize = 11.sp, fontWeight = FontWeight.Black, color = Color(0xFFD97706))
+                                Text(legacyProduccionSummary!!, fontSize = 12.sp, color = Slate800, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        Text(
+                            "💡 INFORMACIÓN:\nEsta operación es selectiva (UPsert). Los datos existentes no se eliminarán. Los insumos/productos coincidentes se actualizarán de forma segura.",
+                            fontSize = 12.sp,
+                            color = Color(0xFF0F766E),
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                if (legacyProduccionSummary == null) {
+                    Button(
+                        onClick = {
+                            if (legacyProduccionJsonText.isBlank()) {
+                                Toast.makeText(context, "Seleccione un archivo o pegue el contenido JSON.", Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+                            val res = viewModel.getLegacyProduccionBackupSummary(legacyProduccionJsonText)
+                            if (res.isSuccess) {
+                                legacyProduccionSummary = res.getOrNull()
+                            } else {
+                                Toast.makeText(context, "JSON inválido o incompatible con Producción: ${res.exceptionOrNull()?.localizedMessage}", Toast.LENGTH_LONG).show()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
+                        modifier = Modifier.testTag("btn_validar_legacy_json")
+                    ) {
+                        Text("VALIDAR DATOS", fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    }
+                } else {
+                    Button(
+                        onClick = {
+                            isImportingLegacyProduccion = true
+                            viewModel.importLegacyProduccionBackupJson(legacyProduccionJsonText) { success, msg ->
+                                isImportingLegacyProduccion = false
+                                if (success) {
+                                    showImportLegacyProduccionModal = false
+                                    Toast.makeText(context, "Producción importada correctamente.", Toast.LENGTH_LONG).show()
+                                } else {
+                                    Toast.makeText(context, "Error al importar: $msg", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F766E)),
+                        modifier = Modifier.testTag("btn_confirmar_importar_legacy")
+                    ) {
+                        Text("CONFIRMAR E IMPORTAR", fontWeight = FontWeight.Black, fontSize = 11.sp)
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showImportLegacyProduccionModal = false }) {
+                    Text("Cancelar", fontWeight = FontWeight.Bold, color = Slate600)
+                }
+            },
+            containerColor = Color.White
+        )
+    }
+}
+
+@Composable
+private fun AjustesHubCard(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    isSelected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Card(
+        onClick = onClick,
+        modifier = modifier.minimumInteractiveComponentSize(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected) ElQadreNavy else Color.White
+        ),
+        border = BorderStroke(
+            width = if (isSelected) 2.dp else 1.dp,
+            color = if (isSelected) ElQadreGold else Slate200
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 4.dp else 1.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (isSelected) ElQadreGold.copy(alpha = 0.2f) else Slate100,
+                    modifier = Modifier.size(42.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            tint = if (isSelected) ElQadreGold else ElQadreNavy,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                }
+
+                if (isSelected) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = ElQadreGold
+                    ) {
+                        Text(
+                            text = "ACTIVO",
+                            color = ElQadreNavy,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 10.sp,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = title,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    color = if (isSelected) Color.White else ElQadreNavy
+                )
+                Text(
+                    text = subtitle,
+                    fontSize = 11.sp,
+                    color = if (isSelected) Color.White.copy(alpha = 0.8f) else Slate500,
+                    lineHeight = 15.sp,
+                    maxLines = 2
+                )
+            }
+        }
     }
 }
 

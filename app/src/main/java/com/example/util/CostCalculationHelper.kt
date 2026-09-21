@@ -29,6 +29,14 @@ data class ProductCostSheet(
     val depreciacionAsignada: Double,
     val gastoIndirectoAsignado: Double,
     val gastoIndirectoUnitario: Double,
+    val pagoCocinaUnitario: Double = 0.0,
+    val cantidadCocineros: Int = 1,
+    val totalPagoCocinaUnitario: Double = 0.0,
+    val pagoDependienteUnitario: Double = 0.0,
+    val totalPagoDependienteUnitario: Double = 0.0,
+    val pagoCajeroUnitario: Double = 0.0,
+    val totalPagoCajeroUnitario: Double = 0.0,
+    val totalPagoPersonalUnitario: Double = 0.0,
     val costoRealUnitario: Double,
     val precioReferencia: Double,
     val precioDefinitivo: Double,
@@ -339,10 +347,20 @@ object CostCalculationHelper {
             0.0
         }
 
-        // 5. COSTO REAL UNITARIO (CDU + GIU)
-        val costoRealUnitario = cdu + gastoIndirectoUnitario
+        // 5. PAGOS DE PERSONAL ASOCIADOS
+        val pagoCocinaUnitario = prodElaborado?.pagoCocinaUnitario ?: 0.0
+        val cantidadCocineros = prodElaborado?.cantidadCocineros?.takeIf { it > 0 } ?: 1
+        val totalPagoCocina = if (pagoCocinaUnitario > 0.0) pagoCocinaUnitario * cantidadCocineros else 0.0
+        val pagoDependienteUnitario = prodElaborado?.pagoDependienteUnitario ?: 0.0
+        val totalPagoDependiente = pagoDependienteUnitario
+        val pagoCajeroUnitario = prodElaborado?.pagoCajeroUnitario ?: 0.0
+        val totalPagoCajero = pagoCajeroUnitario
+        val totalPagoPersonal = totalPagoCocina + totalPagoDependiente + totalPagoCajero
 
-        // 6. PRECIO DE REFERENCIA (+30% margen sugerido)
+        // 6. COSTO REAL UNITARIO / COSTO TEÓRICO (Materias Primas + Gastos Indirectos + Pagos de Personal)
+        val costoRealUnitario = cdu + gastoIndirectoUnitario + totalPagoPersonal
+
+        // 7. PRECIO DE REFERENCIA (+30% margen sugerido)
         val targetMarginPct = prodElaborado?.targetMarginPct ?: 30.0
         val precioReferencia = if (costoRealUnitario > 0.0) {
             costoRealUnitario * (1.0 + targetMarginPct / 100.0)
@@ -350,7 +368,7 @@ object CostCalculationHelper {
             0.0
         }
 
-        // 7. PRECIO DEFINITIVO
+        // 8. PRECIO DEFINITIVO
         val definitivePrice = prodElaborado?.precioDefinitivo ?: 0.0
         val hasDefinitivePrice = prodElaborado?.hasPrecioDefinitivo == true && definitivePrice > 0.0
 
@@ -372,6 +390,14 @@ object CostCalculationHelper {
             depreciacionAsignada = depreciacionAsignada,
             gastoIndirectoAsignado = gastoIndirectoAsignado,
             gastoIndirectoUnitario = gastoIndirectoUnitario,
+            pagoCocinaUnitario = pagoCocinaUnitario,
+            cantidadCocineros = cantidadCocineros,
+            totalPagoCocinaUnitario = totalPagoCocina,
+            pagoDependienteUnitario = pagoDependienteUnitario,
+            totalPagoDependienteUnitario = totalPagoDependiente,
+            pagoCajeroUnitario = pagoCajeroUnitario,
+            totalPagoCajeroUnitario = totalPagoCajero,
+            totalPagoPersonalUnitario = totalPagoPersonal,
             costoRealUnitario = costoRealUnitario,
             precioReferencia = precioReferencia,
             precioDefinitivo = definitivePrice,

@@ -467,6 +467,26 @@ fun FichaCostoDialog(
         mutableStateOf(if (costSheet.ppd % 1.0 == 0.0) costSheet.ppd.toLong().toString() else costSheet.ppd.toString())
     }
 
+    var pagoCocinaText by remember(costSheet.pagoCocinaUnitario) {
+        mutableStateOf(if (costSheet.pagoCocinaUnitario > 0.0) if (costSheet.pagoCocinaUnitario % 1.0 == 0.0) costSheet.pagoCocinaUnitario.toLong().toString() else "%.2f".format(costSheet.pagoCocinaUnitario) else "")
+    }
+
+    var cantidadCocinerosText by remember(costSheet.cantidadCocineros) {
+        mutableStateOf(if (costSheet.cantidadCocineros > 0) costSheet.cantidadCocineros.toString() else "1")
+    }
+
+    var pagoDependienteText by remember(costSheet.pagoDependienteUnitario) {
+        mutableStateOf(if (costSheet.pagoDependienteUnitario > 0.0) if (costSheet.pagoDependienteUnitario % 1.0 == 0.0) costSheet.pagoDependienteUnitario.toLong().toString() else "%.2f".format(costSheet.pagoDependienteUnitario) else "")
+    }
+
+    var pagoCajeroText by remember(costSheet.pagoCajeroUnitario) {
+        mutableStateOf(if (costSheet.pagoCajeroUnitario > 0.0) if (costSheet.pagoCajeroUnitario % 1.0 == 0.0) costSheet.pagoCajeroUnitario.toLong().toString() else "%.2f".format(costSheet.pagoCajeroUnitario) else "")
+    }
+
+    val presentaciones = remember(product.presentacionesEspeciales) {
+        parsePresentacionesEspeciales(product.presentacionesEspeciales)
+    }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
@@ -903,22 +923,385 @@ fun FichaCostoDialog(
                     }
 
                     // ==========================================
-                    // SECCIÓN 6: COSTO REAL
+                    // SECCIÓN 6: PAGOS DE PERSONAL ASOCIADOS
+                    // ==========================================
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color.White,
+                        border = BorderStroke(1.5.dp, Color(0xFF6366F1))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.People,
+                                        contentDescription = null,
+                                        tint = Color(0xFF4F46E5),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Text(
+                                        "6. PAGOS DE PERSONAL ASOCIADOS",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ElQadreNavy
+                                    )
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = Color(0xFFEEF2FF),
+                                    border = BorderStroke(1.dp, Color(0xFFC7D2FE))
+                                ) {
+                                    Text(
+                                        text = "$${"%.2f".format(costSheet.totalPagoPersonalUnitario)} CUP / ud",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color(0xFF4338CA),
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                    )
+                                }
+                            }
+
+                            Text(
+                                "Configure los pagos de personal por unidad producida/vendida asociados a este producto de Producción:",
+                                fontSize = 11.sp,
+                                color = Slate600
+                            )
+
+                            // 1. COCINA
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Slate50,
+                                border = BorderStroke(1.dp, Slate200),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("COCINA", fontSize = 11.sp, fontWeight = FontWeight.Black, color = ElQadreNavy)
+                                        val cocinaUnit = pagoCocinaText.toDoubleOrNull() ?: 0.0
+                                        val cocinerosCount = cantidadCocinerosText.toIntOrNull() ?: 1
+                                        val subtotalCocina = cocinaUnit * (if (cocinerosCount > 0) cocinerosCount else 1)
+                                        Text(
+                                            "Subtotal: $${"%.2f".format(subtotalCocina)} CUP / ud",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF4338CA)
+                                        )
+                                    }
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        OutlinedTextField(
+                                            value = pagoCocinaText,
+                                            onValueChange = { pagoCocinaText = it },
+                                            label = { Text("Pago por unidad ($ CUP)") },
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                            singleLine = true,
+                                            modifier = Modifier.weight(1.3f).testTag("pago_cocina_unitario_input"),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedBorderColor = Color(0xFF6366F1),
+                                                focusedLabelColor = Color(0xFF4F46E5)
+                                            )
+                                        )
+
+                                        OutlinedTextField(
+                                            value = cantidadCocinerosText,
+                                            onValueChange = { cantidadCocinerosText = it },
+                                            label = { Text("Cant. Cocineros") },
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                            singleLine = true,
+                                            modifier = Modifier.weight(1f).testTag("cantidad_cocineros_input"),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedBorderColor = Color(0xFF6366F1),
+                                                focusedLabelColor = Color(0xFF4F46E5)
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+
+                            // 2. DEPENDIENTE
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Slate50,
+                                border = BorderStroke(1.dp, Slate200),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            Text("DEPENDIENTE", fontSize = 11.sp, fontWeight = FontWeight.Black, color = ElQadreNavy)
+                                            Surface(
+                                                shape = RoundedCornerShape(4.dp),
+                                                color = Slate200
+                                            ) {
+                                                Text(
+                                                    "1 dependiente",
+                                                    fontSize = 9.5.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Slate700,
+                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                )
+                                            }
+                                        }
+                                        val depUnit = pagoDependienteText.toDoubleOrNull() ?: 0.0
+                                        Text(
+                                            "Subtotal: $${"%.2f".format(depUnit)} CUP / ud",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF4338CA)
+                                        )
+                                    }
+
+                                    OutlinedTextField(
+                                        value = pagoDependienteText,
+                                        onValueChange = { pagoDependienteText = it },
+                                        label = { Text("Pago por unidad producida/vendida ($ CUP)") },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth().testTag("pago_dependiente_unitario_input"),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = Color(0xFF6366F1),
+                                            focusedLabelColor = Color(0xFF4F46E5)
+                                        )
+                                    )
+                                }
+                            }
+
+                            // 3. CAJERO
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Slate50,
+                                border = BorderStroke(1.dp, Slate200),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("CAJERO", fontSize = 11.sp, fontWeight = FontWeight.Black, color = ElQadreNavy)
+                                        val cajeroUnit = pagoCajeroText.toDoubleOrNull() ?: 0.0
+                                        Text(
+                                            "Subtotal: $${"%.2f".format(cajeroUnit)} CUP / ud",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF4338CA)
+                                        )
+                                    }
+
+                                    OutlinedTextField(
+                                        value = pagoCajeroText,
+                                        onValueChange = { pagoCajeroText = it },
+                                        label = { Text("Pago por unidad producida/vendida ($ CUP)") },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth().testTag("pago_cajero_unitario_input"),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = Color(0xFF6366F1),
+                                            focusedLabelColor = Color(0xFF4F46E5)
+                                        )
+                                    )
+                                }
+                            }
+
+                            // BOTÓN GUARDAR PAGOS DE PERSONAL
+                            Button(
+                                onClick = {
+                                    val cocinaVal = pagoCocinaText.toDoubleOrNull() ?: 0.0
+                                    val cocinerosVal = cantidadCocinerosText.toIntOrNull() ?: 1
+                                    val depVal = pagoDependienteText.toDoubleOrNull() ?: 0.0
+                                    val cajeroVal = pagoCajeroText.toDoubleOrNull() ?: 0.0
+                                    viewModel.updatePagosPersonalProductoElaborado(
+                                        productId = product.id,
+                                        pagoCocinaUnitario = cocinaVal,
+                                        cantidadCocineros = cocinerosVal,
+                                        pagoDependienteUnitario = depVal,
+                                        pagoCajeroUnitario = cajeroVal
+                                    )
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5)),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth().height(48.dp).testTag("save_pagos_personal_button")
+                            ) {
+                                Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("GUARDAR PAGOS DE PERSONAL", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
+                        }
+                    }
+
+                    // ==========================================
+                    // SECCIÓN 7: PRESENTACIONES Y EQUIVALENCIAS (SI APLICA)
+                    // ==========================================
+                    if (presentaciones.isNotEmpty()) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Slate50,
+                            border = BorderStroke(1.dp, Slate300)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        "7. PRESENTACIONES Y EQUIVALENCIAS CONFIGURADAS",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ElQadreNavy
+                                    )
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = ElQadreGoldSoft
+                                    ) {
+                                        Text(
+                                            "${presentaciones.size} presentación(es)",
+                                            fontSize = 9.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = ElQadreGoldDark,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+
+                                Text(
+                                    "Los costos y pagos de personal se calculan proporcionalmente según la equivalencia configurada para cada presentación:",
+                                    fontSize = 10.5.sp,
+                                    color = Slate600
+                                )
+
+                                presentaciones.forEach { pres ->
+                                    val factor = pres.baseEquivalence
+                                    val presMatPrima = costSheet.costoDirectoUnitario * factor
+                                    val presGastos = costSheet.gastoIndirectoUnitario * factor
+                                    val presPersonal = costSheet.totalPagoPersonalUnitario * factor
+                                    val presCostoTotal = costSheet.costoRealUnitario * factor
+                                    val presPrecioRef = costSheet.precioReferencia * factor
+
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = Color.White,
+                                        border = BorderStroke(1.dp, Slate200),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(pres.name, fontWeight = FontWeight.Black, fontSize = 13.sp, color = ElQadreNavy)
+                                                Text(
+                                                    "= ${pres.baseEquivalence} ${costSheet.productionUnit}",
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    fontSize = 12.sp,
+                                                    color = ElQadreGoldDark
+                                                )
+                                            }
+
+                                            HorizontalDivider(color = Slate100)
+
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Column {
+                                                    Text("Mat. Prima", fontSize = 9.5.sp, color = Slate500)
+                                                    Text("$${"%.2f".format(presMatPrima)}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = ElQadreNavy)
+                                                }
+                                                Column {
+                                                    Text("Gastos Grales", fontSize = 9.5.sp, color = Slate500)
+                                                    Text("$${"%.2f".format(presGastos)}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Slate700)
+                                                }
+                                                Column {
+                                                    Text("Pagos Personal", fontSize = 9.5.sp, color = Slate500)
+                                                    Text("$${"%.2f".format(presPersonal)}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF4338CA))
+                                                }
+                                                Column(horizontalAlignment = Alignment.End) {
+                                                    Text("Costo Teórico", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = Emerald700)
+                                                    Text("$${"%.2f".format(presCostoTotal)} CUP", fontSize = 12.sp, fontWeight = FontWeight.Black, color = Emerald700)
+                                                }
+                                            }
+
+                                            if (presPrecioRef > 0.0) {
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .background(Slate50, RoundedCornerShape(4.dp))
+                                                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                ) {
+                                                    Text("Precio Referencia Sugerido (+30%):", fontSize = 10.sp, color = Slate600)
+                                                    Text("$${"%.2f".format(presPrecioRef)} CUP", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = ElQadreNavy)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // ==========================================
+                    // SECCIÓN 8: COSTO TEÓRICO / COSTO REAL UNITARIO (CRU)
                     // ==========================================
                     Surface(
                         shape = RoundedCornerShape(10.dp),
                         color = ElQadreNavy,
                         border = BorderStroke(1.dp, ElQadreNavy)
                     ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
+                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(
-                                "6. COSTO REAL UNITARIO (CRU)",
+                                "8. COSTO TEÓRICO UNITARIO (CRU)",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = ElQadreGold
                             )
 
-                            Spacer(modifier = Modifier.height(8.dp))
+                            // Desglose de 4 componentes
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Color(0xFF0F172A), RoundedCornerShape(8.dp))
+                                    .padding(10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column {
+                                    Text("Materias Primas", fontSize = 9.5.sp, color = Slate400)
+                                    Text("$${"%.2f".format(costSheet.costoDirectoUnitario)}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                }
+                                Column {
+                                    Text("Gastos Generales", fontSize = 9.5.sp, color = Slate400)
+                                    Text("$${"%.2f".format(costSheet.gastoIndirectoUnitario)}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                }
+                                Column {
+                                    Text("Pagos Personal", fontSize = 9.5.sp, color = Slate400)
+                                    Text("$${"%.2f".format(costSheet.totalPagoPersonalUnitario)}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFA5B4FC))
+                                }
+                            }
 
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -927,15 +1310,15 @@ fun FichaCostoDialog(
                             ) {
                                 Column {
                                     Text(
-                                        "Costo Directo ($${"%.2f".format(costSheet.costoDirectoUnitario)}) + Gasto Indirecto ($${"%.2f".format(costSheet.gastoIndirectoUnitario)})",
-                                        fontSize = 11.sp,
-                                        color = Slate300
+                                        "Costo Total Resultante",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
                                     )
                                     Text(
-                                        "Costo Real por ${costSheet.productionUnit}",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = Color.White
+                                        "Por ${costSheet.productionUnit} producida/vendida",
+                                        fontSize = 10.5.sp,
+                                        color = Slate300
                                     )
                                 }
 
@@ -950,7 +1333,7 @@ fun FichaCostoDialog(
                     }
 
                     // ==========================================
-                    // SECCIÓN 7: PRECIO DE VENTA Y DECISIÓN
+                    // SECCIÓN 9: PRECIO DE VENTA Y DECISIÓN DE FIJACIÓN
                     // ==========================================
                     Surface(
                         shape = RoundedCornerShape(10.dp),
@@ -962,7 +1345,7 @@ fun FichaCostoDialog(
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Text(
-                                "7. PRECIO DE VENTA Y DECISIÓN DE FIJACIÓN",
+                                "9. PRECIO DE VENTA Y DECISIÓN DE FIJACIÓN",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = ElQadreNavy

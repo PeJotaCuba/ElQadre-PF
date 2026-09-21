@@ -175,7 +175,7 @@ object CostSheetPdfExporter {
         canvas.drawText("Costo Directo Unitario (CDU): $${String.format("%.2f", costSheet.costoDirectoUnitario)} CUP", 50f, y, paint)
         y += 18f
         
-        // Breakdown as requested: Gastos Indirectos (Prorrateados + Puntuales) & Depreciación (Prorrateada + Puntual)
+        // Breakdown: Gastos Indirectos & Depreciación
         val unitGastos = if (costSheet.ppd > 0) costSheet.gastoGeneralAsignado / costSheet.ppd else 0.0
         val unitDeprec = if (costSheet.ppd > 0) costSheet.depreciacionAsignada / costSheet.ppd else 0.0
         
@@ -183,6 +183,12 @@ object CostSheetPdfExporter {
         y += 18f
         canvas.drawText("Depreciación Inversiones (Gral + Puntual): $${String.format("%.4f", unitDeprec)} CUP", 50f, y, paint)
         y += 18f
+
+        // Pagos de Personal Asociados
+        if (costSheet.totalPagoPersonalUnitario > 0.0) {
+            canvas.drawText("Pagos de Personal Asociados: $${String.format("%.2f", costSheet.totalPagoPersonalUnitario)} CUP (Cocina: $${String.format("%.2f", costSheet.totalPagoCocinaUnitario)}, Dep: $${String.format("%.2f", costSheet.totalPagoDependienteUnitario)}, Caj: $${String.format("%.2f", costSheet.totalPagoCajeroUnitario)})", 50f, y, paint)
+            y += 18f
+        }
 
         paint.isFakeBoldText = true
         paint.color = Color.parseColor("#047857")

@@ -444,13 +444,8 @@ object UserUpdateManager {
             val finalVersionToSave = if (remoteVersion.isNotBlank()) remoteVersion else System.currentTimeMillis().toString()
 
             db.withTransaction {
-                // Ensure business isolation: remove local users that do not belong to this business
-                val newUsernameSet = newUsers.map { it.first.username.lowercase() }.toSet()
-                existingUsers.forEach { existing ->
-                    if (!newUsernameSet.contains(existing.username.lowercase())) {
-                        db.userDao().deleteUser(existing.username)
-                    }
-                }
+                // Ensure default and local users (including admin and locally created accounts) are preserved.
+                // Do not delete local users during JSON updates.
 
                 newUsers.forEach { (user, hasExplicitPhone) ->
                     val existingUser = db.userDao().getUserByUsername(user.username)

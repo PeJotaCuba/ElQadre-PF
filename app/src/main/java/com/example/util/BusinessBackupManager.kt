@@ -37,6 +37,17 @@ data class BackupSummary(
     val inversionesCount: Int
 )
 
+data class LegacyImportSummary(
+    val insumosNuevos: Int,
+    val insumosActualizados: Int,
+    val productosNuevos: Int,
+    val productosActualizados: Int,
+    val recetasNuevas: Int,
+    val recetasActualizadas: Int,
+    val categoriasNuevas: Int,
+    val categoriasActualizadas: Int
+)
+
 object BusinessBackupManager {
     private const val APP_IDENTIFIER = "Q_RESPALDO"
     private const val FORMAT_IDENTIFIER = "ELQADRE_FULL_BUSINESS_BACKUP"
@@ -1155,6 +1166,395 @@ object BusinessBackupManager {
         } catch (e: Exception) {
             e.printStackTrace()
             Result.failure(Exception("Error al restaurar los datos en base de datos: ${e.localizedMessage}"))
+        }
+    }
+
+    suspend fun importLegacyProduccion(
+        jsonString: String,
+        db: AppDatabase,
+        context: Context
+    ): Result<LegacyImportSummary> {
+        return try {
+            val root = JSONObject(jsonString)
+            
+            // Validate that we have some production structure
+            val hasMateriasPrimas = root.has("materiasPrimas") || root.has("insumos")
+            val hasProducts = root.has("products") || root.has("productos")
+            val hasElaborados = root.has("productosElaborados")
+            val hasRecetas = root.has("recetaIngredientes")
+            val hasCategories = root.has("categories")
+            
+            if (!hasMateriasPrimas && !hasProducts && !hasElaborados && !hasRecetas && !hasCategories) {
+                return Result.failure(Exception("El JSON no contiene estructuras reconocibles de Producción."))
+            }
+
+            var insumosNuevos = 0
+            var insumosActualizados = 0
+            var productosNuevos = 0
+            var productosActualizados = 0
+            var recetasNuevas = 0
+            var recetasActualizadas = 0
+            var categoriasNuevas = 0
+            var categoriasActualizadas = 0
+
+            db.withTransaction {
+                // 1. Categories
+                val categoryArr = root.optJSONArray("categories")
+                if (categoryArr != null) {
+                    val existing = db.categoryDao().getAllCategoriesSync().associateBy { it.name.lowercase().trim() }
+                    for (i in 0 until categoryArr.length()) {
+                        val o = categoryArr.getJSONObject(i)
+                        val name = o.getString("name")
+                        val key = name.lowercase().trim()
+                        val oldCat = existing[key]
+                        if (oldCat == null) {
+                            db.categoryDao().insertCategory(
+                                Category(
+                                    id = o.optLong("id", 0L),
+                                    name = name,
+                                    description = o.optString("description", ""),
+                                    isActive = o.optBoolean("isActive", true)
+                                )
+                            )
+                            categoriasNuevas++
+                        } else {
+                            db.categoryDao().insertCategory(
+                                Category(
+                                    id = oldCat.id,
+                                    name = name,
+                                    description = o.optString("description", oldCat.description),
+                                    isActive = o.optBoolean("isActive", oldCat.isActive)
+                                )
+                            )
+                            categoriasActualizadas++
+                        }
+                    }
+                }
+
+                // 2. MateriaPrima (Insumos)
+                val mpsArr = root.optJSONArray("materiasPrimas") ?: root.optJSONArray("insumos")
+                if (mpsArr != null) {
+                    val existingMps = db.materiaPrimaDao().getAllSync().associateBy { it.name.lowercase().trim() }
+                    for (i in 0 until mpsArr.length()) {
+                        val o = mpsArr.getJSONObject(i)
+                        val name = o.getString("name")
+                        val key = name.lowercase().trim()
+                        val oldMp = existingMps[key]
+                        
+                        val unit = o.optString("unit", o.optString("purchaseUnit", "g"))
+                        val unitCost = o.optDouble("unitCost", 0.0)
+                        val stock = o.optDouble("stock", o.optDouble("initialStock", 0.0))
+                        val initialStock = o.optDouble("initialStock", stock)
+                        val purchasePrice = o.optDouble("purchasePrice", 0.0)
+                        val purchaseUnit = o.optString("purchaseUnit", unit)
+                        val purchaseQuantity = o.optDouble("purchaseQuantity", 1.0)
+                        val isActive = o.optBoolean("isActive", true)
+                        
+                        if (oldMp == null) {
+                            db.materiaPrimaDao().insert(
+                                MateriaPrima(
+                                    id = o.optLong("id", 0L),
+                                    name = name,
+                                    unit = unit,
+                                    unitCost = unitCost,
+                                    isActive = isActive,
+                                    stock = stock,
+                                    initialStock = initialStock,
+                                    purchasePrice = purchasePrice,
+                                    purchaseUnit = purchaseUnit,
+                                    purchaseQuantity = purchaseQuantity,
+                                    productId = if (o.isNull("productId")) null else o.optLong("productId")
+                                )
+                            )
+                            insumosNuevos++
+                        } else {
+                            db.materiaPrimaDao().insert(
+                                MateriaPrima(
+                                    id = oldMp.id,
+                                    name = name,
+                                    unit = unit,
+                                    unitCost = unitCost,
+                                    isActive = isActive,
+                                    stock = oldMp.stock,
+                                    initialStock = oldMp.initialStock,
+                                    purchasePrice = purchasePrice,
+                                    purchaseUnit = purchaseUnit,
+                                    purchaseQuantity = purchaseQuantity,
+                                    productId = if (o.isNull("productId")) oldMp.productId else o.optLong("productId")
+                                )
+                            )
+                            insumosActualizados++
+                        }
+                    }
+                }
+
+                // 3. Products
+                val prodArr = root.optJSONArray("products") ?: root.optJSONArray("productos")
+                if (prodArr != null) {
+                    val existingProducts = db.productDao().getAllProductsSync().associateBy { it.name.lowercase().trim() }
+                    for (i in 0 until prodArr.length()) {
+                        val o = prodArr.getJSONObject(i)
+                        val name = o.getString("name")
+                        val key = name.lowercase().trim()
+                        val oldProd = existingProducts[key]
+                        
+                        val code = o.optString("code", "")
+                        val category = o.optString("category", "General")
+                        val price = o.optDouble("price", o.optDouble("salePrice", 0.0))
+                        val cost = o.optDouble("cost", o.optDouble("costoTotalUnitario", 0.0))
+                        val stock = o.optInt("stock", 0)
+                        val minStock = o.optInt("minStock", 3)
+                        val destination = o.optString("destination", "COCINA")
+                        val isAvailable = o.optBoolean("isAvailable", true)
+                        val description = o.optString("description", "")
+                        val unitOfMeasure = o.optString("unitOfMeasure", "Unidad")
+                        val admitsAgregados = o.optBoolean("admitsAgregados", false)
+                        val agregadosList = o.optString("agregadosList", "[]")
+                        val isConvertedToInsumo = o.optBoolean("isConvertedToInsumo", false)
+                        val presentacionesEspeciales = o.optString("presentacionesEspeciales", "[]")
+
+                        val prodId: Long
+                        if (oldProd == null) {
+                            prodId = db.productDao().insertProduct(
+                                Product(
+                                    id = o.optLong("id", 0L),
+                                    code = code,
+                                    name = name,
+                                    category = category,
+                                    price = price,
+                                    cost = cost,
+                                    stock = stock,
+                                    minStock = minStock,
+                                    destination = destination,
+                                    isAvailable = isAvailable,
+                                    description = description,
+                                    unitOfMeasure = unitOfMeasure,
+                                    imagePath = if (o.isNull("imagePath")) null else o.optString("imagePath"),
+                                    admitsAgregados = admitsAgregados,
+                                    agregadosList = agregadosList,
+                                    isConvertedToInsumo = isConvertedToInsumo,
+                                    presentacionesEspeciales = presentacionesEspeciales
+                                )
+                            )
+                            productosNuevos++
+                        } else {
+                            prodId = oldProd.id
+                            db.productDao().insertProduct(
+                                Product(
+                                    id = oldProd.id,
+                                    code = code,
+                                    name = name,
+                                    category = category,
+                                    price = price,
+                                    cost = cost,
+                                    stock = oldProd.stock,
+                                    minStock = oldProd.minStock,
+                                    destination = destination,
+                                    isAvailable = isAvailable,
+                                    description = description,
+                                    unitOfMeasure = unitOfMeasure,
+                                    imagePath = oldProd.imagePath,
+                                    admitsAgregados = oldProd.admitsAgregados,
+                                    agregadosList = oldProd.agregadosList,
+                                    isConvertedToInsumo = oldProd.isConvertedToInsumo,
+                                    presentacionesEspeciales = oldProd.presentacionesEspeciales
+                                )
+                            )
+                            productosActualizados++
+                        }
+
+                        // Also process inline "receta" if it exists (legacy Q_produccion format)
+                        val inlineReceta = o.optJSONArray("receta")
+                        if (inlineReceta != null) {
+                            // Find or create ProductoElaborado
+                            val existingElab = db.productoElaboradoDao().getAllSync().find { it.productId == prodId }
+                            val elabId = if (existingElab == null) {
+                                db.productoElaboradoDao().insert(
+                                    ProductoElaborado(
+                                        productId = prodId,
+                                        isActive = isAvailable,
+                                        recipeName = "Receta $name",
+                                        productionUnit = unitOfMeasure,
+                                        baseYield = 1.0,
+                                        baseMateriaPrimaId = 0L,
+                                        baseQuantity = 0.0,
+                                        ppd = o.optDouble("ppd", 10.0),
+                                        precioDefinitivo = price,
+                                        hasPrecioDefinitivo = price > 0.0
+                                    )
+                                )
+                            } else {
+                                existingElab.id
+                            }
+
+                            // Recreate ingredients safely
+                            db.recetaIngredienteDao().deleteIngredientsForProduct(elabId)
+                            for (j in 0 until inlineReceta.length()) {
+                                val ingObj = inlineReceta.getJSONObject(j)
+                                val mpId = ingObj.optLong("materiaPrimaId", 0L)
+                                val qty = ingObj.optDouble("quantity", 0.0)
+                                val unitStr = ingObj.optString("unit", "g")
+                                if (mpId > 0 && qty > 0) {
+                                    db.recetaIngredienteDao().insert(
+                                        RecetaIngrediente(
+                                            productoElaboradoId = elabId,
+                                            materiaPrimaId = mpId,
+                                            quantity = qty,
+                                            unit = unitStr
+                                        )
+                                    )
+                                }
+                            }
+                            recetasActualizadas++
+                        }
+                    }
+                }
+
+                // 4. ProductosElaborados
+                val elabArr = root.optJSONArray("productosElaborados")
+                if (elabArr != null) {
+                    val existingElabs = db.productoElaboradoDao().getAllSync().associateBy { it.productId }
+                    for (i in 0 until elabArr.length()) {
+                        val o = elabArr.getJSONObject(i)
+                        val productId = o.getLong("productId")
+                        val oldElab = existingElabs[productId]
+                        
+                        val isActive = o.optBoolean("isActive", true)
+                        val recipeName = o.optString("recipeName", "")
+                        val productionUnit = o.optString("productionUnit", "unidades")
+                        val baseYield = o.optDouble("baseYield", 1.0)
+                        val baseMateriaPrimaId = o.optLong("baseMateriaPrimaId", 0L)
+                        val baseQuantity = o.optDouble("baseQuantity", 0.0)
+                        val estimatedDailyQuantity = o.optDouble("estimatedDailyQuantity", 10.0)
+                        val ppd = o.optDouble("ppd", 10.0)
+                        val precioDefinitivo = o.optDouble("precioDefinitivo", 0.0)
+                        val hasPrecioDefinitivo = o.optBoolean("hasPrecioDefinitivo", false)
+                        val targetMarginPct = o.optDouble("targetMarginPct", 30.0)
+
+                        if (oldElab == null) {
+                            db.productoElaboradoDao().insert(
+                                ProductoElaborado(
+                                    id = o.optLong("id", 0L),
+                                    productId = productId,
+                                    isActive = isActive,
+                                    recipeName = recipeName,
+                                    productionUnit = productionUnit,
+                                    baseYield = baseYield,
+                                    baseMateriaPrimaId = baseMateriaPrimaId,
+                                    baseQuantity = baseQuantity,
+                                    estimatedDailyQuantity = estimatedDailyQuantity,
+                                    ppd = ppd,
+                                    precioDefinitivo = precioDefinitivo,
+                                    hasPrecioDefinitivo = hasPrecioDefinitivo,
+                                    targetMarginPct = targetMarginPct
+                                )
+                            )
+                        } else {
+                            db.productoElaboradoDao().insert(
+                                ProductoElaborado(
+                                    id = oldElab.id,
+                                    productId = productId,
+                                    isActive = isActive,
+                                    recipeName = recipeName,
+                                    productionUnit = productionUnit,
+                                    baseYield = baseYield,
+                                    baseMateriaPrimaId = baseMateriaPrimaId,
+                                    baseQuantity = baseQuantity,
+                                    estimatedDailyQuantity = estimatedDailyQuantity,
+                                    ppd = ppd,
+                                    precioDefinitivo = precioDefinitivo,
+                                    hasPrecioDefinitivo = hasPrecioDefinitivo,
+                                    targetMarginPct = targetMarginPct
+                                )
+                            )
+                        }
+                    }
+                }
+
+                // 5. RecetaIngredientes
+                val recArr = root.optJSONArray("recetaIngredientes")
+                if (recArr != null) {
+                    val existingRecetas = db.recetaIngredienteDao().getAllIngredientsSync()
+                    for (i in 0 until recArr.length()) {
+                        val o = recArr.getJSONObject(i)
+                        val peId = o.getLong("productoElaboradoId")
+                        val mpId = o.getLong("materiaPrimaId")
+                        val qty = o.getDouble("quantity")
+                        val unit = o.optString("unit", "g")
+
+                        val duplicate = existingRecetas.find { it.productoElaboradoId == peId && it.materiaPrimaId == mpId }
+                        if (duplicate == null) {
+                            db.recetaIngredienteDao().insert(
+                                RecetaIngrediente(
+                                    id = o.optLong("id", 0L),
+                                    productoElaboradoId = peId,
+                                    materiaPrimaId = mpId,
+                                    quantity = qty,
+                                    unit = unit
+                                )
+                            )
+                            recetasNuevas++
+                        } else {
+                            db.recetaIngredienteDao().insert(
+                                RecetaIngrediente(
+                                    id = duplicate.id,
+                                    productoElaboradoId = peId,
+                                    materiaPrimaId = mpId,
+                                    quantity = qty,
+                                    unit = unit
+                                )
+                            )
+                            recetasActualizadas++
+                        }
+                    }
+                }
+            }
+
+            Result.success(
+                LegacyImportSummary(
+                    insumosNuevos = insumosNuevos,
+                    insumosActualizados = insumosActualizados,
+                    productosNuevos = productosNuevos,
+                    productosActualizados = productosActualizados,
+                    recetasNuevas = recetasNuevas,
+                    recetasActualizadas = recetasActualizadas,
+                    categoriasNuevas = categoriasNuevas,
+                    categoriasActualizadas = categoriasActualizadas
+                )
+            )
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    fun getLegacyProduccionSummaryText(jsonString: String): Result<String> {
+        return try {
+            val root = JSONObject(jsonString)
+            val hasMateriasPrimas = root.has("materiasPrimas") || root.has("insumos")
+            val hasProducts = root.has("products") || root.has("productos")
+            val hasElaborados = root.has("productosElaborados")
+            val hasRecetas = root.has("recetaIngredientes")
+            val hasCategories = root.has("categories")
+            
+            if (!hasMateriasPrimas && !hasProducts && !hasElaborados && !hasRecetas && !hasCategories) {
+                return Result.failure(Exception("El JSON no contiene estructuras reconocibles de Producción."))
+            }
+
+            val mpsCount = root.optJSONArray("materiasPrimas")?.length() ?: root.optJSONArray("insumos")?.length() ?: 0
+            val prodsCount = root.optJSONArray("products")?.length() ?: root.optJSONArray("productos")?.length() ?: 0
+            val elabsCount = root.optJSONArray("productosElaborados")?.length() ?: 0
+            val recsCount = root.optJSONArray("recetaIngredientes")?.length() ?: 0
+            val catsCount = root.optJSONArray("categories")?.length() ?: 0
+
+            val summary = "Estructura de Producción detectada:\n" +
+                    "• Insumos / Materias Primas: $mpsCount\n" +
+                    "• Productos: $prodsCount\n" +
+                    "• Productos Elaborados: $elabsCount\n" +
+                    "• Ingredientes de Recetas: $recsCount\n" +
+                    "• Categorías: $catsCount"
+            Result.success(summary)
+        } catch (e: Exception) {
+            Result.failure(e)
         }
     }
 }

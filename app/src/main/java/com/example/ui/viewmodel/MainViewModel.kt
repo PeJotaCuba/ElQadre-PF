@@ -73,6 +73,7 @@ data class MainUiState(
     val pendingComandaAlert: PendingComandaSmsAlert? = null,
     val showComandaAlert: Boolean = false,
     val salonTableCount: Int = 12,
+    val tarifasPagoBebidas: com.example.util.TarifasPagoBebidas = com.example.util.TarifasPagoBebidas(),
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
     val successMessage: String? = null,
@@ -277,7 +278,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val finalDeviceId = deterministicDvc
 
         val savedTableCount = sharedPreferences.getInt("salon_tables_count_global", sharedPreferences.getInt("salon_tables_count_default", 12))
-        _uiState.update { it.copy(deviceId = finalDeviceId, salonTableCount = savedTableCount) }
+        val savedTarifasBebidas = com.example.util.BebidasTarifasPreferences.getTarifas(application)
+        _uiState.update { it.copy(deviceId = finalDeviceId, salonTableCount = savedTableCount, tarifasPagoBebidas = savedTarifasBebidas) }
 
         // Check for active session (24 hours inactivity timeout)
         viewModelScope.launch {
@@ -1050,10 +1052,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     "BARRA" -> UserRole.BARRA
                     else -> UserRole.fromString(personalAccount.role)
                 }
+                val passHash = if (personalAccount.passwordHash.isNotBlank()) {
+                    personalAccount.passwordHash
+                } else if (personalAccount.passwordPlain.isNotBlank()) {
+                    personalAccount.passwordPlain.trim().toSha256()
+                } else {
+                    "1234".toSha256()
+                }
                 val newUser = User(
                     username = personalAccount.username.trim().lowercase(),
                     fullName = personalAccount.nombreCompleto.trim(),
-                    passwordHash = personalAccount.passwordHash,
+                    passwordHash = passHash,
                     role = role,
                     montoPorProducto = personalAccount.montoPorProducto,
                     isActive = personalAccount.isActive,
@@ -1072,9 +1081,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
             
-            if (user.passwordHash != password.trim().toSha256()) {
-                _uiState.update { it.copy(isLoading = false, errorMessage = "Contraseña incorrecta.") }
-                return@launch
+            val inputPassHash = password.trim().toSha256()
+            val passMatches = (user.passwordHash == inputPassHash) || (user.passwordHash == password.trim())
+            if (!passMatches) {
+                if (user.username.equals("admin", ignoreCase = true)) {
+                    val ensuredAdmin = AppDatabase.ensureAdminUserExists(repository.getDatabase())
+                    if (ensuredAdmin.passwordHash != inputPassHash && ensuredAdmin.passwordHash != password.trim()) {
+                        _uiState.update { it.copy(isLoading = false, errorMessage = "Contraseña incorrecta.") }
+                        return@launch
+                    } else {
+                        user = ensuredAdmin
+                    }
+                } else {
+                    _uiState.update { it.copy(isLoading = false, errorMessage = "Contraseña incorrecta.") }
+                    return@launch
+                }
             }
             if (!user.isActive) {
                 _uiState.update { it.copy(isLoading = false, errorMessage = "Usuario inactivo.") }
@@ -1599,8 +1620,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun deleteUser(username: String) {
+        val clean = username.trim().lowercase()
+        if (clean == "admin") return
         viewModelScope.launch {
             repository.deleteUser(username)
+            repository.deleteUser(clean)
+            try {
+                val db = repository.getDatabase()
+                val personal = db.personalContratadoDao().getPersonalByUsername(username)
+                    ?: db.personalContratadoDao().getPersonalByUsername(clean)
+                if (personal != null) {
+                    db.personalContratadoDao().deletePersonal(personal)
+                }
+            } catch (_: Exception) {}
         }
     }
 
@@ -1911,10 +1943,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun createUser(user: User) {
-        viewModelScope.launch {
-            repository.insertUser(user)
-            _uiState.update { it.copy(successMessage = "Usuario creado exitosamente") }
-        }
+        saveUserByAdmin(user)
     }
 
     fun saveUserByAdmin(user: User, onComplete: ((User) -> Unit)? = null) {
@@ -2090,10 +2119,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun updateUser(user: User) {
-        viewModelScope.launch {
-            repository.updateUser(user)
+        saveUserByAdmin(user) { savedUser ->
             _uiState.update { state ->
-                val updatedCurrent = if (state.currentUser?.username == user.username) user else state.currentUser
+                val updatedCurrent = if (state.currentUser?.username == savedUser.username) savedUser else state.currentUser
                 state.copy(
                     currentUser = updatedCurrent,
                     successMessage = "Usuario actualizado exitosamente"
@@ -2642,6 +2670,42 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun updatePagosPersonalProductoElaborado(
+        productId: Long,
+        pagoCocinaUnitario: Double,
+        cantidadCocineros: Int,
+        pagoDependienteUnitario: Double,
+        pagoCajeroUnitario: Double
+    ) {
+        viewModelScope.launch {
+            val prodElaborado = _uiState.value.productosElaborados.find { it.productId == productId }
+            val cocinerosCount = if (cantidadCocineros > 0) cantidadCocineros else 1
+            if (prodElaborado != null) {
+                repository.updateProductoElaborado(
+                    prodElaborado.copy(
+                        pagoCocinaUnitario = pagoCocinaUnitario,
+                        cantidadCocineros = cocinerosCount,
+                        pagoDependienteUnitario = pagoDependienteUnitario,
+                        pagoCajeroUnitario = pagoCajeroUnitario
+                    )
+                )
+            } else {
+                val product = _uiState.value.products.find { it.id == productId }
+                repository.insertProductoElaborado(
+                    ProductoElaborado(
+                        productId = productId,
+                        productionUnit = product?.unitOfMeasure ?: "unidades",
+                        pagoCocinaUnitario = pagoCocinaUnitario,
+                        cantidadCocineros = cocinerosCount,
+                        pagoDependienteUnitario = pagoDependienteUnitario,
+                        pagoCajeroUnitario = pagoCajeroUnitario
+                    )
+                )
+            }
+            _uiState.update { it.copy(successMessage = "Pagos de personal asociados guardados correctamente") }
+        }
+    }
+
     fun updateEstimatedDailyQuantity(productId: Long, quantity: Double) {
         updatePpd(productId, quantity)
     }
@@ -2999,6 +3063,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             _uiState.update { it.copy(successMessage = "Mercadería ${if (newStatus) "activada" else "desactivada"}") }
+        }
+    }
+
+    /**
+     * Actualiza y persiste localmente las tarifas globales de pago de personal asociadas a Bebidas.
+     * (Pago Dependiente por unidad vendida y Pago Cajero por unidad vendida).
+     */
+    fun updateTarifasPagoBebidas(pagoDependiente: Double, pagoCajero: Double) {
+        val tarifas = com.example.util.TarifasPagoBebidas(
+            pagoDependientePorUnidad = maxOf(0.0, pagoDependiente),
+            pagoCajeroPorUnidad = maxOf(0.0, pagoCajero)
+        )
+        com.example.util.BebidasTarifasPreferences.saveTarifas(getApplication(), tarifas)
+        _uiState.update { 
+            it.copy(
+                tarifasPagoBebidas = tarifas,
+                successMessage = "Tarifas de personal para Bebidas guardadas correctamente"
+            ) 
         }
     }
 
@@ -4854,6 +4936,42 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun getDuenoBackupSummary(jsonString: String): Result<String> {
         return com.example.util.BusinessBackupManager.getBackupSummaryText(jsonString, getApplication())
+    }
+
+    fun getLegacyProduccionBackupSummary(jsonString: String): Result<String> {
+        return com.example.util.BusinessBackupManager.getLegacyProduccionSummaryText(jsonString)
+    }
+
+    fun importLegacyProduccionBackupJson(jsonString: String, onComplete: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            val result = withContext(Dispatchers.IO) {
+                com.example.util.BusinessBackupManager.importLegacyProduccion(
+                    jsonString = jsonString,
+                    db = repository.getDatabase(),
+                    context = getApplication()
+                )
+            }
+            _uiState.update { it.copy(isLoading = false) }
+            if (result.isSuccess) {
+                val summary = result.getOrNull()!!
+                val successMsg = "Importación de Producción completada.\n" +
+                        "• Insumos: ${summary.insumosNuevos} nuevos, ${summary.insumosActualizados} actualizados.\n" +
+                        "• Productos: ${summary.productosNuevos} nuevos, ${summary.productosActualizados} actualizados.\n" +
+                        "• Recetas: ${summary.recetasNuevas} nuevas, ${summary.recetasActualizadas} actualizadas.\n" +
+                        "• Categorías: ${summary.categoriasNuevas} nuevas."
+                _uiState.update {
+                    it.copy(
+                        successMessage = successMsg
+                    )
+                }
+                onComplete(true, successMsg)
+            } else {
+                val err = result.exceptionOrNull()?.localizedMessage ?: "Error al importar los datos de Producción."
+                _uiState.update { it.copy(errorMessage = err) }
+                onComplete(false, err)
+            }
+        }
     }
 
 

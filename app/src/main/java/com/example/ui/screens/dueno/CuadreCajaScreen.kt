@@ -44,10 +44,11 @@ import java.util.Date
 import java.util.Locale
 
 enum class CuadreTab(val label: String) {
-    INICIO("INICIO"),
     PRODUCCION("PRODUCCIÓN"),
-    MERCADERIAS("MERCADERÍAS"),
-    TRANSFERENCIAS("TRANSFERENCIAS")
+    MERCADERIA("MERCADERÍA"),
+    TRANSFERENCIA("TRANSFERENCIA"),
+    GENERALES("GENERALES"),
+    PAGOS("PAGOS")
 }
 
 data class ProduccionItemState(
@@ -78,19 +79,21 @@ data class MercaderiaItemState(
     val unit: String,
     val price: Double,
     var existenciaInicialStr: String = "0",
+    var entradasStr: String = "0",
     var existenciaFinalStr: String = "0",
     var defectuosoStr: String = "0",
     var consumoStr: String = "0",
     var regaliaStr: String = "0"
 ) {
     val existenciaInicial: Double get() = existenciaInicialStr.toDoubleOrNull() ?: 0.0
+    val entradas: Double get() = entradasStr.toDoubleOrNull() ?: 0.0
     val existenciaFinal: Double get() = existenciaFinalStr.toDoubleOrNull() ?: 0.0
     val defectuoso: Double get() = defectuosoStr.toDoubleOrNull() ?: 0.0
     val consumo: Double get() = consumoStr.toDoubleOrNull() ?: 0.0
     val regalia: Double get() = regaliaStr.toDoubleOrNull() ?: 0.0
     val mermaTotal: Double get() = defectuoso + consumo + regalia
-    // Ventas = Existencia inicial - Existencia final - Mermas
-    val ventas: Double get() = ((existenciaInicial - existenciaFinal) - mermaTotal).coerceAtLeast(0.0)
+    // Ventas = Existencia inicial + Entradas - Existencia final - Mermas
+    val ventas: Double get() = ((existenciaInicial + entradas - existenciaFinal) - mermaTotal).coerceAtLeast(0.0)
     val ingresoEstimado: Double get() = ventas * price
     val mermaValor: Double get() = mermaTotal * price
 }
@@ -124,7 +127,7 @@ fun CuadreCajaScreen(
     onClose: () -> Unit
 ) {
     val context = LocalContext.current
-    var selectedTab by rememberSaveable { mutableStateOf(CuadreTab.INICIO) }
+    var selectedTab by rememberSaveable { mutableStateOf(CuadreTab.PRODUCCION) }
 
     val activeJornada = uiState.activeJornada
     val initialCash = activeJornada?.initialCash ?: 0.0
@@ -316,7 +319,7 @@ fun CuadreCajaScreen(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // TOP TABS: INICIO | PRODUCCIÓN | MERCADERÍAS | TRANSFERENCIAS
+                // TOP TABS: PRODUCCIÓN | MERCADERÍA | TRANSFERENCIA | GENERALES | PAGOS
                 Surface(
                     shape = RoundedCornerShape(10.dp),
                     color = Color(0xFF0F172A).copy(alpha = 0.6f),
@@ -343,16 +346,17 @@ fun CuadreCajaScreen(
                             Box(
                                 modifier = bgModifier
                                     .weight(1f)
-                                    .padding(vertical = 8.dp)
+                                    .padding(vertical = 8.dp, horizontal = 2.dp)
                                     .testTag("tab_cuadre_${tab.name.lowercase()}"),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = tab.label,
-                                    fontSize = 11.sp,
+                                    fontSize = 10.sp,
                                     fontWeight = if (isSelected) FontWeight.Black else FontWeight.Bold,
                                     color = if (isSelected) ElQadreNavy else Slate300,
-                                    textAlign = TextAlign.Center
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 1
                                 )
                             }
                         }
@@ -361,15 +365,36 @@ fun CuadreCajaScreen(
             }
         }
 
-        // CONTENT OF SELECTED TAB (Without leaving Cuadre de Caja)
+        // CONTENT OF SELECTED TAB
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
         ) {
             when (selectedTab) {
-                CuadreTab.INICIO -> {
-                    CuadreInicioTab(
+                CuadreTab.PRODUCCION -> {
+                    CuadreProduccionTab(
+                        produccionStates = produccionStates,
+                        agregadosStates = agregadosStates
+                    )
+                }
+
+                CuadreTab.MERCADERIA -> {
+                    CuadreMercaderiasTab(
+                        mercaderiasStates = mercaderiasStates
+                    )
+                }
+
+                CuadreTab.TRANSFERENCIA -> {
+                    TransferenciasPane(
+                        uiState = uiState,
+                        viewModel = viewModel,
+                        modifier = Modifier.fillMaxSize().padding(8.dp)
+                    )
+                }
+
+                CuadreTab.GENERALES -> {
+                    CuadreGeneralesTab(
                         uiState = uiState,
                         activeJornada = activeJornada,
                         initialCash = initialCash,
@@ -501,24 +526,10 @@ fun CuadreCajaScreen(
                     )
                 }
 
-                CuadreTab.PRODUCCION -> {
-                    CuadreProduccionTab(
+                CuadreTab.PAGOS -> {
+                    CuadrePagosTab(
                         produccionStates = produccionStates,
-                        agregadosStates = agregadosStates
-                    )
-                }
-
-                CuadreTab.MERCADERIAS -> {
-                    CuadreMercaderiasTab(
                         mercaderiasStates = mercaderiasStates
-                    )
-                }
-
-                CuadreTab.TRANSFERENCIAS -> {
-                    TransferenciasPane(
-                        uiState = uiState,
-                        viewModel = viewModel,
-                        modifier = Modifier.fillMaxSize().padding(8.dp)
                     )
                 }
             }

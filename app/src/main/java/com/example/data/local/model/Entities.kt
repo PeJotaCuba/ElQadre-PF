@@ -330,9 +330,17 @@ data class ProductoElaborado(
     val ppd: Double = 10.0, // Producción Promedio Diaria (PPD)
     val precioDefinitivo: Double = 0.0, // Precio definitivo confirmado por el Administrador
     val hasPrecioDefinitivo: Boolean = false, // false = SIN PRECIO DEFINITIVO, true = PRECIO DEFINITIVO CONFIGURADO
-    val targetMarginPct: Double = 30.0 // Margen de referencia para calcular precio de referencia (ej. 30%)
+    val targetMarginPct: Double = 30.0, // Margen de referencia para calcular precio de referencia (ej. 30%)
+    val pagoCocinaUnitario: Double = 0.0, // Pago por unidad producida/vendida para cocina
+    val cantidadCocineros: Int = 1, // Cantidad de cocineros asociados al producto
+    val pagoDependienteUnitario: Double = 0.0, // Pago por unidad producida/vendida para dependiente (1 dependiente asociado)
+    val pagoCajeroUnitario: Double = 0.0 // Pago por unidad producida/vendida para cajero
 ) {
     val effectivePpd: Double get() = if (ppd > 0.0) ppd else (if (estimatedDailyQuantity > 0.0) estimatedDailyQuantity else 10.0)
+    val totalPagoCocinaUnitario: Double get() = if (pagoCocinaUnitario > 0.0) pagoCocinaUnitario * (if (cantidadCocineros > 0) cantidadCocineros else 1) else 0.0
+    val totalPagoDependienteUnitario: Double get() = pagoDependienteUnitario
+    val totalPagoCajeroUnitario: Double get() = pagoCajeroUnitario
+    val totalPagoPersonalUnitario: Double get() = totalPagoCocinaUnitario + totalPagoDependienteUnitario + totalPagoCajeroUnitario
 }
 
 @Entity(tableName = "receta_ingredientes")
