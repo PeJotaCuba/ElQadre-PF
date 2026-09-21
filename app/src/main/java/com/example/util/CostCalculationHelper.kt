@@ -182,41 +182,6 @@ object CostCalculationHelper {
 
     /**
      * Calcula la BASE DE PRORRATEO DE GASTOS GENERALES según el Prompt 2.
-     * 
-     * Para PRODUCCIÓN: Base = cantidad diaria planificada/esperada × costo directo unitario
-     * Para MERCADERÍAS: Base = existencia actual × costo directo unitario
-     * 
-     * NO se incluyen insumos/materias primas en el prorrateo.
-     * Los productos con cantidad de base igual a cero son excluidos.
-     * 
-     * @param products Lista de todos los productos
-     * @param productosElaborados Datos de producción con PPD planificada
-     * @param mercaderias Lista de mercaderías con costos de adquisición
-     * @param movimientosMercaderia Movimientos para calcular existencia actual
-     * @param gastosGenerales Gastos generales activos para obtener el total diario
-     * @return Resultado completo del prorrateo o null si la base total es cero
-     * @deprecated Usar la versión completa con recetaIngredientes y materiasPrimas
-     */
-    @Deprecated(
-        "Usar la versión completa con recetaIngredientes y materiasPrimas",
-        ReplaceWith(
-            "calcularBaseProrrateoGastosGenerales(products, productosElaborados, mercaderias, movimientosMercaderia, gastosGenerales, recetaIngredientes, materiasPrimas)",
-            "com.example.util.CostCalculationHelper"
-        )
-    )
-    @Suppress("UNUSED_PARAMETER")
-    fun calcularBaseProrrateoGastosGenerales(
-        products: List<Product>,
-        productosElaborados: List<ProductoElaborado>,
-        mercaderias: List<Mercaderia>,
-        movimientosMercaderia: List<MovimientoMercaderia>,
-        gastosGenerales: List<GastoGeneral>
-    ): ProrrateoGastosGeneralesResult? {
-        return null
-    }
-
-    /**
-     * Calcula la BASE DE PRORRATEO DE GASTOS GENERALES según el Prompt 2.
      * Versión completa que incluye el cálculo real del costo directo.
      * 
      * Para PRODUCCIÓN: Base = cantidad diaria planificada/esperada × costo directo unitario
