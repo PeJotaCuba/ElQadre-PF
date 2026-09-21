@@ -108,6 +108,8 @@ data class MercaderiaCostSheet(
     val mercaderia: Mercaderia,
     val product: Product,
     val acquisitionCost: Double,
+    val directExpenses: Double = mercaderia.directExpenses,
+    val costoDirectoUnitario: Double = acquisitionCost + directExpenses,
     val currentStock: Double,
     val totalAcquisitionValue: Double,
     val totalMercaderiasAcquisitionValue: Double,
@@ -120,6 +122,8 @@ data class MercaderiaCostSheet(
     val totalDepreciacionAsignada: Double,
     val totalCostosIndirectosAsignados: Double,
     val gastoIndirectoUnitario: Double,
+    val gastoGeneralUnitarioProrrateo: Double = 0.0,
+    val costoTotalUnitario: Double = costoDirectoUnitario + gastoGeneralUnitarioProrrateo,
     val costoRealUnitario: Double,
     val targetMarginPct: Double,
     val precioReferencia: Double,
@@ -180,49 +184,6 @@ object CostCalculationHelper {
             }
         }
         return if (totalPpd > 0.0) totalPpd else 1.0
-    }
-
-    /**
-     * Calcula la BASE DE PRORRATEO DE GASTOS GENERALES según el Prompt 2.
-     * 
-     * Para PRODUCCIÓN: Base = cantidad diaria planificada/esperada × costo directo unitario
-     * Para MERCADERÍAS: Base = existencia actual × costo directo unitario
-     * 
-     * NO se incluyen insumos/materias primas en el prorrateo.
-     * Los productos con cantidad de base igual a cero son excluidos.
-     * 
-     * @param products Lista de todos los productos
-     * @param productosElaborados Datos de producción con PPD planificada
-     * @param mercaderias Lista de mercaderías con costos de adquisición
-     * @param movimientosMercaderia Movimientos para calcular existencia actual
-     * @param gastosGenerales Gastos generales activos para obtener el total diario
-     * @return Resultado completo del prorrateo o null si la base total es cero
-     * @deprecated Usar la versión completa con recetaIngredientes y materiasPrimas
-     */
-    @Deprecated(
-        "Usar la versión completa con recetaIngredientes y materiasPrimas",
-        ReplaceWith(
-            "calcularBaseProrrateoGastosGenerales(products, productosElaborados, mercaderias, movimientosMercaderia, gastosGenerales, recetaIngredientes, materiasPrimas)",
-            "com.example.util.CostCalculationHelper"
-        )
-    )
-    fun calcularBaseProrrateoGastosGenerales(
-        products: List<Product>,
-        productosElaborados: List<ProductoElaborado>,
-        mercaderias: List<Mercaderia>,
-        movimientosMercaderia: List<MovimientoMercaderia>,
-        gastosGenerales: List<GastoGeneral>
-    ): ProrrateoGastosGeneralesResult? {
-        return ProrrateoGastosGeneralesResult(
-            gastoGeneralDiarioTotal = 0.0,
-            baseProduccion = emptyList(),
-            baseMercaderias = emptyList(),
-            baseTotal = 0.0,
-            itemsProrrateo = emptyList(),
-            isValid = false,
-            reason = "Función obsoleta. Usar la versión completa con recetaIngredientes y materiasPrimas.",
-            sumaPorcentajes = 0.0
-        )
     }
 
     /**
@@ -953,8 +914,14 @@ object CostCalculationHelper {
         val totalCostosIndirectosAsignados = totalGastosAsignados + totalDepreciacionAsignada
         val gastoIndirectoUnitario = detailedExpenses.sumOf { it.allocatedUnitAmount } + detailedInversions.sumOf { it.allocatedUnitAmount }
 
-        // 4. COSTO REAL UNITARIO: COSTO DE ADQUISICIÓN + COSTOS INDIRECTOS
-        val costoRealUnitario = mercaderia.acquisitionCost + gastoIndirectoUnitario
+        // 4. COSTO DIRECTO Y COSTO TOTAL UNITARIO (PROMPT 4)
+        val directExpenses = mercaderia.directExpenses
+        val costoDirectoUnitario = mercaderia.acquisitionCost + directExpenses
+        val gastoGeneralUnitarioProrrateo = detailedExpenses.filter { !it.isSpecific }.sumOf { it.allocatedUnitAmount }
+        val costoTotalUnitario = costoDirectoUnitario + gastoGeneralUnitarioProrrateo
+
+        // COSTO REAL UNITARIO: COSTO DIRECTO UNITARIO + COSTOS INDIRECTOS
+        val costoRealUnitario = costoDirectoUnitario + gastoIndirectoUnitario
 
         // 5. PRECIO DEFINITIVO
         val precioDefinitivo = product.price
@@ -986,6 +953,8 @@ object CostCalculationHelper {
             mercaderia = mercaderia,
             product = product,
             acquisitionCost = mercaderia.acquisitionCost,
+            directExpenses = directExpenses,
+            costoDirectoUnitario = costoDirectoUnitario,
             currentStock = currentStock,
             totalAcquisitionValue = myAcquisitionValue,
             totalMercaderiasAcquisitionValue = totalMercaderiasValueForSummary,
@@ -1001,6 +970,8 @@ object CostCalculationHelper {
             
             totalCostosIndirectosAsignados = totalCostosIndirectosAsignados,
             gastoIndirectoUnitario = gastoIndirectoUnitario,
+            gastoGeneralUnitarioProrrateo = gastoGeneralUnitarioProrrateo,
+            costoTotalUnitario = costoTotalUnitario,
             costoRealUnitario = costoRealUnitario,
             
             targetMarginPct = targetMarginPct,

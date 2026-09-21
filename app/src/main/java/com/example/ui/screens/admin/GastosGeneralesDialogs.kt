@@ -1258,40 +1258,61 @@ fun FichaCostoDialog(
                     }
 
                     // ==========================================
-                    // SECCIÓN 8: COSTO TEÓRICO / COSTO REAL UNITARIO (CRU)
+                    // SECCIÓN 8: COSTO TOTAL UNITARIO Y COSTO REAL (CRU)
                     // ==========================================
                     Surface(
                         shape = RoundedCornerShape(10.dp),
                         color = ElQadreNavy,
                         border = BorderStroke(1.dp, ElQadreNavy)
                     ) {
-                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text(
-                                "8. COSTO TEÓRICO UNITARIO (CRU)",
+                                "8. RESUMEN DE COSTOS: TOTAL Y REAL UNITARIO",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = ElQadreGold
                             )
 
-                            // Desglose de 4 componentes
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(Color(0xFF0F172A), RoundedCornerShape(8.dp))
-                                    .padding(10.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween
+                            // Desglose de componentes principales: Costo Directo + Gasto General Prorrateado = Costo Total Unitario
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color(0xFF0F172A),
+                                border = BorderStroke(1.dp, Color(0xFF334155))
                             ) {
-                                Column {
-                                    Text("Materias Primas", fontSize = 9.5.sp, color = Slate400)
-                                    Text("$${"%.2f".format(costSheet.costoDirectoUnitario)}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column {
+                                            Text("Costo Directo Unitario", fontSize = 9.5.sp, color = Slate400)
+                                            Text("$${"%.2f".format(costSheet.costoDirectoUnitario)} CUP", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                        }
+                                        Text("+", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Slate400)
+                                        Column {
+                                            Text("Gasto General Prorrateado", fontSize = 9.5.sp, color = Slate400)
+                                            Text("$${"%.2f".format(costSheet.gastoGeneralUnitarioProrrateo)} CUP", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                        }
+                                        Text("=", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = ElQadreGold)
+                                        Column(horizontalAlignment = Alignment.End) {
+                                            Text("COSTO TOTAL UNITARIO", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = ElQadreGold)
+                                            Text("$${"%.2f".format(costSheet.costoTotalUnitario)} CUP", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = ElQadreGold)
+                                        }
+                                    }
                                 }
-                                Column {
-                                    Text("Gastos Generales", fontSize = 9.5.sp, color = Slate400)
-                                    Text("$${"%.2f".format(costSheet.gastoIndirectoUnitario)}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                }
-                                Column {
-                                    Text("Pagos Personal", fontSize = 9.5.sp, color = Slate400)
-                                    Text("$${"%.2f".format(costSheet.totalPagoPersonalUnitario)}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFA5B4FC))
+                            }
+
+                            if (costSheet.totalPagoPersonalUnitario > 0.0) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(Color(0xFF1E1B4B), RoundedCornerShape(6.dp))
+                                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("Pagos de Personal Asociados:", fontSize = 10.5.sp, color = Color(0xFFC7D2FE))
+                                    Text("+$${"%.2f".format(costSheet.totalPagoPersonalUnitario)} CUP", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFFA5B4FC))
                                 }
                             }
 
@@ -1302,7 +1323,7 @@ fun FichaCostoDialog(
                             ) {
                                 Column {
                                     Text(
-                                        "Costo Total Resultante",
+                                        "Costo Teórico Real Unitario (CRU)",
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = Color.White
@@ -2346,60 +2367,101 @@ fun FichaCostoMercaderiaDialog(
                     }
 
                     // ==========================================
-                    // SECCIÓN 4 & 5: RESUMEN Y CÁLCULO DEL COSTO REAL
+                    // SECCIÓN 4 & 5: COSTO DIRECTO, PRORRATEO Y COSTO TOTAL UNITARIO
                     // ==========================================
                     Surface(
                         shape = RoundedCornerShape(12.dp),
                         color = ElQadreGoldSoft.copy(alpha = 0.5f),
                         border = BorderStroke(1.5.dp, ElQadreGold)
                     ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
+                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text(
-                                "4. FÓRMULA Y CÁLCULO DEL COSTO REAL",
+                                "4. ESTRUCTURA DE COSTO UNITARIO Y TOTAL",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = ElQadreNavy
                             )
 
-                            Spacer(modifier = Modifier.height(10.dp))
+                            // Bloque 1: Costo Directo Unitario = Costo de Adquisición + Gastos Directos
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color.White,
+                                border = BorderStroke(1.dp, Slate300)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(10.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text("Costo Adquisición", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Slate600)
+                                        Text("$${"%.2f".format(costSheet.acquisitionCost)} CUP", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Slate800)
+                                    }
+                                    Text("+", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Slate500)
+                                    Column {
+                                        Text("Gastos Directos", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Slate600)
+                                        Text("$${"%.2f".format(costSheet.directExpenses)} CUP", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Slate800)
+                                    }
+                                    Text("=", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = ElQadreNavy)
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        Text("COSTO DIRECTO UNITARIO", fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, color = ElQadreNavy)
+                                        Text("$${"%.2f".format(costSheet.costoDirectoUnitario)} CUP", fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, color = ElQadreNavy)
+                                    }
+                                }
+                            }
+
+                            // Bloque 2: Costo Total Unitario = Costo Directo Unitario + Gasto General Prorrateado
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = ElQadreNavy,
+                                border = BorderStroke(1.dp, ElQadreNavy)
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column {
+                                            Text("Costo Directo Unitario", fontSize = 9.5.sp, color = Slate400)
+                                            Text("$${"%.2f".format(costSheet.costoDirectoUnitario)} CUP", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                        }
+                                        Text("+", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Slate400)
+                                        Column {
+                                            Text("Gasto General Prorrateado", fontSize = 9.5.sp, color = Slate400)
+                                            Text("$${"%.2f".format(costSheet.gastoGeneralUnitarioProrrateo)} CUP", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                        }
+                                        Text("=", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = ElQadreGold)
+                                        Column(horizontalAlignment = Alignment.End) {
+                                            Text("COSTO TOTAL UNITARIO", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = ElQadreGold)
+                                            Text("$${"%.2f".format(costSheet.costoTotalUnitario)} CUP", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = ElQadreGold)
+                                        }
+                                    }
+                                }
+                            }
 
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text("COSTO ADQUISICIÓN", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Slate600)
-                                    Text("$${"%.2f".format(costSheet.acquisitionCost)}", fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = ElQadreNavy)
+                                Column {
+                                    Text("Costo Real Unitario (Incl. Gastos Ind. y Deprec.)", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = Slate700)
+                                    Text("Afectación total sobre rentabilidad", fontSize = 8.5.sp, color = Slate500)
                                 }
-                                Text("+", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Slate500)
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text("GASTOS IND. UNIT.", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Slate600)
-                                    val unitGastos = if (costSheet.currentStock > 0) costSheet.totalGastosAsignados / costSheet.currentStock else costSheet.totalGastosAsignados
-                                    Text("$${"%.2f".format(unitGastos)}", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Slate700)
-                                }
-                                Text("+", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Slate500)
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text("DEPREC. UNIT.", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Slate600)
-                                    val unitDep = if (costSheet.currentStock > 0) costSheet.totalDepreciacionAsignada / costSheet.currentStock else costSheet.totalDepreciacionAsignada
-                                    Text("$${"%.2f".format(unitDep)}", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Slate700)
-                                }
-                                Text("=", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = ElQadreNavy)
-                                Column(horizontalAlignment = Alignment.End) {
-                                    Text("COSTO REAL UNITARIO", fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, color = ElQadreGoldDark)
-                                    Text(
-                                        "$${"%.2f".format(costSheet.costoRealUnitario)} CUP",
-                                        fontWeight = FontWeight.Black,
-                                        fontSize = 16.sp,
-                                        color = ElQadreGoldDark
-                                    )
-                                }
+                                Text(
+                                    "$${"%.2f".format(costSheet.costoRealUnitario)} CUP",
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 15.sp,
+                                    color = ElQadreGoldDark
+                                )
                             }
 
-                            Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                "Nota: El costo de adquisición original ($${"%.2f".format(costSheet.acquisitionCost)} CUP) se conserva intacto en la base de datos.",
-                                fontSize = 10.sp,
+                                "Nota: El costo de adquisición original ($${"%.2f".format(costSheet.acquisitionCost)} CUP) y sus gastos directos se conservan intactos en la base de datos.",
+                                fontSize = 9.5.sp,
                                 color = Slate600,
                                 fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
                             )

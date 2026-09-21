@@ -404,17 +404,18 @@ data class GastoGeneral(
 ) {
     fun dailyCost(): Double {
         if (!isActive || amount <= 0.0) return 0.0
-        if (periodDays > 0) return amount / periodDays
-        return when (period.uppercase().trim()) {
-            "ÚNICO", "UNICO", "DÍA", "DIA", "DIARIO" -> amount
-            "SEMANA", "SEMANAL" -> amount / 7.0
-            "SEMANA LABORABLE" -> amount / 6.0
-            "MES", "MENSUAL" -> amount / 30.0
-            "MES LABORABLE" -> amount / 26.0
-            "AÑO", "ANO", "ANUAL" -> amount / 360.0
-            "AÑO LABORABLE", "ANO LABORABLE" -> amount / 312.0
-            else -> amount
+        val p = period.uppercase().trim()
+        val days = when (p) {
+            "DÍA", "DIA", "DÍAS", "DIAS", "DIARIO", "ÚNICO", "UNICO" -> 1.0
+            "SEMANA", "SEMANAL" -> 7.0
+            "SEMANA LABORABLE", "SEMANAL LABORABLE" -> 6.0
+            "MES", "MENSUAL" -> 30.0
+            "MES LABORABLE", "MENSUAL LABORABLE" -> 26.0
+            "AÑO", "ANO", "ANUAL" -> 360.0
+            "AÑO LABORABLE", "ANO LABORABLE", "ANUAL LABORABLE" -> 312.0
+            else -> if (periodDays > 0) periodDays.toDouble() else 26.0
         }
+        return amount / days
     }
 }
 

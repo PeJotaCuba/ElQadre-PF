@@ -171,18 +171,22 @@ object CostSheetPdfExporter {
 
         y += 20f
         paint.textSize = 11f
-        paint.isFakeBoldText = false
+        paint.isFakeBoldText = true
         canvas.drawText("Costo Directo Unitario (CDU): $${String.format("%.2f", costSheet.costoDirectoUnitario)} CUP", 50f, y, paint)
         y += 18f
+        paint.isFakeBoldText = false
+        canvas.drawText("Gasto General Prorrateado: $${String.format("%.4f", costSheet.gastoGeneralUnitarioProrrateo)} CUP", 50f, y, paint)
+        y += 18f
+        paint.isFakeBoldText = true
+        canvas.drawText("Costo Total Unitario: $${String.format("%.2f", costSheet.costoTotalUnitario)} CUP", 50f, y, paint)
+        y += 18f
         
-        // Breakdown: Gastos Indirectos & Depreciación
-        val unitGastos = if (costSheet.ppd > 0) costSheet.gastoGeneralAsignado / costSheet.ppd else 0.0
         val unitDeprec = if (costSheet.ppd > 0) costSheet.depreciacionAsignada / costSheet.ppd else 0.0
-        
-        canvas.drawText("Gastos Indirectos (Gral + Puntual): $${String.format("%.4f", unitGastos)} CUP", 50f, y, paint)
-        y += 18f
-        canvas.drawText("Depreciación Inversiones (Gral + Puntual): $${String.format("%.4f", unitDeprec)} CUP", 50f, y, paint)
-        y += 18f
+        if (unitDeprec > 0.0) {
+            paint.isFakeBoldText = false
+            canvas.drawText("Depreciación Inversiones: $${String.format("%.4f", unitDeprec)} CUP", 50f, y, paint)
+            y += 18f
+        }
 
         // Pagos de Personal Asociados
         if (costSheet.totalPagoPersonalUnitario > 0.0) {
@@ -416,19 +420,28 @@ object CostSheetPdfExporter {
         paint.isFakeBoldText = false
         canvas.drawText("Costo Adquisición Base: $${String.format("%.2f", costSheet.acquisitionCost)} CUP", 50f, y, paint)
         y += 18f
-        val gastosGralUnitLine = costSheet.detailedExpenses.filter { !it.isSpecific }.sumOf { it.allocatedUnitAmount }
+        canvas.drawText("Gastos Directos: $${String.format("%.2f", costSheet.directExpenses)} CUP", 50f, y, paint)
+        y += 18f
+        paint.isFakeBoldText = true
+        canvas.drawText("Costo Directo Unitario: $${String.format("%.2f", costSheet.costoDirectoUnitario)} CUP", 50f, y, paint)
+        y += 18f
+        paint.isFakeBoldText = false
+        canvas.drawText("Gasto General Prorrateado: $${String.format("%.4f", costSheet.gastoGeneralUnitarioProrrateo)} CUP", 50f, y, paint)
+        y += 18f
+        paint.isFakeBoldText = true
+        canvas.drawText("Costo Total Unitario: $${String.format("%.2f", costSheet.costoTotalUnitario)} CUP", 50f, y, paint)
+        y += 18f
+
         val gastosPuntualUnitLine = costSheet.detailedExpenses.filter { it.isSpecific }.sumOf { it.allocatedUnitAmount }
         val depUnitLine = costSheet.detailedInversions.sumOf { it.allocatedUnitAmount }
 
-        if (gastosGralUnitLine > 0) {
-            canvas.drawText("Gastos Ind. (Gral): $${String.format("%.4f", gastosGralUnitLine)} CUP", 50f, y, paint)
-            y += 18f
-        }
         if (gastosPuntualUnitLine > 0) {
+            paint.isFakeBoldText = false
             canvas.drawText("Gastos Ind. (Puntuales): $${String.format("%.4f", gastosPuntualUnitLine)} CUP", 50f, y, paint)
             y += 18f
         }
         if (depUnitLine > 0) {
+            paint.isFakeBoldText = false
             canvas.drawText("Depreciación Inversiones: $${String.format("%.4f", depUnitLine)} CUP", 50f, y, paint)
             y += 18f
         }
