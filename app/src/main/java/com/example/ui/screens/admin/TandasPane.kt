@@ -983,12 +983,7 @@ fun AgregarTandaDialog(
 
         val costSheet = CostCalculationHelper.calculateCostSheet(
             product = product,
-            products = uiState.products,
-            productosElaborados = uiState.productosElaborados,
-            recetaIngredientes = uiState.recetaIngredientes,
-            materiasPrimas = uiState.materiasPrimas,
-            gastosGenerales = uiState.gastosGenerales,
-            inversiones = uiState.inversiones
+            uiState = uiState
         )
         val indirectUnitCost = costSheet.gastoIndirectoUnitario
         val totalIndirectCostAllocated = calculatedExpectedYield * indirectUnitCost
@@ -1401,12 +1396,7 @@ fun EditarTandaDialog(
 
         val costSheet = CostCalculationHelper.calculateCostSheet(
             product = product,
-            products = uiState.products,
-            productosElaborados = uiState.productosElaborados,
-            recetaIngredientes = uiState.recetaIngredientes,
-            materiasPrimas = uiState.materiasPrimas,
-            gastosGenerales = uiState.gastosGenerales,
-            inversiones = uiState.inversiones
+            uiState = uiState
         )
         val indirectUnitCost = costSheet.gastoIndirectoUnitario
         val totalIndirectCostAllocated = calculatedExpectedYield * indirectUnitCost
@@ -1844,12 +1834,7 @@ fun ImportarTandasDialog(
 
                         val costSheet = CostCalculationHelper.calculateCostSheet(
                             product = p,
-                            products = uiState.products,
-                            productosElaborados = uiState.productosElaborados,
-                            recetaIngredientes = uiState.recetaIngredientes,
-                            materiasPrimas = uiState.materiasPrimas,
-                            gastosGenerales = uiState.gastosGenerales,
-                            inversiones = uiState.inversiones
+                            uiState = uiState
                         )
 
                         val directCost = activeConsumos.sumOf { (mpId, qty, _) ->
@@ -1940,12 +1925,7 @@ fun TandaDetailDialog(
         if (product != null) {
             CostCalculationHelper.calculateCostSheet(
                 product = product,
-                products = uiState.products,
-                productosElaborados = uiState.productosElaborados,
-                recetaIngredientes = uiState.recetaIngredientes,
-                materiasPrimas = uiState.materiasPrimas,
-                gastosGenerales = uiState.gastosGenerales,
-                inversiones = uiState.inversiones
+                uiState = uiState
             )
         } else null
     }

@@ -1173,12 +1173,7 @@ private fun ControlProduccionContent(
             val costSheet = if (product != null) {
                 CostCalculationHelper.calculateCostSheet(
                     product = product,
-                    products = uiState.products,
-                    productosElaborados = uiState.productosElaborados,
-                    recetaIngredientes = uiState.recetaIngredientes,
-                    materiasPrimas = uiState.materiasPrimas,
-                    gastosGenerales = uiState.gastosGenerales,
-                    inversiones = uiState.inversiones
+                    uiState = uiState
                 )
             } else null
 

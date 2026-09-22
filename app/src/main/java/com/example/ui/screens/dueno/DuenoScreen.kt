@@ -7808,12 +7808,7 @@ fun RegisterTandaDialog(
 
                                     val costSheet = com.example.util.CostCalculationHelper.calculateCostSheet(
                                         product = p,
-                                        products = uiState.products,
-                                        productosElaborados = uiState.productosElaborados,
-                                        recetaIngredientes = uiState.recetaIngredientes,
-                                        materiasPrimas = uiState.materiasPrimas,
-                                        gastosGenerales = uiState.gastosGenerales,
-                                        inversiones = uiState.inversiones
+                                        uiState = uiState
                                     )
                                     val indirectCost = expectedYield * costSheet.gastoIndirectoUnitario
                                     val totalBatchCost = totalDirectCost + indirectCost

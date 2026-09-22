@@ -191,29 +191,36 @@ object CostCalculationHelper {
      * Utiliza la estructura existente de cálculo de costos (calculateCostSheet).
      */
     private fun calcularCostoDirectoUnitarioProduccion(
-        productId: Long,
+        product: Product,
         productosElaborados: List<ProductoElaborado>,
         prodElabMap: Map<Long, ProductoElaborado>,
         recetaIngredientes: List<RecetaIngrediente>,
         materiasPrimas: List<MateriaPrima>
     ): Double {
-        val prodElaborado = prodElabMap[productId] ?: return 0.0
+        val prodElaborado = prodElabMap[product.id]
         
-        // Calcular detalles de ingredientes para este producto
-        val ingredientDetails = calculateIngredientDetails(productId, recetaIngredientes, materiasPrimas)
+        // 1. Si tiene receta, el costo directo unitario PROVIENE DE LA RECETA Y RENDIMIENTO
+        val ingredientDetails = calculateIngredientDetails(
+            productId = product.id,
+            recetaIngredientes = recetaIngredientes,
+            materiasPrimas = materiasPrimas,
+            prodElaboradoId = prodElaborado?.id
+        )
         
-        if (ingredientDetails.isEmpty()) {
-            return 0.0 // Sin receta definida
+        if (ingredientDetails.isNotEmpty()) {
+            val totalDirectRecipeCost = ingredientDetails.sumOf { it.totalCost }
+            val baseYield = prodElaborado?.baseYield?.takeIf { it > 0.0 } ?: 1.0
+            if (baseYield > 0.0) {
+                return totalDirectRecipeCost / baseYield
+            }
         }
         
-        // Calcular costo directo total de la receta
-        val totalDirectRecipeCost = ingredientDetails.sumOf { it.totalCost }
+        // 2. Si no tiene receta registrada pero tiene costo directo definido en el producto
+        if (product.cost > 0.0) {
+            return product.cost
+        }
         
-        // Obtener rendimiento base
-        val baseYield = prodElaborado.baseYield.takeIf { it > 0.0 } ?: 1.0
-        
-        // Calcular costo directo unitario
-        return totalDirectRecipeCost / baseYield
+        return 0.0
     }
 
     /**
@@ -225,8 +232,8 @@ object CostCalculationHelper {
         mercaderias: List<Mercaderia>,
         movimientosMercaderia: List<MovimientoMercaderia>,
         gastosGenerales: List<GastoGeneral>,
-        recetaIngredientes: List<RecetaIngrediente>,
-        materiasPrimas: List<MateriaPrima>
+        recetaIngredientes: List<RecetaIngrediente> = emptyList(),
+        materiasPrimas: List<MateriaPrima> = emptyList()
     ): ProrrateoGastosGeneralesResult {
         val prodElabMap = productosElaborados.associateBy { it.productId }
         
@@ -236,18 +243,24 @@ object CostCalculationHelper {
         // 2. BASE DE PRODUCCIÓN
         val baseProduccionItems = mutableListOf<ProrrateoBaseItem>()
         for (product in products) {
-            if (product.destination == "COCINA" && product.isAvailable) {
+            if ((product.destination == "COCINA" || prodElabMap.containsKey(product.id)) && product.isAvailable) {
                 val prodElaborado = prodElabMap[product.id]
-                val cantidadDiariaPlanificada = prodElaborado?.effectivePpd ?: 0.0
+                val cantidadDiariaPlanificada = if (prodElaborado != null) {
+                    if (prodElaborado.ppd > 0.0) prodElaborado.ppd
+                    else if (prodElaborado.estimatedDailyQuantity > 0.0) prodElaborado.estimatedDailyQuantity
+                    else 0.0
+                } else {
+                    0.0
+                }
                 
                 if (cantidadDiariaPlanificada > 0.0) {
                     // Calcular costo directo unitario desde la ficha de costo existente
                     val costoDirectoUnitario = calcularCostoDirectoUnitarioProduccion(
-                        product.id,
-                        productosElaborados,
-                        prodElabMap,
-                        recetaIngredientes,
-                        materiasPrimas
+                        product = product,
+                        productosElaborados = productosElaborados,
+                        prodElabMap = prodElabMap,
+                        recetaIngredientes = recetaIngredientes,
+                        materiasPrimas = materiasPrimas
                     )
                     
                     if (costoDirectoUnitario > 0.0) {
@@ -471,10 +484,13 @@ object CostCalculationHelper {
     fun calculateIngredientDetails(
         productId: Long,
         recetaIngredientes: List<RecetaIngrediente>,
-        materiasPrimas: List<MateriaPrima>
+        materiasPrimas: List<MateriaPrima>,
+        prodElaboradoId: Long? = null
     ): List<IngredientCostDetail> {
         val mpMap = materiasPrimas.associateBy { it.id }
-        val ingredients = recetaIngredientes.filter { it.productoElaboradoId == productId }
+        val ingredients = recetaIngredientes.filter {
+            it.productoElaboradoId == productId || (prodElaboradoId != null && it.productoElaboradoId == prodElaboradoId)
+        }
         
         return ingredients.map { ing ->
             val mp = mpMap[ing.materiaPrimaId]
@@ -494,6 +510,26 @@ object CostCalculationHelper {
                 totalCost = totalCost
             )
         }
+    }
+
+    /**
+     * Overload conveniente de calculateCostSheet que extrae todas las colecciones desde MainUiState.
+     */
+    fun calculateCostSheet(
+        product: Product,
+        uiState: com.example.ui.viewmodel.MainUiState
+    ): ProductCostSheet {
+        return calculateCostSheet(
+            product = product,
+            products = uiState.products,
+            productosElaborados = uiState.productosElaborados,
+            recetaIngredientes = uiState.recetaIngredientes,
+            materiasPrimas = uiState.materiasPrimas,
+            gastosGenerales = uiState.gastosGenerales,
+            inversiones = uiState.inversiones,
+            mercaderias = uiState.mercaderias,
+            movimientosMercaderia = uiState.movimientosMercaderia
+        )
     }
 
     /**
@@ -536,8 +572,13 @@ object CostCalculationHelper {
     ): ProductCostSheet {
         val prodElaborado = productosElaborados.find { it.productId == product.id }
         val isProdElaboradoMissing = prodElaborado == null
-        val ingredientDetails = calculateIngredientDetails(product.id, recetaIngredientes, materiasPrimas)
-        val isRecipeMissing = ingredientDetails.isEmpty()
+        val ingredientDetails = calculateIngredientDetails(
+            productId = product.id,
+            recetaIngredientes = recetaIngredientes,
+            materiasPrimas = materiasPrimas,
+            prodElaboradoId = prodElaborado?.id
+        )
+        val isRecipeMissing = ingredientDetails.isEmpty() && product.cost <= 0.0
 
         val isComplete = !isProdElaboradoMissing && !isRecipeMissing
         val missingDataReason = when {
@@ -550,7 +591,13 @@ object CostCalculationHelper {
         val totalDirectRecipeCost = ingredientDetails.sumOf { it.totalCost }
         val baseYield = prodElaborado?.baseYield?.takeIf { it > 0.0 } ?: 1.0
         val productionUnit = prodElaborado?.productionUnit ?: "unidades"
-        val cdu = if (baseYield > 0.0) totalDirectRecipeCost / baseYield else 0.0
+        val cdu = if (ingredientDetails.isNotEmpty() && baseYield > 0.0) {
+            totalDirectRecipeCost / baseYield
+        } else if (product.cost > 0.0) {
+            product.cost
+        } else {
+            0.0
+        }
 
         // 2. PRODUCCIÓN PROMEDIO DIARIA (PPD) Y PARTICIPACIÓN
         val productPpd = prodElaborado?.effectivePpd ?: 10.0
@@ -671,8 +718,8 @@ object CostCalculationHelper {
             missingDataReason = missingDataReason,
             estimatedDailyQuantity = productPpd,
             movimientoDiarioProducto = cdu * productPpd,
-            movimientoDiarioTotal = totalKitchenPpd,
-            porcentajeProrrateo = porcentajeParticipacionPpd
+            movimientoDiarioTotal = if (prorrateoResult.baseTotal > 0.0) prorrateoResult.baseTotal else totalKitchenPpd,
+            porcentajeProrrateo = prorrateoItem?.porcentajeParticipacion ?: porcentajeParticipacionPpd
         )
     }
 

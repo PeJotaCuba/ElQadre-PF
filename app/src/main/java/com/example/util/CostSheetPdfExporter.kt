@@ -17,12 +17,7 @@ object CostSheetPdfExporter {
         try {
             val costSheet = CostCalculationHelper.calculateCostSheet(
                 product = product,
-                products = uiState.products,
-                productosElaborados = uiState.productosElaborados,
-                recetaIngredientes = uiState.recetaIngredientes,
-                materiasPrimas = uiState.materiasPrimas,
-                gastosGenerales = uiState.gastosGenerales,
-                inversiones = uiState.inversiones
+                uiState = uiState
             )
 
             val pdfDocument = PdfDocument()
@@ -60,12 +55,7 @@ object CostSheetPdfExporter {
             for (product in cocinaProducts) {
                 val costSheet = CostCalculationHelper.calculateCostSheet(
                     product = product,
-                    products = uiState.products,
-                    productosElaborados = uiState.productosElaborados,
-                    recetaIngredientes = uiState.recetaIngredientes,
-                    materiasPrimas = uiState.materiasPrimas,
-                    gastosGenerales = uiState.gastosGenerales,
-                    inversiones = uiState.inversiones
+                    uiState = uiState
                 )
 
                 val pageInfo = PdfDocument.PageInfo.Builder(595, 842, pageIndex).create()
@@ -221,7 +211,10 @@ object CostSheetPdfExporter {
                 products = uiState.products,
                 movimientos = uiState.movimientosMercaderia,
                 gastosGenerales = uiState.gastosGenerales,
-                inversiones = uiState.inversiones
+                inversiones = uiState.inversiones,
+                productosElaborados = uiState.productosElaborados,
+                recetaIngredientes = uiState.recetaIngredientes,
+                materiasPrimas = uiState.materiasPrimas
             )
 
             val pdfDocument = PdfDocument()
@@ -265,7 +258,10 @@ object CostSheetPdfExporter {
                     products = uiState.products,
                     movimientos = uiState.movimientosMercaderia,
                     gastosGenerales = uiState.gastosGenerales,
-                    inversiones = uiState.inversiones
+                    inversiones = uiState.inversiones,
+                    productosElaborados = uiState.productosElaborados,
+                    recetaIngredientes = uiState.recetaIngredientes,
+                    materiasPrimas = uiState.materiasPrimas
                 )
 
                 val pdfDocument = PdfDocument()

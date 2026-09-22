@@ -238,12 +238,7 @@ fun CuadreCajaScreen(
             val costSheet = if (product != null) {
                 com.example.util.CostCalculationHelper.calculateCostSheet(
                     product = product,
-                    products = uiState.products,
-                    productosElaborados = uiState.productosElaborados,
-                    recetaIngredientes = uiState.recetaIngredientes,
-                    materiasPrimas = uiState.materiasPrimas,
-                    gastosGenerales = uiState.gastosGenerales,
-                    inversiones = uiState.inversiones
+                    uiState = uiState
                 )
             } else null
 
@@ -275,7 +270,8 @@ fun CuadreCajaScreen(
     // Build Mercaderias item states from active mercaderias
     val mercaderiasStates = remember(
         uiState.mercaderias, uiState.products, uiState.movimientosMercaderia,
-        uiState.tarifasPagoBebidas, uiState.gastosGenerales, uiState.inversiones, activeJornada
+        uiState.tarifasPagoBebidas, uiState.gastosGenerales, uiState.inversiones, activeJornada,
+        uiState.productosElaborados, uiState.recetaIngredientes, uiState.materiasPrimas
     ) {
         uiState.mercaderias.filter { it.isActive }.map { merc ->
             val product = uiState.products.find { it.id == merc.productId }
@@ -300,7 +296,10 @@ fun CuadreCajaScreen(
                     products = uiState.products,
                     movimientos = uiState.movimientosMercaderia,
                     gastosGenerales = uiState.gastosGenerales,
-                    inversiones = uiState.inversiones
+                    inversiones = uiState.inversiones,
+                    productosElaborados = uiState.productosElaborados,
+                    recetaIngredientes = uiState.recetaIngredientes,
+                    materiasPrimas = uiState.materiasPrimas
                 )
             } else null
 
