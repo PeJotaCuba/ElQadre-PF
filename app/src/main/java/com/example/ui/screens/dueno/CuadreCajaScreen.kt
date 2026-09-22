@@ -8,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -31,6 +32,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.example.data.local.model.Jornada
 import com.example.data.local.model.Mercaderia
 import com.example.data.local.model.Product
@@ -147,9 +150,14 @@ class ProduccionItemState(
         }
     }
 
-    val effectiveTandasCount: Int get() = if (isIndependiente) tandasList.count { (it.cantidadStr.toDoubleOrNull() ?: 0.0) > 0.0 } else tandasCount
+    val effectiveTandasCount: Int get() = if (isIndependiente) {
+        val count = tandasList.count { (it.cantidadStr.toDoubleOrNull() ?: 0.0) > 0.0 }
+        if (count > 0) count else tandasCount
+    } else tandasCount
+
     val effectiveTotalProduced: Double get() = if (isIndependiente) {
-        tandasList.sumOf { it.cantidadStr.toDoubleOrNull() ?: 0.0 }
+        val sum = tandasList.sumOf { it.cantidadStr.toDoubleOrNull() ?: 0.0 }
+        if (sum > 0.0) sum else totalProduced
     } else {
         totalProduced
     }
@@ -2430,6 +2438,8 @@ fun CuadreProduccionTab(
     agregadosStates: List<AgregadoCuadreItemState> = emptyList(),
     onConfirmar: () -> Unit = {}
 ) {
+    var showMermasDialog by remember { mutableStateOf(false) }
+
     if (produccionStates.isEmpty() && agregadosStates.isEmpty()) {
         Box(
             modifier = Modifier
@@ -2477,6 +2487,40 @@ fun CuadreProduccionTab(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        // BOTÓN PRINCIPAL MERMAS
+        item {
+            Button(
+                onClick = { showMermasDialog = true },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
+                shape = RoundedCornerShape(14.dp),
+                elevation = ButtonDefaults.buttonElevation(defaultElevation = 3.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+                    .testTag("btn_mermas_produccion_cuadre")
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.WarningAmber,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        "MERMAS",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color.White,
+                        letterSpacing = 1.sp
+                    )
+                }
+            }
+        }
+
         item {
             Surface(
                 shape = RoundedCornerShape(10.dp),
@@ -2492,7 +2536,7 @@ fun CuadreProduccionTab(
                 ) {
                     Icon(Icons.Outlined.Info, contentDescription = null, tint = Color(0xFF1D4ED8), modifier = Modifier.size(18.dp))
                     Text(
-                        text = "Procese mermas de productos principales y raciones de agregados enviadas, vendidas, regalía y sobrantes.",
+                        text = "Ventas e ingresos de producción calculados a partir de las tandas elaboradas y mermas registradas.",
                         fontSize = 12.sp,
                         color = Color(0xFF1E3A8A)
                     )
@@ -2589,6 +2633,272 @@ fun CuadreProduccionTab(
 
         item {
             Spacer(modifier = Modifier.height(56.dp).navigationBarsPadding())
+        }
+    }
+
+    if (showMermasDialog) {
+        ProduccionMermasModal(
+            produccionStates = produccionStates,
+            onDismiss = { showMermasDialog = false }
+        )
+    }
+}
+
+@Composable
+fun ProduccionMermasModal(
+    produccionStates: List<ProduccionItemState>,
+    onDismiss: () -> Unit
+) {
+    var selectedIndex by remember { mutableIntStateOf(0) }
+    val selectedItem = produccionStates.getOrNull(selectedIndex)
+    var mermaInput by remember(selectedItem) { mutableStateOf(selectedItem?.defectuosoStr ?: "0") }
+    var showSuccessMessage by remember { mutableStateOf(false) }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            modifier = Modifier
+                .fillMaxWidth(0.94f)
+                .padding(vertical = 20.dp)
+                .testTag("modal_mermas_produccion")
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color(0xFFFEF3C7),
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Default.WarningAmber,
+                                    contentDescription = null,
+                                    tint = Color(0xFFD97706),
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
+                        Column {
+                            Text(
+                                text = "REGISTRAR MERMA",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Black,
+                                color = ElQadreNavy
+                            )
+                            Text(
+                                text = "Producción de Cocina",
+                                fontSize = 12.sp,
+                                color = Slate500
+                            )
+                        }
+                    }
+
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Slate500)
+                    }
+                }
+
+                HorizontalDivider(color = Slate200)
+
+                if (produccionStates.isEmpty()) {
+                    Text(
+                        text = "No hay productos de producción en la jornada.",
+                        fontSize = 14.sp,
+                        color = Slate600,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(24.dp)
+                    )
+                } else {
+                    // Paso 1: Seleccionar Producto
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = "1. SELECCIONAR PRODUCTO:",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Black,
+                            color = ElQadreNavy
+                        )
+
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 140.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            itemsIndexed(produccionStates) { index, item ->
+                                val isSelected = index == selectedIndex
+                                Surface(
+                                    onClick = {
+                                        selectedIndex = index
+                                        mermaInput = item.defectuosoStr
+                                        showSuccessMessage = false
+                                    },
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (isSelected) Color(0xFFEFF6FF) else Color(0xFFF8FAFC),
+                                    border = BorderStroke(
+                                        width = if (isSelected) 2.dp else 1.dp,
+                                        color = if (isSelected) Color(0xFF3B82F6) else Slate200
+                                    ),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column {
+                                            Text(
+                                                text = item.productName,
+                                                fontSize = 14.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isSelected) Color(0xFF1D4ED8) else Slate800
+                                            )
+                                            Text(
+                                                text = "Producido: ${"%.1f".format(item.effectiveTotalProduced)} ${item.unit}",
+                                                fontSize = 12.sp,
+                                                color = Slate500
+                                            )
+                                        }
+                                        if (item.defectuoso > 0.0) {
+                                            Surface(
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = Color(0xFFFEF3C7)
+                                            ) {
+                                                Text(
+                                                    text = "Merma: ${"%.1f".format(item.defectuoso)}",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFFB45309),
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (selectedItem != null) {
+                        // Paso 2: Indicar Cantidad de Merma
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = "2. CANTIDAD DE MERMA (${selectedItem.unit}):",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Black,
+                                color = ElQadreNavy
+                            )
+
+                            OutlinedTextField(
+                                value = mermaInput,
+                                onValueChange = { clean ->
+                                    mermaInput = clean.filter { c -> c.isDigit() || c == '.' }
+                                    showSuccessMessage = false
+                                },
+                                textStyle = LocalTextStyle.current.copy(
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Color(0xFFD97706)
+                                ),
+                                placeholder = { Text("0.0", fontSize = 20.sp) },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                singleLine = true,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("input_merma_produccion_modal")
+                            )
+                        }
+
+                        // Preview Box
+                        val mermaVal = mermaInput.toDoubleOrNull() ?: 0.0
+                        val vendiblePreview = (selectedItem.effectiveTotalProduced - mermaVal).coerceAtLeast(0.0)
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFFF8FAFC),
+                            border = BorderStroke(1.dp, Slate200),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text("Venta resultante:", fontSize = 11.sp, color = Slate500)
+                                    Text("${"%.1f".format(vendiblePreview)} ${selectedItem.unit}", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFF15803D))
+                                }
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text("Ingreso estimado:", fontSize = 11.sp, color = Slate500)
+                                    Text("$${"%.2f".format(vendiblePreview * selectedItem.effectivePrice)} CUP", fontWeight = FontWeight.Black, fontSize = 14.sp, color = Color(0xFF15803D))
+                                }
+                            }
+                        }
+                    }
+
+                    if (showSuccessMessage) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFFDCFCE7),
+                            border = BorderStroke(1.dp, Color(0xFF86EFAC)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "✓ Merma confirmada correctamente",
+                                color = Color(0xFF15803D),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(10.dp)
+                            )
+                        }
+                    }
+
+                    // Paso 3: Confirmar
+                    Button(
+                        onClick = {
+                            if (selectedItem != null) {
+                                selectedItem.defectuosoStr = mermaInput.ifBlank { "0" }
+                                showSuccessMessage = true
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
+                            .testTag("btn_confirmar_merma_produccion_modal")
+                    ) {
+                        Text(
+                            text = "CONFIRMAR MERMA",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color.White
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -2828,58 +3138,39 @@ fun ProduccionCuadreCard(
                 }
             }
 
-            // MERMAS SECTION
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFFFFFBEB), RoundedCornerShape(10.dp))
-                    .border(1.dp, Color(0xFFFDE68A), RoundedCornerShape(10.dp))
-                    .padding(10.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Text(
-                    text = "DESCUENTOS DE EXISTENCIA (Merma, Consumo, Regalía):",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp,
-                    color = Color(0xFF92400E)
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+            // DESCUENTOS Y MERMAS INFORMATIVO
+            if (item.defectuoso > 0.0 || item.consumo > 0.0 || item.regalia > 0.0) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFFFFFBEB),
+                    border = BorderStroke(1.dp, Color(0xFFFDE68A)),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    OutlinedTextField(
-                        value = item.defectuosoStr,
-                        onValueChange = { clean ->
-                            item.defectuosoStr = clean.filter { c -> c.isDigit() || c == '.' }
-                        },
-                        label = { Text("Merma", fontSize = 10.sp) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-
-                    OutlinedTextField(
-                        value = item.consumoStr,
-                        onValueChange = { clean ->
-                            item.consumoStr = clean.filter { c -> c.isDigit() || c == '.' }
-                        },
-                        label = { Text("Consumo", fontSize = 10.sp) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-
-                    OutlinedTextField(
-                        value = item.regaliaStr,
-                        onValueChange = { clean ->
-                            item.regaliaStr = clean.filter { c -> c.isDigit() || c == '.' }
-                        },
-                        label = { Text("Regalía", fontSize = 10.sp) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Mermas / Descuentos aplicados:",
+                            fontSize = 11.sp,
+                            color = Color(0xFF92400E),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (item.defectuoso > 0.0) {
+                                Text("Merma: ${"%.1f".format(item.defectuoso)} ${item.unit}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB45309))
+                            }
+                            if (item.consumo > 0.0) {
+                                Text("Consumo: ${"%.1f".format(item.consumo)}", fontSize = 11.sp, color = Color(0xFF92400E))
+                            }
+                            if (item.regalia > 0.0) {
+                                Text("Regalía: ${"%.1f".format(item.regalia)}", fontSize = 11.sp, color = Color(0xFF92400E))
+                            }
+                        }
+                    }
                 }
             }
 
@@ -2918,6 +3209,8 @@ fun CuadreMercaderiasTab(
     mercaderiasStates: List<MercaderiaItemState>,
     onConfirmar: () -> Unit = {}
 ) {
+    var showMermasDialog by remember { mutableStateOf(false) }
+
     if (mercaderiasStates.isEmpty()) {
         Box(
             modifier = Modifier
@@ -2965,6 +3258,40 @@ fun CuadreMercaderiasTab(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        // BOTÓN PRINCIPAL MERMAS
+        item {
+            Button(
+                onClick = { showMermasDialog = true },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
+                shape = RoundedCornerShape(14.dp),
+                elevation = ButtonDefaults.buttonElevation(defaultElevation = 3.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+                    .testTag("btn_mermas_mercaderias_cuadre")
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.WarningAmber,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        "MERMAS",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color.White,
+                        letterSpacing = 1.sp
+                    )
+                }
+            }
+        }
+
         item {
             Surface(
                 shape = RoundedCornerShape(10.dp),
@@ -2980,7 +3307,7 @@ fun CuadreMercaderiasTab(
                 ) {
                     Icon(Icons.Outlined.Info, contentDescription = null, tint = Color(0xFFD97706), modifier = Modifier.size(18.dp))
                     Text(
-                        text = "Control del LOCAL DE VENTAS (independiente de Almacén). Ventas = Existencia inicial + Entradas − Existencia final − Mermas.",
+                        text = "Toque cualquier tarjeta de producto para ingresar las existencias de Inicio y Final.",
                         fontSize = 12.sp,
                         color = Color(0xFF78350F)
                     )
@@ -3052,13 +3379,20 @@ fun CuadreMercaderiasTab(
             Spacer(modifier = Modifier.height(56.dp).navigationBarsPadding())
         }
     }
+
+    if (showMermasDialog) {
+        MercaderiasMermasModal(
+            mercaderiasStates = mercaderiasStates,
+            onDismiss = { showMermasDialog = false }
+        )
+    }
 }
 
 @Composable
 fun MercaderiaCuadreCard(
     item: MercaderiaItemState
 ) {
-    var isExpanded by remember { mutableStateOf(false) }
+    var showEditModal by remember { mutableStateOf(false) }
 
     Card(
         shape = RoundedCornerShape(14.dp),
@@ -3067,258 +3401,537 @@ fun MercaderiaCuadreCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .clickable { isExpanded = !isExpanded }
+            .clickable { showEditModal = true }
             .testTag("card_mercaderia_${item.mercaderiaId}")
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // Header Row (Always visible in compact mode)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = item.productName,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
-                        color = ElQadreNavy
-                    )
-                    Text(
-                        text = "Precio: $${"%.2f".format(item.price)} CUP / ${item.unit}",
-                        fontSize = 12.sp,
-                        color = Slate500
-                    )
-                }
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    if (item.isCompleted) {
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = Color(0xFFDCFCE7),
-                            border = BorderStroke(1.dp, Color(0xFF86EFAC))
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                horizontalAlignment = Alignment.End
-                            ) {
-                                Text(
-                                    text = "Venta: ${"%.1f".format(item.ventas)} ${item.unit}",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 11.sp,
-                                    color = Color(0xFF15803D)
-                                )
-                                Text(
-                                    text = "$${"%.2f".format(item.ingresoEstimado)} CUP",
-                                    fontWeight = FontWeight.Black,
-                                    fontSize = 12.sp,
-                                    color = Color(0xFF15803D)
-                                )
-                            }
-                        }
-                    } else {
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = Color(0xFFFEF3C7),
-                            border = BorderStroke(1.dp, Color(0xFFFCD34D))
-                        ) {
-                            Text(
-                                text = "Pendiente",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp,
-                                color = Color(0xFFB45309),
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                            )
-                        }
+                Text(
+                    text = item.productName,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    color = ElQadreNavy
+                )
+                Text(
+                    text = "Precio: $${"%.2f".format(item.price)} CUP / ${item.unit}",
+                    fontSize = 12.sp,
+                    color = Slate500
+                )
+                if (item.defectuoso > 0.0) {
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = Color(0xFFFEF3C7)
+                    ) {
+                        Text(
+                            text = "Merma: ${"%.1f".format(item.defectuoso)} ${item.unit}",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFB45309),
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
                     }
-
-                    Icon(
-                        imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                        contentDescription = if (isExpanded) "Contraer" else "Expandir",
-                        tint = Slate500,
-                        modifier = Modifier.size(24.dp)
-                    )
                 }
             }
 
-            // Expanded Detail Section
-            if (isExpanded) {
-                HorizontalDivider(color = Slate200)
-
-                // EXISTENCIAS LOCAL DE VENTAS: Inicio, Entradas, Final
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(
-                        text = "EXISTENCIAS (LOCAL DE VENTAS):",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 11.sp,
-                        color = Slate700
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = item.existenciaInicialStr,
-                            onValueChange = { clean ->
-                                item.existenciaInicialStr = clean.filter { c -> c.isDigit() || c == '.' }
-                            },
-                            label = { Text("Inicio", fontSize = 10.sp) },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            singleLine = true,
-                            modifier = Modifier.weight(1f)
-                        )
-
-                        OutlinedTextField(
-                            value = item.entradasStr,
-                            onValueChange = { clean ->
-                                item.entradasStr = clean.filter { c -> c.isDigit() || c == '.' }
-                            },
-                            label = { Text("Entradas", fontSize = 10.sp) },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            singleLine = true,
-                            modifier = Modifier.weight(1f)
-                        )
-
-                        OutlinedTextField(
-                            value = item.existenciaFinalStr,
-                            onValueChange = { clean ->
-                                item.existenciaFinalStr = clean.filter { c -> c.isDigit() || c == '.' }
-                            },
-                            label = { Text("Final *", fontSize = 10.sp) },
-                            placeholder = { Text("Ingrese final", fontSize = 10.sp) },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            singleLine = true,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                }
-
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = Color(0xFFEFF6FF),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Disponible (Inicio + Entradas):",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFF1E40AF)
-                        )
-                        Text(
-                            text = "${"%.1f".format(item.existenciaDisponible)} ${item.unit}",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Black,
-                            color = Color(0xFF1E40AF)
-                        )
-                    }
-                }
-
-                // MERMAS SECTION
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color(0xFFFFFBEB), RoundedCornerShape(10.dp))
-                        .border(1.dp, Color(0xFFFDE68A), RoundedCornerShape(10.dp))
-                        .padding(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Text(
-                        text = "MERMAS Y DESCUENTOS:",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 11.sp,
-                        color = Color(0xFF92400E)
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = item.defectuosoStr,
-                            onValueChange = { clean ->
-                                item.defectuosoStr = clean.filter { c -> c.isDigit() || c == '.' }
-                            },
-                            label = { Text("Merma", fontSize = 10.sp) },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            singleLine = true,
-                            modifier = Modifier.weight(1f)
-                        )
-
-                        OutlinedTextField(
-                            value = item.consumoStr,
-                            onValueChange = { clean ->
-                                item.consumoStr = clean.filter { c -> c.isDigit() || c == '.' }
-                            },
-                            label = { Text("Consumo", fontSize = 10.sp) },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            singleLine = true,
-                            modifier = Modifier.weight(1f)
-                        )
-
-                        OutlinedTextField(
-                            value = item.regaliaStr,
-                            onValueChange = { clean ->
-                                item.regaliaStr = clean.filter { c -> c.isDigit() || c == '.' }
-                            },
-                            label = { Text("Regalía", fontSize = 10.sp) },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            singleLine = true,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                }
-
-                // RESULTS ROW
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
                 if (item.isCompleted) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color(0xFFF0FDF4), RoundedCornerShape(8.dp))
-                            .border(1.dp, Color(0xFFBBF7D0), RoundedCornerShape(8.dp))
-                            .padding(10.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFFDCFCE7),
+                        border = BorderStroke(1.dp, Color(0xFF86EFAC))
                     ) {
-                        Text(
-                            text = "Ventas: ${"%.1f".format(item.ventas)} ${item.unit}",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF166534)
-                        )
-                        Text(
-                            text = "Ingreso: $${"%.2f".format(item.ingresoEstimado)} CUP",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Black,
-                            color = Color(0xFF15803D)
-                        )
+                        Column(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            horizontalAlignment = Alignment.End
+                        ) {
+                            Text(
+                                text = "Ventas: ${"%.1f".format(item.ventas)} ${item.unit}",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp,
+                                color = Color(0xFF15803D)
+                            )
+                            Text(
+                                text = "$${"%.2f".format(item.ingresoEstimado)} CUP",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 14.sp,
+                                color = Color(0xFF15803D)
+                            )
+                        }
                     }
                 } else {
                     Surface(
                         shape = RoundedCornerShape(8.dp),
-                        color = Color(0xFFF8FAFC),
-                        modifier = Modifier.fillMaxWidth()
+                        color = Color(0xFFFEF3C7),
+                        border = BorderStroke(1.dp, Color(0xFFFCD34D))
                     ) {
                         Text(
-                            text = "Ingrese la existencia Final para calcular la Venta e Ingreso del producto.",
+                            text = "Tocar para editar",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            color = Color(0xFFB45309),
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    if (showEditModal) {
+        MercaderiaEditModal(
+            item = item,
+            onDismiss = { showEditModal = false }
+        )
+    }
+}
+
+@Composable
+fun MercaderiaEditModal(
+    item: MercaderiaItemState,
+    onDismiss: () -> Unit
+) {
+    var inicioInput by remember { mutableStateOf(item.existenciaInicialStr) }
+    var finalInput by remember { mutableStateOf(item.existenciaFinalStr) }
+    var entradasInput by remember { mutableStateOf(item.entradasStr) }
+
+    val inicioVal = inicioInput.toDoubleOrNull() ?: 0.0
+    val finalVal = finalInput.toDoubleOrNull() ?: 0.0
+    val entradasVal = entradasInput.toDoubleOrNull() ?: 0.0
+    val mermaVal = item.defectuoso
+
+    // Unidades vendidas = Inicio + Entradas - Final - Merma
+    val vendidasCalc = (inicioVal + entradasVal - finalVal - mermaVal).coerceAtLeast(0.0)
+    val ingresosCalc = vendidasCalc * item.price
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            modifier = Modifier
+                .fillMaxWidth(0.94f)
+                .padding(vertical = 20.dp)
+                .testTag("modal_edit_mercaderia_${item.mercaderiaId}")
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = item.productName,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Black,
+                            color = ElQadreNavy
+                        )
+                        Text(
+                            text = "Precio: $${"%.2f".format(item.price)} CUP / ${item.unit}",
+                            fontSize = 12.sp,
+                            color = Slate500
+                        )
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Slate500)
+                    }
+                }
+
+                HorizontalDivider(color = Slate200)
+
+                // 1. Existencia de INICIO
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "1. EXISTENCIA DE INICIO (${item.unit}):",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Black,
+                        color = ElQadreNavy
+                    )
+                    OutlinedTextField(
+                        value = inicioInput,
+                        onValueChange = { clean ->
+                            inicioInput = clean.filter { c -> c.isDigit() || c == '.' }
+                        },
+                        placeholder = { Text("0.0", fontSize = 16.sp) },
+                        textStyle = LocalTextStyle.current.copy(fontSize = 18.sp, fontWeight = FontWeight.Bold),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("input_inicio_mercaderia_modal")
+                    )
+                }
+
+                // 2. Existencia FINAL
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "2. EXISTENCIA FINAL (${item.unit}):",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Black,
+                        color = ElQadreNavy
+                    )
+                    OutlinedTextField(
+                        value = finalInput,
+                        onValueChange = { clean ->
+                            finalInput = clean.filter { c -> c.isDigit() || c == '.' }
+                        },
+                        placeholder = { Text("0.0", fontSize = 16.sp) },
+                        textStyle = LocalTextStyle.current.copy(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1D4ED8)),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("input_final_mercaderia_modal")
+                    )
+                }
+
+                // Cálculo automático
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFFF0FDF4),
+                    border = BorderStroke(1.5.dp, Color(0xFF86EFAC)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = "CÁLCULO AUTOMÁTICO:",
                             fontSize = 11.sp,
-                            color = Slate500,
-                            modifier = Modifier.padding(8.dp),
-                            textAlign = TextAlign.Center
+                            fontWeight = FontWeight.Black,
+                            color = Color(0xFF166534),
+                            letterSpacing = 0.5.sp
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Unidades vendidas:", fontSize = 13.sp, color = Slate700)
+                            Text(
+                                "${"%.1f".format(vendidasCalc)} ${item.unit}",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFF15803D)
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Ingresos generados:", fontSize = 13.sp, color = Slate700)
+                            Text(
+                                "$${"%.2f".format(ingresosCalc)} CUP",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFF15803D)
+                            )
+                        }
+                    }
+                }
+
+                // Botón grande CONFIRMAR
+                Button(
+                    onClick = {
+                        item.existenciaInicialStr = inicioInput.ifBlank { "0" }
+                        item.existenciaFinalStr = finalInput.ifBlank { "0" }
+                        item.entradasStr = entradasInput.ifBlank { "0" }
+                        onDismiss()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp)
+                        .testTag("btn_confirmar_edit_mercaderia_modal")
+                ) {
+                    Text(
+                        text = "CONFIRMAR",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color.White
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun MercaderiasMermasModal(
+    mercaderiasStates: List<MercaderiaItemState>,
+    onDismiss: () -> Unit
+) {
+    var selectedIndex by remember { mutableIntStateOf(0) }
+    val selectedItem = mercaderiasStates.getOrNull(selectedIndex)
+    var mermaInput by remember(selectedItem) { mutableStateOf(selectedItem?.defectuosoStr ?: "0") }
+    var showSuccessMessage by remember { mutableStateOf(false) }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            modifier = Modifier
+                .fillMaxWidth(0.94f)
+                .padding(vertical = 20.dp)
+                .testTag("modal_mermas_mercaderias")
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color(0xFFFEF3C7),
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Default.WarningAmber,
+                                    contentDescription = null,
+                                    tint = Color(0xFFD97706),
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
+                        Column {
+                            Text(
+                                text = "REGISTRAR MERMA",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Black,
+                                color = ElQadreNavy
+                            )
+                            Text(
+                                text = "Mercaderías (Local de Ventas)",
+                                fontSize = 12.sp,
+                                color = Slate500
+                            )
+                        }
+                    }
+
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Slate500)
+                    }
+                }
+
+                HorizontalDivider(color = Slate200)
+
+                if (mercaderiasStates.isEmpty()) {
+                    Text(
+                        text = "No hay productos de mercadería configurados.",
+                        fontSize = 14.sp,
+                        color = Slate600,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(24.dp)
+                    )
+                } else {
+                    // Paso 1: Seleccionar Producto
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = "1. SELECCIONAR PRODUCTO:",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Black,
+                            color = ElQadreNavy
+                        )
+
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 140.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            itemsIndexed(mercaderiasStates) { index, item ->
+                                val isSelected = index == selectedIndex
+                                Surface(
+                                    onClick = {
+                                        selectedIndex = index
+                                        mermaInput = item.defectuosoStr
+                                        showSuccessMessage = false
+                                    },
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (isSelected) Color(0xFFEFF6FF) else Color(0xFFF8FAFC),
+                                    border = BorderStroke(
+                                        width = if (isSelected) 2.dp else 1.dp,
+                                        color = if (isSelected) Color(0xFF3B82F6) else Slate200
+                                    ),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column {
+                                            Text(
+                                                text = item.productName,
+                                                fontSize = 14.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isSelected) Color(0xFF1D4ED8) else Slate800
+                                            )
+                                            Text(
+                                                text = "Precio: $${"%.2f".format(item.price)} / ${item.unit}",
+                                                fontSize = 12.sp,
+                                                color = Slate500
+                                            )
+                                        }
+                                        if (item.defectuoso > 0.0) {
+                                            Surface(
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = Color(0xFFFEF3C7)
+                                            ) {
+                                                Text(
+                                                    text = "Merma: ${"%.1f".format(item.defectuoso)}",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFFB45309),
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (selectedItem != null) {
+                        // Paso 2: Indicar Cantidad de Merma
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = "2. CANTIDAD DE MERMA (${selectedItem.unit}):",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Black,
+                                color = ElQadreNavy
+                            )
+
+                            OutlinedTextField(
+                                value = mermaInput,
+                                onValueChange = { clean ->
+                                    mermaInput = clean.filter { c -> c.isDigit() || c == '.' }
+                                    showSuccessMessage = false
+                                },
+                                textStyle = LocalTextStyle.current.copy(
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Color(0xFFD97706)
+                                ),
+                                placeholder = { Text("0.0", fontSize = 20.sp) },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                singleLine = true,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("input_merma_mercaderia_modal")
+                            )
+                        }
+
+                        // Preview Box
+                        val mermaVal = mermaInput.toDoubleOrNull() ?: 0.0
+                        val vendidasPreview = (selectedItem.existenciaDisponible - selectedItem.existenciaFinal - mermaVal).coerceAtLeast(0.0)
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFFF8FAFC),
+                            border = BorderStroke(1.dp, Slate200),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text("Venta estimada:", fontSize = 11.sp, color = Slate500)
+                                    Text("${"%.1f".format(vendidasPreview)} ${selectedItem.unit}", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFF15803D))
+                                }
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text("Ingreso estimado:", fontSize = 11.sp, color = Slate500)
+                                    Text("$${"%.2f".format(vendidasPreview * selectedItem.price)} CUP", fontWeight = FontWeight.Black, fontSize = 14.sp, color = Color(0xFF15803D))
+                                }
+                            }
+                        }
+                    }
+
+                    if (showSuccessMessage) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFFDCFCE7),
+                            border = BorderStroke(1.dp, Color(0xFF86EFAC)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "✓ Merma confirmada correctamente",
+                                color = Color(0xFF15803D),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(10.dp)
+                            )
+                        }
+                    }
+
+                    // Paso 3: Confirmar
+                    Button(
+                        onClick = {
+                            if (selectedItem != null) {
+                                selectedItem.defectuosoStr = mermaInput.ifBlank { "0" }
+                                showSuccessMessage = true
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
+                            .testTag("btn_confirmar_merma_mercaderia_modal")
+                    ) {
+                        Text(
+                            text = "CONFIRMAR MERMA",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color.White
                         )
                     }
                 }
