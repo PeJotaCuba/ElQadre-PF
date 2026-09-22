@@ -199,4 +199,86 @@ class ProrrateoGastosGeneralesAuditTest {
         assertEquals(0.0, item.gastoGeneralAsignado, 0.001)
         assertEquals(0.0, item.gastoGeneralUnitario, 0.001)
     }
+
+    @Test
+    fun testEjemploEspecificoUserRequest() {
+        // Pizza: 300 unidades diarias x $300 costo directo = $90,000 base
+        val pizzaProduct = Product(id = 100, code = "PIZZA", name = "Pizza", category = "Cocina", price = 500.0, cost = 300.0, destination = "COCINA", isAvailable = true)
+        val pizzaElab = ProductoElaborado(id = 10, productId = 100, ppd = 300.0, baseYield = 1.0, pagoCocinaUnitario = 5.0)
+
+        // Refresco (Mercadería): 100 unidades stock x $400 costo directo = $40,000 base
+        val refrescoProduct = Product(id = 200, code = "REFRESCO", name = "Refresco", category = "Bebidas", price = 600.0, cost = 400.0, destination = "BARRA", isAvailable = true)
+        val refrescoMerc = Mercaderia(id = 20, productId = 200, acquisitionCost = 400.0, unitOfMeasure = "U", initialStock = 100.0, isActive = true)
+
+        // Gasto indirecto diario total = $1,000
+        val gastoDiario = GastoGeneral(id = 1, name = "Gastos Indirectos", amount = 1000.0, period = "Día", isActive = true)
+
+        val products = listOf(pizzaProduct, refrescoProduct)
+        val prodElaborados = listOf(pizzaElab)
+        val mercaderias = listOf(refrescoMerc)
+        val gastos = listOf(gastoDiario)
+
+        val prorrateoResult = CostCalculationHelper.calcularBaseProrrateoGastosGenerales(
+            products = products,
+            productosElaborados = prodElaborados,
+            mercaderias = mercaderias,
+            movimientosMercaderia = emptyList(),
+            gastosGenerales = gastos
+        )
+
+        // 1. Base total = $90,000 + $40,000 = $130,000
+        assertEquals(130000.0, prorrateoResult.baseTotal, 0.001)
+
+        val pizzaItem = prorrateoResult.itemsProrrateo.find { it.productId == 100L }!!
+        // 2. Participación Pizza = 90,000 / 130,000 = 69.230769%
+        assertEquals(69.230769, pizzaItem.porcentajeParticipacion, 0.001)
+
+        // 3. Monto asignado = $1,000 * 69.230769% = $692.30769
+        assertEquals(692.30769, pizzaItem.gastoGeneralAsignado, 0.001)
+
+        // 4. Gasto indirecto unitario = $692.30769 / 300 = $2.30769 (~$2.31)
+        assertEquals(2.30769, pizzaItem.gastoGeneralUnitario, 0.001)
+
+        // 5. Verificación de Ficha de Costo de Producción
+        val pizzaSheet = CostCalculationHelper.calculateCostSheet(
+            product = pizzaProduct,
+            products = products,
+            productosElaborados = prodElaborados,
+            recetaIngredientes = emptyList(),
+            materiasPrimas = emptyList(),
+            gastosGenerales = gastos,
+            inversiones = emptyList(),
+            mercaderias = mercaderias,
+            movimientosMercaderia = emptyList()
+        )
+
+        assertEquals(300.0, pizzaSheet.costoDirectoUnitario, 0.001)
+        assertEquals(69.230769, pizzaSheet.porcentajeParticipacionPpd, 0.001)
+        assertEquals(692.30769, pizzaSheet.gastoGeneralAsignado, 0.01)
+        assertEquals(2.30769, pizzaSheet.gastoIndirectoUnitario, 0.001)
+        // Costo unitario antes de pagos de personal: $300.00 + $2.31 = $302.30769
+        assertEquals(302.30769, pizzaSheet.costoTotalUnitario, 0.001)
+        // Costo real unitario incluyendo pagos de personal ($5.00): $302.30769 + $5.00 = $307.30769
+        assertEquals(307.30769, pizzaSheet.costoRealUnitario, 0.001)
+        assertEquals(5.0, pizzaSheet.totalPagoPersonalUnitario, 0.001)
+
+        // 6. Verificación de Ficha de Costo de Mercaderías (Refresco: 4 lotes x 25 = 100 unidades)
+        val refrescoSheet = CostCalculationHelper.calculateMercaderiaCostSheet(
+            mercaderia = refrescoMerc,
+            mercaderias = mercaderias,
+            products = products,
+            movimientos = emptyList(),
+            gastosGenerales = gastos,
+            inversiones = emptyList(),
+            productosElaborados = prodElaborados
+        )
+
+        assertEquals(400.0, refrescoSheet.costoDirectoUnitario, 0.001)
+        assertEquals(100.0, refrescoSheet.currentStock, 0.001)
+        assertEquals(30.76923, refrescoSheet.porcentajeParticipacion, 0.001)
+        assertEquals(307.6923, refrescoSheet.totalGastosAsignados, 0.01)
+        assertEquals(3.076923, refrescoSheet.gastoGeneralUnitarioProrrateo, 0.001)
+        assertEquals(403.076923, refrescoSheet.costoTotalUnitario, 0.001)
+        assertEquals(403.076923, refrescoSheet.costoRealUnitario, 0.001)
+    }
 }

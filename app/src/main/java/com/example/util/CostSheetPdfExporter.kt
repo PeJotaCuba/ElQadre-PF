@@ -214,7 +214,8 @@ object CostSheetPdfExporter {
                 inversiones = uiState.inversiones,
                 productosElaborados = uiState.productosElaborados,
                 recetaIngredientes = uiState.recetaIngredientes,
-                materiasPrimas = uiState.materiasPrimas
+                materiasPrimas = uiState.materiasPrimas,
+                tarifasPagoBebidas = uiState.tarifasPagoBebidas
             )
 
             val pdfDocument = PdfDocument()
@@ -261,7 +262,8 @@ object CostSheetPdfExporter {
                     inversiones = uiState.inversiones,
                     productosElaborados = uiState.productosElaborados,
                     recetaIngredientes = uiState.recetaIngredientes,
-                    materiasPrimas = uiState.materiasPrimas
+                    materiasPrimas = uiState.materiasPrimas,
+                    tarifasPagoBebidas = uiState.tarifasPagoBebidas
                 )
 
                 val pdfDocument = PdfDocument()

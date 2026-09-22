@@ -493,7 +493,7 @@ fun FichaCostoDialog(
         Surface(
             modifier = Modifier
                 .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.systemBars)
+                .windowInsetsPadding(WindowInsets.safeDrawing)
                 .imePadding(),
             color = Color(0xFFF8FAFC)
         ) {
@@ -1468,7 +1468,10 @@ fun FichaCostoDialog(
                     shape = RoundedCornerShape(16.dp),
                     color = Color.White,
                     border = BorderStroke(1.5.dp, Slate200),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(bottom = 24.dp)
                 ) {
                     val context = LocalContext.current
                     Row(
@@ -2006,13 +2009,17 @@ fun FichaCostoMercaderiaDialog(
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
     ) {
         Surface(
             modifier = Modifier
                 .fillMaxWidth(0.95f)
                 .fillMaxHeight(0.92f)
-                .background(Color.Transparent),
+                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .imePadding(),
             shape = RoundedCornerShape(16.dp),
             color = Color.White
         ) {
@@ -2422,32 +2429,79 @@ fun FichaCostoMercaderiaDialog(
                                 }
                             }
 
-                            // Bloque 2: Costo Total Unitario = Costo Directo Unitario + Gasto General Prorrateado
+                            // Bloque 2: Costo Unitario Final de la Bebida = Costo Directo + Gasto General Prorrateado + Pago Dependiente + Pago Cajero
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
                                 color = ElQadreNavy,
                                 border = BorderStroke(1.dp, ElQadreNavy)
                             ) {
-                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text(
+                                        text = "ESTRUCTURA DE COSTO UNITARIO FINAL",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ElQadreGold
+                                    )
+
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Column {
-                                            Text("Costo Directo Unitario", fontSize = 9.5.sp, color = Slate400)
-                                            Text("$${"%.2f".format(costSheet.costoDirectoUnitario)} CUP", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                        Text("• Costo Directo Unitario:", fontSize = 11.sp, color = Color.White)
+                                        Text("$${"%.2f".format(costSheet.costoDirectoUnitario)} CUP", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                    }
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("• Gasto General Prorrateado por Unidad:", fontSize = 11.sp, color = Color.White)
+                                        Text("$${"%.2f".format(costSheet.gastoGeneralUnitarioProrrateo)} CUP", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                    }
+
+                                    if (costSheet.pagoDependienteUnitario > 0.0) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text("• Pago Dependiente:", fontSize = 11.sp, color = Color.White)
+                                            Text("$${"%.2f".format(costSheet.pagoDependienteUnitario)} CUP", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
                                         }
-                                        Text("+", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Slate400)
-                                        Column {
-                                            Text("Gasto General Prorrateado", fontSize = 9.5.sp, color = Slate400)
-                                            Text("$${"%.2f".format(costSheet.gastoGeneralUnitarioProrrateo)} CUP", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                    }
+
+                                    if (costSheet.pagoCajeroUnitario > 0.0) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text("• Pago Cajero:", fontSize = 11.sp, color = Color.White)
+                                            Text("$${"%.2f".format(costSheet.pagoCajeroUnitario)} CUP", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
                                         }
-                                        Text("=", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = ElQadreGold)
-                                        Column(horizontalAlignment = Alignment.End) {
-                                            Text("COSTO TOTAL UNITARIO", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = ElQadreGold)
-                                            Text("$${"%.2f".format(costSheet.costoTotalUnitario)} CUP", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = ElQadreGold)
-                                        }
+                                    }
+
+                                    HorizontalDivider(color = Slate600, modifier = Modifier.padding(vertical = 2.dp))
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "COSTO UNITARIO FINAL DE LA BEBIDA",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = ElQadreGold
+                                        )
+                                        Text(
+                                            text = "$${"%.2f".format(costSheet.costoTotalUnitario)} CUP",
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = ElQadreGold
+                                        )
                                     }
                                 }
                             }
@@ -2627,7 +2681,10 @@ fun FichaCostoMercaderiaDialog(
                 // FOOTER ACTIONS
                 val context = LocalContext.current
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(bottom = 24.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {

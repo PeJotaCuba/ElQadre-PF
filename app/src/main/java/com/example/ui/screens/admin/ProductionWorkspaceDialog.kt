@@ -3721,16 +3721,16 @@ fun AddEditProductoElaboradoDialog(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Column {
+                                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                                     Text(
                                         text = "PRESENTACIONES ESPECIALES (OPCIONAL)",
-                                        fontSize = 14.sp,
+                                        fontSize = 13.sp,
                                         fontWeight = FontWeight.ExtraBold,
                                         color = ElQadreNavy
                                     )
                                     Text(
                                         text = "Equivalencia en unidades base (ej. Familiar = 2.0)",
-                                        fontSize = 12.sp,
+                                        fontSize = 11.sp,
                                         color = Slate500
                                     )
                                 }
@@ -3741,12 +3741,18 @@ fun AddEditProductoElaboradoDialog(
                                         showAddPresentacionDialog = true
                                     },
                                     colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
-                                    shape = RoundedCornerShape(8.dp),
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                    shape = RoundedCornerShape(10.dp),
+                                    contentPadding = PaddingValues(0.dp),
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .testTag("btn_add_presentacion_especial")
                                 ) {
-                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("AÑADIR", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Icon(
+                                        imageVector = Icons.Default.Add,
+                                        contentDescription = "Añadir presentación especial",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp)
+                                    )
                                 }
                             }
 
@@ -4448,11 +4454,16 @@ fun RecipeManagementDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(56.dp)
-                        .navigationBarsPadding()
                         .testTag("close_recipe_dialog")
                 ) {
                     Text("CERRAR RECETA", fontSize = 16.sp, fontWeight = FontWeight.Black, color = Color.White)
                 }
+
+                Spacer(
+                    modifier = Modifier
+                        .navigationBarsPadding()
+                        .height(28.dp)
+                )
             }
         }
     }

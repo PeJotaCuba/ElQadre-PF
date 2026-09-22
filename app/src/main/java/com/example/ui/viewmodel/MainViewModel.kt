@@ -3251,11 +3251,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val directExpVal = directExpStr.toDoubleOrNull() ?: 0.0
                 val purchaseModeVal = if (modeRaw.contains("LOTE")) "POR LOTE" else "POR UNIDAD"
 
-                val unitAcquisitionCost = if (purchaseModeVal == "POR LOTE") {
-                    (costVal + directExpVal) / unitsPerLotVal
+                val totalUnitsCsv = if (purchaseModeVal == "POR LOTE") {
+                    if (stockVal > 0.0) stockVal else unitsPerLotVal
                 } else {
-                    costVal + directExpVal
+                    if (stockVal > 0.0) stockVal else 1.0
                 }
+
+                val unitAcquisitionCost = if (purchaseModeVal == "POR LOTE") {
+                    if (unitsPerLotVal > 0.0) costVal / unitsPerLotVal else costVal
+                } else {
+                    costVal
+                }
+
+                val unitDirectExpenses = if (totalUnitsCsv > 0.0) directExpVal / totalUnitsCsv else 0.0
 
                 try {
                     createMercaderiaProduct(
@@ -3267,7 +3275,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         unitOfMeasure = unitRaw.ifBlank { "Unidad" },
                         initialStock = stockVal,
                         responsibleAdmin = currentUserStr,
-                        directExpenses = directExpVal,
+                        directExpenses = unitDirectExpenses,
                         purchaseMode = purchaseModeVal,
                         purchasePrice = costVal,
                         unitsPerLot = unitsPerLotVal

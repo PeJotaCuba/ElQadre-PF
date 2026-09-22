@@ -1813,7 +1813,17 @@ fun AddEditMercaderiaDialog(
         ) 
     }
     // GASTOS DE LA COMPRA Y COMPARTIDO (1-5)
-    var purchaseExpensesStr by remember { mutableStateOf(if (mercaderia != null && mercaderia.directExpenses > 0.0) mercaderia.directExpenses.toString() else "") }
+    val initialUnitsForExpenses = if (mercaderia != null) {
+        if (mercaderia.initialStock > 0.0) mercaderia.initialStock else 1.0
+    } else 1.0
+
+    var purchaseExpensesStr by remember { 
+        mutableStateOf(
+            if (mercaderia != null && mercaderia.directExpenses > 0.0) {
+                "%.2f".format(mercaderia.directExpenses * initialUnitsForExpenses).replace(",", ".")
+            } else ""
+        ) 
+    }
     var sharedDivisorStr by remember { mutableStateOf("1") }
 
     var desiredMarginPercentStr by remember { mutableStateOf("") }
@@ -1831,6 +1841,14 @@ fun AddEditMercaderiaDialog(
     val totalUnitsPurchased = if (purchaseMode == "POR LOTE") purchaseQtyVal * unitsPerLotVal else purchaseQtyVal
     val autoInitialStock = maxOf(0.0, totalUnitsPurchased)
 
+    val effectiveUnitsForExpenses = if (totalUnitsPurchased > 0.0) {
+        totalUnitsPurchased
+    } else if (mercaderia != null && mercaderia.initialStock > 0.0) {
+        mercaderia.initialStock
+    } else {
+        1.0
+    }
+
     // 1. Costo base de adquisición por unidad
     val baseAcquisitionCostPerUnit = when {
         purchaseMode == "POR LOTE" -> if (unitsPerLotVal > 0.0) purchasePriceVal / unitsPerLotVal else 0.0
@@ -1840,7 +1858,7 @@ fun AddEditMercaderiaDialog(
     // 2. Gastos de compra asignados al producto
     val totalPurchaseExpenses = purchaseExpensesStr.toDoubleOrNull() ?: 0.0
     val assignedExpensesToProduct = totalPurchaseExpenses / sharedDivisor
-    val purchaseExpenseIncidencePerUnit = if (totalUnitsPurchased > 0.0) assignedExpensesToProduct / totalUnitsPurchased else 0.0
+    val purchaseExpenseIncidencePerUnit = if (effectiveUnitsForExpenses > 0.0) assignedExpensesToProduct / effectiveUnitsForExpenses else 0.0
 
     // 3. Prorrateo de Gastos Generales e Inversiones de ElQadre
     val activeGastosDiarios = uiState.gastosGenerales.filter { it.isActive }.sumOf { it.dailyCost() }
@@ -2388,16 +2406,16 @@ fun AddEditMercaderiaDialog(
                         onClick = {
                             val price = definitivePriceStr.toDoubleOrNull() ?: 0.0
 
-                            if (isEdit && mercaderia != null) {
+                             if (isEdit && mercaderia != null) {
                                 viewModel.updateMercaderiaAndProduct(
                                     mercaderia = mercaderia,
                                     name = name,
                                     code = code,
                                     category = category,
-                                    acquisitionCost = costoUnitarioReal,
+                                    acquisitionCost = baseAcquisitionCostPerUnit,
                                     definitivePrice = price,
                                     unitOfMeasure = unitOfMeasure,
-                                    directExpenses = assignedExpensesToProduct,
+                                    directExpenses = purchaseExpenseIncidencePerUnit,
                                     purchaseMode = purchaseMode,
                                     purchasePrice = purchasePriceVal,
                                     unitsPerLot = unitsPerLotVal
@@ -2407,12 +2425,12 @@ fun AddEditMercaderiaDialog(
                                     name = name,
                                     code = code,
                                     category = category,
-                                    acquisitionCost = costoUnitarioReal,
+                                    acquisitionCost = baseAcquisitionCostPerUnit,
                                     definitivePrice = price,
                                     unitOfMeasure = unitOfMeasure,
                                     initialStock = autoInitialStock,
                                     responsibleAdmin = uiState.currentUser?.username ?: "adminq",
-                                    directExpenses = assignedExpensesToProduct,
+                                    directExpenses = purchaseExpenseIncidencePerUnit,
                                     purchaseMode = purchaseMode,
                                     purchasePrice = purchasePriceVal,
                                     unitsPerLot = unitsPerLotVal
