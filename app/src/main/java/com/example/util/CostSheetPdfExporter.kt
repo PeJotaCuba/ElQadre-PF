@@ -163,30 +163,23 @@ object CostSheetPdfExporter {
         paint.textSize = 11f
         paint.isFakeBoldText = true
         canvas.drawText("Costo Directo Unitario (CDU): $${String.format("%.2f", costSheet.costoDirectoUnitario)} CUP", 50f, y, paint)
+        
         y += 18f
         paint.isFakeBoldText = false
-        canvas.drawText("Gasto General Prorrateado: $${String.format("%.4f", costSheet.gastoGeneralUnitarioProrrateo)} CUP", 50f, y, paint)
-        y += 18f
-        paint.isFakeBoldText = true
-        canvas.drawText("Costo Total Unitario: $${String.format("%.2f", costSheet.costoTotalUnitario)} CUP", 50f, y, paint)
-        y += 18f
+        canvas.drawText("Gasto General Prorrateado por Unidad: $${String.format("%.4f", costSheet.gastoGeneralUnitarioProrrateo)} CUP", 50f, y, paint)
         
-        val unitDeprec = if (costSheet.ppd > 0) costSheet.depreciacionAsignada / costSheet.ppd else 0.0
-        if (unitDeprec > 0.0) {
-            paint.isFakeBoldText = false
-            canvas.drawText("Depreciación Inversiones: $${String.format("%.4f", unitDeprec)} CUP", 50f, y, paint)
-            y += 18f
-        }
-
-        // Pagos de Personal Asociados
-        if (costSheet.totalPagoPersonalUnitario > 0.0) {
-            canvas.drawText("Pagos de Personal Asociados: $${String.format("%.2f", costSheet.totalPagoPersonalUnitario)} CUP (Cocina: $${String.format("%.2f", costSheet.totalPagoCocinaUnitario)}, Dep: $${String.format("%.2f", costSheet.totalPagoDependienteUnitario)}, Caj: $${String.format("%.2f", costSheet.totalPagoCajeroUnitario)})", 50f, y, paint)
-            y += 18f
-        }
-
+        y += 18f
+        paint.isFakeBoldText = false
+        canvas.drawText("Depreciación de Inversiones por Unidad: $${String.format("%.4f", costSheet.depreciacionInversionesUnitario)} CUP", 50f, y, paint)
+        
+        y += 18f
+        paint.isFakeBoldText = false
+        canvas.drawText("Pago a Personal por Unidad: $${String.format("%.2f", costSheet.totalPagoPersonalUnitario)} CUP", 50f, y, paint)
+        
+        y += 18f
         paint.isFakeBoldText = true
         paint.color = Color.parseColor("#047857")
-        canvas.drawText("COSTO REAL UNITARIO (CRU): $${String.format("%.2f", costSheet.costoRealUnitario)} CUP", 50f, y, paint)
+        canvas.drawText("COSTO UNITARIO FINAL: $${String.format("%.2f", costSheet.costoTotalUnitario)} CUP", 50f, y, paint)
 
         y += 25f
         paint.color = Color.parseColor("#1E293B")
@@ -422,31 +415,23 @@ object CostSheetPdfExporter {
         y += 18f
         paint.isFakeBoldText = true
         canvas.drawText("Costo Directo Unitario: $${String.format("%.2f", costSheet.costoDirectoUnitario)} CUP", 50f, y, paint)
+        
         y += 18f
         paint.isFakeBoldText = false
-        canvas.drawText("Gasto General Prorrateado: $${String.format("%.4f", costSheet.gastoGeneralUnitarioProrrateo)} CUP", 50f, y, paint)
+        canvas.drawText("Gasto General Prorrateado por Unidad: $${String.format("%.4f", costSheet.gastoGeneralUnitarioProrrateo)} CUP", 50f, y, paint)
+        
         y += 18f
-        paint.isFakeBoldText = true
-        canvas.drawText("Costo Total Unitario: $${String.format("%.2f", costSheet.costoTotalUnitario)} CUP", 50f, y, paint)
+        paint.isFakeBoldText = false
+        canvas.drawText("Depreciación de Inversiones por Unidad: $${String.format("%.4f", costSheet.depreciacionInversionesUnitario)} CUP", 50f, y, paint)
+        
         y += 18f
-
-        val gastosPuntualUnitLine = costSheet.detailedExpenses.filter { it.isSpecific }.sumOf { it.allocatedUnitAmount }
-        val depUnitLine = costSheet.detailedInversions.sumOf { it.allocatedUnitAmount }
-
-        if (gastosPuntualUnitLine > 0) {
-            paint.isFakeBoldText = false
-            canvas.drawText("Gastos Ind. (Puntuales): $${String.format("%.4f", gastosPuntualUnitLine)} CUP", 50f, y, paint)
-            y += 18f
-        }
-        if (depUnitLine > 0) {
-            paint.isFakeBoldText = false
-            canvas.drawText("Depreciación Inversiones: $${String.format("%.4f", depUnitLine)} CUP", 50f, y, paint)
-            y += 18f
-        }
-
+        paint.isFakeBoldText = false
+        canvas.drawText("Pago a Personal por Unidad: $${String.format("%.2f", costSheet.totalPagoPersonalUnitario)} CUP", 50f, y, paint)
+        
+        y += 18f
         paint.isFakeBoldText = true
         paint.color = Color.parseColor("#047857")
-        canvas.drawText("COSTO REAL UNITARIO (CRU): $${String.format("%.2f", costSheet.costoRealUnitario)} CUP", 50f, y, paint)
+        canvas.drawText("COSTO UNITARIO FINAL: $${String.format("%.2f", costSheet.costoTotalUnitario)} CUP", 50f, y, paint)
 
         y += 25f
         paint.color = Color.parseColor("#1E293B")

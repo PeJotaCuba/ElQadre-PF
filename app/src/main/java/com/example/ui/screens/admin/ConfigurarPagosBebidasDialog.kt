@@ -40,21 +40,26 @@ fun ConfigurarPagosBebidasDialog(
 ) {
     val currentTarifas = uiState.tarifasPagoBebidas
 
-    var pagoDependienteStr by remember(currentTarifas.pagoDependientePorUnidad) {
+    var pagoDependienteModalidad by remember(currentTarifas.pagoDependienteModalidad) {
+        mutableStateOf(currentTarifas.pagoDependienteModalidad)
+    }
+    var pagoDependienteValorStr by remember(currentTarifas.pagoDependienteValor) {
         mutableStateOf(
-            if (currentTarifas.pagoDependientePorUnidad > 0.0) currentTarifas.pagoDependientePorUnidad.toString() else ""
+            if (currentTarifas.pagoDependienteValor > 0.0) currentTarifas.pagoDependienteValor.toString() else ""
         )
     }
 
-    var pagoCajeroStr by remember(currentTarifas.pagoCajeroPorUnidad) {
+    var pagoCajeroModalidad by remember(currentTarifas.pagoCajeroModalidad) {
+        mutableStateOf(currentTarifas.pagoCajeroModalidad)
+    }
+    var pagoCajeroValorStr by remember(currentTarifas.pagoCajeroValor) {
         mutableStateOf(
-            if (currentTarifas.pagoCajeroPorUnidad > 0.0) currentTarifas.pagoCajeroPorUnidad.toString() else ""
+            if (currentTarifas.pagoCajeroValor > 0.0) currentTarifas.pagoCajeroValor.toString() else ""
         )
     }
 
-    val pagoDependienteVal = pagoDependienteStr.toDoubleOrNull() ?: 0.0
-    val pagoCajeroVal = pagoCajeroStr.toDoubleOrNull() ?: 0.0
-    val totalPagoPersonalVal = pagoDependienteVal + pagoCajeroVal
+    val pagoDependienteVal = pagoDependienteValorStr.toDoubleOrNull() ?: 0.0
+    val pagoCajeroVal = pagoCajeroValorStr.toDoubleOrNull() ?: 0.0
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -168,7 +173,7 @@ fun ConfigurarPagosBebidasDialog(
                                 color = Slate700
                             )
                             Text(
-                                text = "• En la ficha de cada bebida estos valores se mostrarán en modo informativo y de solo lectura.",
+                                text = "• En la ficha de cada bebida estos valores se calcularán según la modalidad configurada.",
                                 fontSize = 12.sp,
                                 color = Slate700
                             )
@@ -210,11 +215,49 @@ fun ConfigurarPagosBebidasDialog(
 
                             Spacer(modifier = Modifier.height(10.dp))
 
+                            // Modalidad Selector
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = { pagoDependienteModalidad = "FIJO" },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (pagoDependienteModalidad == "FIJO") Color(0xFF0F766E) else Slate100,
+                                        contentColor = if (pagoDependienteModalidad == "FIJO") Color.White else Slate700
+                                    ),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.weight(1f).height(36.dp).testTag("btn_dep_fijo"),
+                                    contentPadding = PaddingValues(horizontal = 4.dp)
+                                ) {
+                                    Text("MONTO FIJO", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Button(
+                                    onClick = { pagoDependienteModalidad = "PORCENTAJE" },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (pagoDependienteModalidad == "PORCENTAJE") Color(0xFF0F766E) else Slate100,
+                                        contentColor = if (pagoDependienteModalidad == "PORCENTAJE") Color.White else Slate700
+                                    ),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.weight(1f).height(36.dp).testTag("btn_dep_porcentaje"),
+                                    contentPadding = PaddingValues(horizontal = 4.dp)
+                                ) {
+                                    Text("PORCENTAJE", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
                             OutlinedTextField(
-                                value = pagoDependienteStr,
-                                onValueChange = { pagoDependienteStr = it },
-                                label = { Text("Pago unitario ($ CUP / u)") },
-                                placeholder = { Text("0.00") },
+                                value = pagoDependienteValorStr,
+                                onValueChange = { pagoDependienteValorStr = it },
+                                label = { 
+                                    Text(
+                                        if (pagoDependienteModalidad == "PORCENTAJE") "Porcentaje (% sobre precio de venta)" 
+                                        else "Monto unitario ($ CUP / u)"
+                                    ) 
+                                },
+                                placeholder = { Text(if (pagoDependienteModalidad == "PORCENTAJE") "e.g. 5.0" else "0.00") },
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                 singleLine = true,
                                 modifier = Modifier
@@ -264,11 +307,49 @@ fun ConfigurarPagosBebidasDialog(
 
                             Spacer(modifier = Modifier.height(10.dp))
 
+                            // Modalidad Selector
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = { pagoCajeroModalidad = "FIJO" },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (pagoCajeroModalidad == "FIJO") Color(0xFFB45309) else Slate100,
+                                        contentColor = if (pagoCajeroModalidad == "FIJO") Color.White else Slate700
+                                    ),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.weight(1f).height(36.dp).testTag("btn_caj_fijo"),
+                                    contentPadding = PaddingValues(horizontal = 4.dp)
+                                ) {
+                                    Text("MONTO FIJO", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Button(
+                                    onClick = { pagoCajeroModalidad = "PORCENTAJE" },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (pagoCajeroModalidad == "PORCENTAJE") Color(0xFFB45309) else Slate100,
+                                        contentColor = if (pagoCajeroModalidad == "PORCENTAJE") Color.White else Slate700
+                                    ),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.weight(1f).height(36.dp).testTag("btn_caj_porcentaje"),
+                                    contentPadding = PaddingValues(horizontal = 4.dp)
+                                ) {
+                                    Text("PORCENTAJE", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
                             OutlinedTextField(
-                                value = pagoCajeroStr,
-                                onValueChange = { pagoCajeroStr = it },
-                                label = { Text("Pago unitario ($ CUP / u)") },
-                                placeholder = { Text("0.00") },
+                                value = pagoCajeroValorStr,
+                                onValueChange = { pagoCajeroValorStr = it },
+                                label = { 
+                                    Text(
+                                        if (pagoCajeroModalidad == "PORCENTAJE") "Porcentaje (% sobre precio de venta)" 
+                                        else "Monto unitario ($ CUP / u)"
+                                    ) 
+                                },
+                                placeholder = { Text(if (pagoCajeroModalidad == "PORCENTAJE") "e.g. 5.0" else "0.00") },
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                 singleLine = true,
                                 modifier = Modifier
@@ -305,7 +386,7 @@ fun ConfigurarPagosBebidasDialog(
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Text(
-                                    text = "RESUMEN DE PAGO POR UNIDAD VENDIDA",
+                                    text = "RESUMEN DE CONFIGURACIÓN DE PAGO",
                                     fontWeight = FontWeight.ExtraBold,
                                     fontSize = 12.sp,
                                     color = Color(0xFF312E81)
@@ -319,7 +400,12 @@ fun ConfigurarPagosBebidasDialog(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text("Pago Dependiente:", fontSize = 12.sp, color = Slate700)
-                                Text("$${"%.2f".format(pagoDependienteVal)} CUP", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F766E))
+                                val textDep = if (pagoDependienteModalidad == "PORCENTAJE") {
+                                    "${"%.1f".format(pagoDependienteVal)}% del precio de venta"
+                                } else {
+                                    "$${"%.2f".format(pagoDependienteVal)} CUP"
+                                }
+                                Text(textDep, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F766E))
                             }
 
                             Row(
@@ -327,7 +413,12 @@ fun ConfigurarPagosBebidasDialog(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text("Pago Cajero:", fontSize = 12.sp, color = Slate700)
-                                Text("$${"%.2f".format(pagoCajeroVal)} CUP", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB45309))
+                                val textCaj = if (pagoCajeroModalidad == "PORCENTAJE") {
+                                    "${"%.1f".format(pagoCajeroVal)}% del precio de venta"
+                                } else {
+                                    "$${"%.2f".format(pagoCajeroVal)} CUP"
+                                }
+                                Text(textCaj, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB45309))
                             }
 
                             HorizontalDivider(color = Color(0xFFC7D2FE))
@@ -338,14 +429,22 @@ fun ConfigurarPagosBebidasDialog(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "PAGO TOTAL DE PERSONAL:",
+                                    text = "MODALIDAD DE PAGO:",
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Black,
                                     color = Color(0xFF312E81)
                                 )
+                                val textTotal = if (pagoDependienteModalidad == "PORCENTAJE" || pagoCajeroModalidad == "PORCENTAJE") {
+                                    val parts = mutableListOf<String>()
+                                    if (pagoDependienteModalidad == "PORCENTAJE") parts.add("${"%.1f".format(pagoDependienteVal)}%") else parts.add("$${"%.2f".format(pagoDependienteVal)} CUP")
+                                    if (pagoCajeroModalidad == "PORCENTAJE") parts.add("${"%.1f".format(pagoCajeroVal)}%") else parts.add("$${"%.2f".format(pagoCajeroVal)} CUP")
+                                    parts.joinToString(" + ")
+                                } else {
+                                    "$${"%.2f".format(pagoDependienteVal + pagoCajeroVal)} CUP / u"
+                                }
                                 Text(
-                                    text = "$${"%.2f".format(totalPagoPersonalVal)} CUP / u",
-                                    fontSize = 16.sp,
+                                    text = textTotal,
+                                    fontSize = 15.sp,
                                     fontWeight = FontWeight.Black,
                                     color = Color(0xFF4338CA)
                                 )
@@ -375,8 +474,12 @@ fun ConfigurarPagosBebidasDialog(
                     Button(
                         onClick = {
                             viewModel.updateTarifasPagoBebidas(
-                                pagoDependiente = pagoDependienteVal,
-                                pagoCajero = pagoCajeroVal
+                                pagoDependiente = if (pagoDependienteModalidad == "FIJO") pagoDependienteVal else 0.0,
+                                pagoCajero = if (pagoCajeroModalidad == "FIJO") pagoCajeroVal else 0.0,
+                                pagoDependienteModalidad = pagoDependienteModalidad,
+                                pagoDependienteValor = pagoDependienteVal,
+                                pagoCajeroModalidad = pagoCajeroModalidad,
+                                pagoCajeroValor = pagoCajeroVal
                             )
                             onDismiss()
                         },

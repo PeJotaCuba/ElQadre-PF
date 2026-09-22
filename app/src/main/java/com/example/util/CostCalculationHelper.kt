@@ -48,7 +48,8 @@ data class ProductCostSheet(
     val estimatedDailyQuantity: Double = ppd,
     val movimientoDiarioProducto: Double = costoDirectoUnitario * ppd,
     val movimientoDiarioTotal: Double = totalKitchenPpd,
-    val porcentajeProrrateo: Double = porcentajeParticipacionPpd
+    val porcentajeProrrateo: Double = porcentajeParticipacionPpd,
+    val depreciacionInversionesUnitario: Double = 0.0
 )
 
 data class AllocatedCostItem(
@@ -86,7 +87,9 @@ data class ProrrateoBaseItem(
     val valorBase: Double, // quantity * costoDirectoUnitario
     val porcentajeParticipacion: Double, // % sobre la base total
     val gastoGeneralAsignado: Double, // Gasto general diario total * % participacion
-    val gastoGeneralUnitario: Double // Gasto asignado / cantidad de base
+    val gastoGeneralUnitario: Double, // Gasto asignado / cantidad de base
+    val depreciacionAsignada: Double = 0.0,
+    val depreciacionUnitaria: Double = 0.0
 )
 
 data class ProrrateoGastosGeneralesResult(
@@ -136,7 +139,8 @@ data class MercaderiaCostSheet(
     val margenPorcentual: Double,
     val totalUtilidadProyectada: Double,
     val detailedExpenses: List<AllocatedCostItem>,
-    val detailedInversions: List<AllocatedInversionItem>
+    val detailedInversions: List<AllocatedInversionItem>,
+    val depreciacionInversionesUnitario: Double = 0.0
 ) {
     val realCost: Double get() = costoRealUnitario
     val unitMargin: Double get() = utilidadUnitaria
@@ -241,8 +245,9 @@ object CostCalculationHelper {
     ): ProrrateoGastosGeneralesResult {
         val prodElabMap = productosElaborados.associateBy { it.productId }
         
-        // 1. GASTO GENERAL DIARIO TOTAL (activos, sumando gastos generales + depreciación de inversiones)
-        val gastoGeneralDiarioTotal = calculateTotalDailyOverheads(gastosGenerales) + calculateTotalDailyDepreciation(inversiones, gastosGenerales)
+        // 1. GASTO GENERAL DIARIO TOTAL (activos, SIN depreciación de inversiones)
+        val gastoGeneralDiarioTotal = calculateTotalDailyOverheads(gastosGenerales)
+        val depreciacionDiariaTotal = inversiones.sumOf { it.dailyDepreciation() }
         
         // 2. BASE DE PRODUCCIÓN
         val baseProduccionItems = mutableListOf<ProrrateoBaseItem>()
@@ -366,11 +371,16 @@ object CostCalculationHelper {
             val gastoGeneralAsignado = gastoGeneralDiarioTotal * (porcentajeParticipacion / 100.0)
             val gastoGeneralUnitario = if (item.quantity > 0.0) gastoGeneralAsignado / item.quantity else 0.0
             
+            val depreciacionAsignada = depreciacionDiariaTotal * (porcentajeParticipacion / 100.0)
+            val depreciacionUnitaria = if (item.quantity > 0.0) depreciacionAsignada / item.quantity else 0.0
+
             allItems.add(
                 item.copy(
                     porcentajeParticipacion = porcentajeParticipacion,
                     gastoGeneralAsignado = gastoGeneralAsignado,
-                    gastoGeneralUnitario = gastoGeneralUnitario
+                    gastoGeneralUnitario = gastoGeneralUnitario,
+                    depreciacionAsignada = depreciacionAsignada,
+                    depreciacionUnitaria = depreciacionUnitaria
                 )
             )
         }
@@ -380,11 +390,16 @@ object CostCalculationHelper {
             val gastoGeneralAsignado = gastoGeneralDiarioTotal * (porcentajeParticipacion / 100.0)
             val gastoGeneralUnitario = if (item.quantity > 0.0) gastoGeneralAsignado / item.quantity else 0.0
             
+            val depreciacionAsignada = depreciacionDiariaTotal * (porcentajeParticipacion / 100.0)
+            val depreciacionUnitaria = if (item.quantity > 0.0) depreciacionAsignada / item.quantity else 0.0
+
             allItems.add(
                 item.copy(
                     porcentajeParticipacion = porcentajeParticipacion,
                     gastoGeneralAsignado = gastoGeneralAsignado,
-                    gastoGeneralUnitario = gastoGeneralUnitario
+                    gastoGeneralUnitario = gastoGeneralUnitario,
+                    depreciacionAsignada = depreciacionAsignada,
+                    depreciacionUnitaria = depreciacionUnitaria
                 )
             )
         }
@@ -398,20 +413,28 @@ object CostCalculationHelper {
                 val porcentajeParticipacion = (item.valorBase / baseTotal) * 100.0
                 val gastoGeneralAsignado = gastoGeneralDiarioTotal * (porcentajeParticipacion / 100.0)
                 val gastoGeneralUnitario = if (item.quantity > 0.0) gastoGeneralAsignado / item.quantity else 0.0
+                val depreciacionAsignada = depreciacionDiariaTotal * (porcentajeParticipacion / 100.0)
+                val depreciacionUnitaria = if (item.quantity > 0.0) depreciacionAsignada / item.quantity else 0.0
                 item.copy(
                     porcentajeParticipacion = porcentajeParticipacion,
                     gastoGeneralAsignado = gastoGeneralAsignado,
-                    gastoGeneralUnitario = gastoGeneralUnitario
+                    gastoGeneralUnitario = gastoGeneralUnitario,
+                    depreciacionAsignada = depreciacionAsignada,
+                    depreciacionUnitaria = depreciacionUnitaria
                 )
             },
             baseMercaderias = baseMercaderiasConNombres.map { item ->
                 val porcentajeParticipacion = (item.valorBase / baseTotal) * 100.0
                 val gastoGeneralAsignado = gastoGeneralDiarioTotal * (porcentajeParticipacion / 100.0)
                 val gastoGeneralUnitario = if (item.quantity > 0.0) gastoGeneralAsignado / item.quantity else 0.0
+                val depreciacionAsignada = depreciacionDiariaTotal * (porcentajeParticipacion / 100.0)
+                val depreciacionUnitaria = if (item.quantity > 0.0) depreciacionAsignada / item.quantity else 0.0
                 item.copy(
                     porcentajeParticipacion = porcentajeParticipacion,
                     gastoGeneralAsignado = gastoGeneralAsignado,
-                    gastoGeneralUnitario = gastoGeneralUnitario
+                    gastoGeneralUnitario = gastoGeneralUnitario,
+                    depreciacionAsignada = depreciacionAsignada,
+                    depreciacionUnitaria = depreciacionUnitaria
                 )
             },
             baseTotal = baseTotal,
@@ -677,12 +700,13 @@ object CostCalculationHelper {
         val totalPagoCajero = pagoCajeroUnitario
         val totalPagoPersonal = totalPagoCocina + totalPagoDependiente + totalPagoCajero
 
-        // 6. COSTO REAL UNITARIO / COSTO TEÓRICO (Materias Primas + Gastos Indirectos + Pagos de Personal)
-        val costoRealUnitario = cdu + gastoIndirectoUnitario + totalPagoPersonal
+        // 6. COSTOS INDIRECTOS DEPRECIACIÓN Y GASTOS GENERALES PRORRATEADOS POR UNIDAD
+        val gastoGeneralUnitarioProrrateo = prorrateoItem?.gastoGeneralUnitario ?: 0.0
+        val depreciacionInversionesUnitario = prorrateoItem?.depreciacionUnitaria ?: 0.0
 
-        // Gasto general prorrateado por unidad y Costo total unitario (Prompt 3)
-        val gastoGeneralUnitarioProrrateo = gastoIndirectoUnitario
-        val costoTotalUnitario = cdu + gastoGeneralUnitarioProrrateo
+        // Costo unitario final = costo directo + gasto general prorrateado + depreciación de inversiones por unidad + pago a personal por unidad
+        val costoTotalUnitario = cdu + gastoGeneralUnitarioProrrateo + depreciacionInversionesUnitario + totalPagoPersonal
+        val costoRealUnitario = costoTotalUnitario
 
         // 7. PRECIO DE REFERENCIA (+30% margen sugerido)
         val targetMarginPct = prodElaborado?.targetMarginPct ?: 30.0
@@ -733,7 +757,8 @@ object CostCalculationHelper {
             estimatedDailyQuantity = productPpd,
             movimientoDiarioProducto = cdu * productPpd,
             movimientoDiarioTotal = if (prorrateoResult.baseTotal > 0.0) prorrateoResult.baseTotal else totalKitchenPpd,
-            porcentajeProrrateo = porcentajeParticipacion
+            porcentajeProrrateo = porcentajeParticipacion,
+            depreciacionInversionesUnitario = depreciacionInversionesUnitario
         )
     }
 
@@ -991,21 +1016,32 @@ object CostCalculationHelper {
         // 4. COSTO DIRECTO, PAGOS DE PERSONAL Y COSTO TOTAL UNITARIO
         val directExpenses = mercaderia.directExpenses
         val costoDirectoUnitario = mercaderia.acquisitionCost + directExpenses
-        val gastoGeneralUnitarioProrrateo = if (prorrateoItem != null && prorrateoItem.gastoGeneralUnitario > 0.0) {
-            prorrateoItem.gastoGeneralUnitario
-        } else {
-            gastoIndirectoUnitario
-        }
+        val gastoGeneralUnitarioProrrateo = prorrateoItem?.gastoGeneralUnitario ?: 0.0
+        val depreciacionInversionesUnitario = prorrateoItem?.depreciacionUnitaria ?: 0.0
 
         val isBebida = MercaderiaCategoryHelper.isBebida(product) || (!MercaderiaCategoryHelper.isConfitura(product) && product.category.equals("Bebidas", ignoreCase = true))
-        val pagoDependienteUnitario = if (isBebida) tarifasPagoBebidas.pagoDependientePorUnidad else 0.0
-        val pagoCajeroUnitario = if (isBebida) tarifasPagoBebidas.pagoCajeroPorUnidad else 0.0
+        val sellingPrice = product?.price ?: 0.0
+        val pagoDependienteUnitario = if (isBebida) {
+            if (tarifasPagoBebidas.pagoDependienteModalidad == "PORCENTAJE") {
+                sellingPrice * tarifasPagoBebidas.pagoDependienteValor / 100.0
+            } else {
+                tarifasPagoBebidas.pagoDependienteValor
+            }
+        } else 0.0
+
+        val pagoCajeroUnitario = if (isBebida) {
+            if (tarifasPagoBebidas.pagoCajeroModalidad == "PORCENTAJE") {
+                sellingPrice * tarifasPagoBebidas.pagoCajeroValor / 100.0
+            } else {
+                tarifasPagoBebidas.pagoCajeroValor
+            }
+        } else 0.0
+
         val totalPagoPersonalUnitario = pagoDependienteUnitario + pagoCajeroUnitario
 
-        val costoTotalUnitario = costoDirectoUnitario + gastoGeneralUnitarioProrrateo + totalPagoPersonalUnitario
-
-        // COSTO REAL UNITARIO: COSTO DIRECTO UNITARIO + COSTOS INDIRECTOS + PAGOS DE PERSONAL
-        val costoRealUnitario = costoDirectoUnitario + gastoIndirectoUnitario + totalPagoPersonalUnitario
+        // Costo unitario final = costo directo + gasto general prorrateado + depreciación de inversiones por unidad + pago a personal por unidad
+        val costoTotalUnitario = costoDirectoUnitario + gastoGeneralUnitarioProrrateo + depreciacionInversionesUnitario + totalPagoPersonalUnitario
+        val costoRealUnitario = costoTotalUnitario
 
         // 5. PRECIO DEFINITIVO
         val precioDefinitivo = product.price
@@ -1070,7 +1106,8 @@ object CostCalculationHelper {
             totalUtilidadProyectada = totalUtilidadProyectada,
             
             detailedExpenses = detailedExpenses,
-            detailedInversions = detailedInversions
+            detailedInversions = detailedInversions,
+            depreciacionInversionesUnitario = depreciacionInversionesUnitario
         )
     }
 }

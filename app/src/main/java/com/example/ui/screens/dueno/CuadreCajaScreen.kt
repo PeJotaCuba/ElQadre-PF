@@ -333,8 +333,8 @@ fun CuadreCajaScreen(
                 entradasStr = if (entradasJornada > 0.0) "%.1f".format(entradasJornada).replace(',', '.') else "0",
                 existenciaFinalStr = "",
                 costoUnitarioTeorico = costoUnitario,
-                pagoDependienteUnitario = if (isConfitura) 0.0 else uiState.tarifasPagoBebidas.pagoDependientePorUnidad,
-                pagoCajeroUnitario = if (isConfitura) 0.0 else uiState.tarifasPagoBebidas.pagoCajeroPorUnidad
+                pagoDependienteUnitario = if (isConfitura) 0.0 else (mercCostSheet?.pagoDependienteUnitario ?: uiState.tarifasPagoBebidas.calcularPagoDependiente(price)),
+                pagoCajeroUnitario = if (isConfitura) 0.0 else (mercCostSheet?.pagoCajeroUnitario ?: uiState.tarifasPagoBebidas.calcularPagoCajero(price))
             )
         }.toMutableStateList()
     }
@@ -439,13 +439,13 @@ fun CuadreCajaScreen(
     }
     val pagoDependienteMercaderia = mercaderiasStates.sumOf { item ->
         if (item.isConfitura) 0.0 else {
-            val depTarifa = if (item.pagoDependienteUnitario > 0.0) item.pagoDependienteUnitario else uiState.tarifasPagoBebidas.pagoDependientePorUnidad
+            val depTarifa = if (item.pagoDependienteUnitario > 0.0) item.pagoDependienteUnitario else uiState.tarifasPagoBebidas.calcularPagoDependiente(item.price)
             item.ventas * depTarifa
         }
     }
     val pagoCajeroMercaderia = mercaderiasStates.sumOf { item ->
         if (item.isConfitura) 0.0 else {
-            val cajTarifa = if (item.pagoCajeroUnitario > 0.0) item.pagoCajeroUnitario else uiState.tarifasPagoBebidas.pagoCajeroPorUnidad
+            val cajTarifa = if (item.pagoCajeroUnitario > 0.0) item.pagoCajeroUnitario else uiState.tarifasPagoBebidas.calcularPagoCajero(item.price)
             item.ventas * cajTarifa
         }
     }
@@ -3068,7 +3068,7 @@ fun CuadrePagosTab(
         if (item.isConfitura) {
             0.0
         } else {
-            val depTarifa = if (item.pagoDependienteUnitario > 0.0) item.pagoDependienteUnitario else tarifasBebidas.pagoDependientePorUnidad
+            val depTarifa = if (item.pagoDependienteUnitario > 0.0) item.pagoDependienteUnitario else tarifasBebidas.calcularPagoDependiente(item.price)
             item.ventas * depTarifa
         }
     }
@@ -3077,7 +3077,7 @@ fun CuadrePagosTab(
         if (item.isConfitura) {
             0.0
         } else {
-            val cajTarifa = if (item.pagoCajeroUnitario > 0.0) item.pagoCajeroUnitario else tarifasBebidas.pagoCajeroPorUnidad
+            val cajTarifa = if (item.pagoCajeroUnitario > 0.0) item.pagoCajeroUnitario else tarifasBebidas.calcularPagoCajero(item.price)
             item.ventas * cajTarifa
         }
     }
@@ -3610,7 +3610,12 @@ fun CuadrePagosTab(
                 ) {
                     Column {
                         Text(text = " • Bebidas (${"%.1f".format(totalVentasBebidas)} u vendidas)", fontSize = 12.sp, color = Slate700)
-                        Text(text = "Tarifa configurada: $${"%.2f".format(tarifasBebidas.pagoCajeroPorUnidad)} CUP/u", fontSize = 10.sp, color = Slate500)
+                        val cajTxt = if (tarifasBebidas.pagoCajeroModalidad == "PORCENTAJE") {
+                            "${"%.1f".format(tarifasBebidas.pagoCajeroValor)}%"
+                        } else {
+                            "$${"%.2f".format(tarifasBebidas.pagoCajeroPorUnidad)} CUP/u"
+                        }
+                        Text(text = "Tarifa configurada: $cajTxt", fontSize = 10.sp, color = Slate500)
                     }
                     Text(text = "$${"%.2f".format(pagoCajeroMercaderia)} CUP", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Slate800)
                 }
@@ -3710,7 +3715,12 @@ fun CuadrePagosTab(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(text = "Bebidas:", fontSize = 11.sp, color = Slate600)
-                            Text(text = "${"%.1f".format(totalVentasBebidas)} u (@ $${"%.2f".format(tarifasBebidas.pagoDependientePorUnidad)}/u) → $${"%.2f".format(pagoDependienteMercaderia)} CUP", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Slate800)
+                            val depTxt = if (tarifasBebidas.pagoDependienteModalidad == "PORCENTAJE") {
+                                "${"%.1f".format(tarifasBebidas.pagoDependienteValor)}%"
+                            } else {
+                                "$${"%.2f".format(tarifasBebidas.pagoDependientePorUnidad)}/u"
+                            }
+                            Text(text = "${"%.1f".format(totalVentasBebidas)} u (@ $depTxt) → $${"%.2f".format(pagoDependienteMercaderia)} CUP", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Slate800)
                         }
                         HorizontalDivider(color = Slate200)
                         Row(

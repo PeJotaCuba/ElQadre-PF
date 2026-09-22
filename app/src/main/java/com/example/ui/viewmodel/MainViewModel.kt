@@ -3104,10 +3104,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * Actualiza y persiste localmente las tarifas globales de pago de personal asociadas a Bebidas.
      * (Pago Dependiente por unidad vendida y Pago Cajero por unidad vendida).
      */
-    fun updateTarifasPagoBebidas(pagoDependiente: Double, pagoCajero: Double) {
+    fun updateTarifasPagoBebidas(
+        pagoDependiente: Double,
+        pagoCajero: Double,
+        pagoDependienteModalidad: String = "FIJO",
+        pagoDependienteValor: Double = 0.0,
+        pagoCajeroModalidad: String = "FIJO",
+        pagoCajeroValor: Double = 0.0
+    ) {
         val tarifas = com.example.util.TarifasPagoBebidas(
-            pagoDependientePorUnidad = maxOf(0.0, pagoDependiente),
-            pagoCajeroPorUnidad = maxOf(0.0, pagoCajero)
+            pagoDependientePorUnidad = maxOf(0.0, if (pagoDependienteModalidad == "FIJO") pagoDependienteValor else 0.0),
+            pagoCajeroPorUnidad = maxOf(0.0, if (pagoCajeroModalidad == "FIJO") pagoCajeroValor else 0.0),
+            pagoDependienteModalidad = pagoDependienteModalidad,
+            pagoDependienteValor = maxOf(0.0, pagoDependienteValor),
+            pagoCajeroModalidad = pagoCajeroModalidad,
+            pagoCajeroValor = maxOf(0.0, pagoCajeroValor)
         )
         com.example.util.BebidasTarifasPreferences.saveTarifas(getApplication(), tarifas)
         _uiState.update { 

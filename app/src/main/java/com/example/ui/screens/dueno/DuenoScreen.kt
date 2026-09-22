@@ -9463,23 +9463,6 @@ fun InversionDetailDialog(
                     }
                 }
             }
-        },
-        dismissButton = {
-            OutlinedButton(
-                onClick = onDismiss,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-                shape = RoundedCornerShape(10.dp),
-                border = BorderStroke(1.dp, Slate300)
-            ) {
-                Text(
-                    text = "CERRAR",
-                    color = Slate600,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
         }
     )
 }

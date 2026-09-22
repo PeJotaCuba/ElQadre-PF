@@ -1262,7 +1262,7 @@ fun FichaCostoDialog(
                     }
 
                     // ==========================================
-                    // SECCIÓN 8: COSTO TOTAL UNITARIO Y COSTO REAL (CRU)
+                    // SECCIÓN 8: ESTRUCTURA DE COSTO UNITARIO FINAL
                     // ==========================================
                     Surface(
                         shape = RoundedCornerShape(10.dp),
@@ -1271,80 +1271,76 @@ fun FichaCostoDialog(
                     ) {
                         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text(
-                                "8. RESUMEN DE COSTOS: TOTAL Y REAL UNITARIO",
+                                "8. ESTRUCTURA DE COSTO UNITARIO FINAL",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = ElQadreGold
                             )
 
-                            // Desglose de componentes principales: Costo Directo + Gasto General Prorrateado = Costo Total Unitario
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = Color(0xFF0F172A),
-                                border = BorderStroke(1.dp, Color(0xFF334155))
-                            ) {
-                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Column {
-                                            Text("Costo Directo Unitario", fontSize = 9.5.sp, color = Slate400)
-                                            Text("$${"%.2f".format(costSheet.costoDirectoUnitario)} CUP", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                        }
-                                        Text("+", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Slate400)
-                                        Column {
-                                            Text("Gasto General Prorrateado", fontSize = 9.5.sp, color = Slate400)
-                                            Text("$${"%.2f".format(costSheet.gastoGeneralUnitarioProrrateo)} CUP", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                        }
-                                        Text("=", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = ElQadreGold)
-                                        Column(horizontalAlignment = Alignment.End) {
-                                            Text("COSTO TOTAL UNITARIO", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = ElQadreGold)
-                                            Text("$${"%.2f".format(costSheet.costoTotalUnitario)} CUP", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = ElQadreGold)
-                                        }
-                                    }
-                                }
-                            }
-
-                            if (costSheet.totalPagoPersonalUnitario > 0.0) {
+                            Column(modifier = Modifier.padding(2.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(Color(0xFF1E1B4B), RoundedCornerShape(6.dp))
-                                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                                    modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Pagos de Personal Asociados:", fontSize = 10.5.sp, color = Color(0xFFC7D2FE))
-                                    Text("+$${"%.2f".format(costSheet.totalPagoPersonalUnitario)} CUP", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFFA5B4FC))
-                                }
-                            }
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column {
-                                    Text(
-                                        "Costo Teórico Real Unitario (CRU)",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White
-                                    )
-                                    Text(
-                                        "Por ${costSheet.productionUnit} producida/vendida",
-                                        fontSize = 10.5.sp,
-                                        color = Slate300
-                                    )
+                                    Text("• Costo Directo Unitario:", fontSize = 11.sp, color = Color.White)
+                                    Text("$${"%.2f".format(costSheet.costoDirectoUnitario)} CUP", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
                                 }
 
-                                Text(
-                                    text = "$${"%.2f".format(costSheet.costoRealUnitario)} CUP",
-                                    fontSize = 20.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = ElQadreGold
-                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("• Gasto General Prorrateado por Unidad:", fontSize = 11.sp, color = Color.White)
+                                    Text("$${"%.2f".format(costSheet.gastoGeneralUnitarioProrrateo)} CUP", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("• Depreciación de Inversiones por Unidad:", fontSize = 11.sp, color = Color.White)
+                                    Text("$${"%.2f".format(costSheet.depreciacionInversionesUnitario)} CUP", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("• Pago a Personal por Unidad:", fontSize = 11.sp, color = Color.White)
+                                    Text("$${"%.2f".format(costSheet.totalPagoPersonalUnitario)} CUP", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                }
+
+                                HorizontalDivider(color = Slate600, modifier = Modifier.padding(vertical = 4.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text(
+                                            text = "COSTO UNITARIO FINAL",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = ElQadreGold
+                                        )
+                                        Text(
+                                            "Por ${costSheet.productionUnit} producida/vendida",
+                                            fontSize = 9.sp,
+                                            color = Slate300
+                                        )
+                                    }
+                                    Text(
+                                        text = "$${"%.2f".format(costSheet.costoTotalUnitario)} CUP",
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = ElQadreGold
+                                    )
+                                }
                             }
                         }
                     }
@@ -1549,9 +1545,19 @@ fun AddEditInversionDialog(
     }
     val date by remember { mutableStateOf(inversion?.date ?: System.currentTimeMillis()) }
     var usefulLifeText by remember { mutableStateOf(inversion?.usefulLife?.toString() ?: "12") }
-    var usefulLifeUnit by remember { mutableStateOf(inversion?.usefulLifeUnit ?: "MESES") }
+    var usefulLifeUnit by remember { 
+        mutableStateOf(
+            when (inversion?.usefulLifeUnit?.uppercase()) {
+                "DIAS", "DÍAS", "DIA", "DÍA" -> "DÍAS"
+                "MESES", "MES" -> "MESES"
+                "AÑOS", "AÑO", "ANUAL" -> "AÑOS"
+                else -> "MESES"
+            }
+        ) 
+    }
     var observation by remember { mutableStateOf(inversion?.observation ?: "") }
     var targetProductId by remember { mutableStateOf<Long?>(inversion?.targetProductId) }
+    var method by remember { mutableStateOf(inversion?.method ?: "VIDA_UTIL") }
 
     val tasaUsd = generalConfig?.tasaUsd ?: 0.0
     val tasaEur = generalConfig?.tasaEur ?: 0.0
@@ -1573,7 +1579,7 @@ fun AddEditInversionDialog(
         "Tecnología",
         "Otros"
     )
-    val lifeUnits = listOf("DÍAS", "SEMANAS", "MESES", "AÑOS")
+    val lifeUnits = listOf("DÍAS", "MESES", "AÑOS")
 
     var expandedCategory by remember { mutableStateOf(false) }
     var expandedUnit by remember { mutableStateOf(false) }
@@ -1583,13 +1589,13 @@ fun AddEditInversionDialog(
     val lifeVal = usefulLifeText.toDoubleOrNull() ?: 1.0
 
     val dailyDep = if (convertedAmtVal > 0.0 && lifeVal > 0.0) {
-        when (usefulLifeUnit.uppercase()) {
-            "DÍAS", "DIAS", "DÍA", "DIA" -> convertedAmtVal / lifeVal
-            "SEMANAS", "SEMANA" -> convertedAmtVal / (lifeVal * 7.0)
-            "MESES", "MES" -> convertedAmtVal / (lifeVal * 30.0)
-            "AÑOS", "AÑO", "ANUAL" -> convertedAmtVal / (lifeVal * 365.0)
-            else -> (convertedAmtVal / lifeVal) / 30.0
+        val days = when (usefulLifeUnit.uppercase()) {
+            "DÍAS", "DIAS", "DÍA", "DIA" -> lifeVal
+            "MESES", "MES" -> lifeVal * 30.0
+            "AÑOS", "AÑO", "ANUAL" -> lifeVal * 360.0
+            else -> lifeVal
         }
+        if (days > 0.0) convertedAmtVal / days else 0.0
     } else 0.0
 
     val monthlyDep = dailyDep * 30.0
@@ -1712,6 +1718,35 @@ fun AddEditInversionDialog(
                     }
                 }
 
+                // Selección de Método (Vida Útil, Recuperación)
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Método", fontSize = 12.sp, color = Slate600, fontWeight = FontWeight.Bold)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf("VIDA_UTIL" to "Vida Útil", "RECUPERACION" to "Recuperación").forEach { (mKey, mLabel) ->
+                            val isSelected = method == mKey
+                            Surface(
+                                onClick = { method = mKey },
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSelected) ElQadreNavy else Slate100,
+                                border = BorderStroke(1.dp, if (isSelected) ElQadreNavy else Slate300),
+                                modifier = Modifier.weight(1f).height(40.dp).testTag("inversion_method_${mKey.lowercase()}")
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = mLabel,
+                                        fontSize = 13.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isSelected) Color.White else Slate700
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -1733,7 +1768,7 @@ fun AddEditInversionDialog(
                     OutlinedTextField(
                         value = usefulLifeText,
                         onValueChange = { usefulLifeText = it },
-                        label = { Text("Vida Útil") },
+                        label = { Text("Cantidad (${if (method == "VIDA_UTIL") "Vida útil" else "Recuperación"})") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.weight(1f).testTag("inversion_life_input"),
                         singleLine = true,
@@ -1774,7 +1809,7 @@ fun AddEditInversionDialog(
                         value = usefulLifeUnit,
                         onValueChange = {},
                         readOnly = true,
-                        label = { Text("Unidad de Vida Útil") },
+                        label = { Text("Unidad de tiempo") },
                         trailingIcon = {
                             IconButton(onClick = { expandedUnit = true }) {
                                 Icon(Icons.Default.ArrowDropDown, contentDescription = null)
@@ -1878,7 +1913,7 @@ fun AddEditInversionDialog(
                             .padding(12.dp)
                     ) {
                         Text(
-                            text = "VISTA PREVIA DE DEPRECIACIÓN",
+                            text = if (method == "VIDA_UTIL") "VISTA PREVIA DE DEPRECIACIÓN" else "VISTA PREVIA DE RECUPERACIÓN",
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             color = ElQadreGoldDark
@@ -1888,7 +1923,7 @@ fun AddEditInversionDialog(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text("Depreciación Mensual:", fontSize = 12.sp, color = Slate700)
+                            Text(if (method == "VIDA_UTIL") "Depreciación Mensual:" else "Recuperación Mensual:", fontSize = 12.sp, color = Slate700)
                             Text(
                                 "$${"%.2f".format(monthlyDep)} CUP/mes",
                                 fontWeight = FontWeight.Bold,
@@ -1900,7 +1935,7 @@ fun AddEditInversionDialog(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text("Costo Diario Equivalente:", fontSize = 12.sp, color = Slate700)
+                            Text(if (method == "VIDA_UTIL") "Depreciación Diaria:" else "Monto Diario a Recuperar:", fontSize = 12.sp, color = Slate700)
                             Text(
                                 "$${"%.4f".format(dailyDep)} CUP/día",
                                 fontWeight = FontWeight.Bold,
@@ -1944,7 +1979,9 @@ fun AddEditInversionDialog(
                                     originalAmount = originalAmtVal,
                                     exchangeRate = exchangeRate,
                                     convertedAmount = convertedAmtVal,
-                                    scope = inversion?.scope ?: "PRODUCCION"
+                                    scope = inversion?.scope ?: "PRODUCCION",
+                                    method = method,
+                                    dailyAmount = dailyDep
                                 )
                                 onConfirm(inv)
                             }
@@ -1984,7 +2021,8 @@ fun FichaCostoMercaderiaDialog(
         uiState.inversiones,
         uiState.productosElaborados,
         uiState.recetaIngredientes,
-        uiState.materiasPrimas
+        uiState.materiasPrimas,
+        uiState.tarifasPagoBebidas
     ) {
         CostCalculationHelper.calculateMercaderiaCostSheet(
             mercaderia = mercaderia,
@@ -1995,7 +2033,8 @@ fun FichaCostoMercaderiaDialog(
             inversiones = uiState.inversiones,
             productosElaborados = uiState.productosElaborados,
             recetaIngredientes = uiState.recetaIngredientes,
-            materiasPrimas = uiState.materiasPrimas
+            materiasPrimas = uiState.materiasPrimas,
+            tarifasPagoBebidas = uiState.tarifasPagoBebidas
         )
     }
 
@@ -2429,7 +2468,7 @@ fun FichaCostoMercaderiaDialog(
                                 }
                             }
 
-                            // Bloque 2: Costo Unitario Final de la Bebida = Costo Directo + Gasto General Prorrateado + Pago Dependiente + Pago Cajero
+                            // Bloque 2: Costo Unitario Final de la Bebida = Costo Directo + Gasto General Prorrateado + Depreciación de Inversiones + Pago a Personal
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
                                 color = ElQadreNavy,
@@ -2461,26 +2500,22 @@ fun FichaCostoMercaderiaDialog(
                                         Text("$${"%.2f".format(costSheet.gastoGeneralUnitarioProrrateo)} CUP", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
                                     }
 
-                                    if (costSheet.pagoDependienteUnitario > 0.0) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text("• Pago Dependiente:", fontSize = 11.sp, color = Color.White)
-                                            Text("$${"%.2f".format(costSheet.pagoDependienteUnitario)} CUP", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                        }
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("• Depreciación de Inversiones por Unidad:", fontSize = 11.sp, color = Color.White)
+                                        Text("$${"%.2f".format(costSheet.depreciacionInversionesUnitario)} CUP", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
                                     }
 
-                                    if (costSheet.pagoCajeroUnitario > 0.0) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text("• Pago Cajero:", fontSize = 11.sp, color = Color.White)
-                                            Text("$${"%.2f".format(costSheet.pagoCajeroUnitario)} CUP", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                        }
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("• Pago a Personal por Unidad:", fontSize = 11.sp, color = Color.White)
+                                        Text("$${"%.2f".format(costSheet.totalPagoPersonalUnitario)} CUP", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
                                     }
 
                                     HorizontalDivider(color = Slate600, modifier = Modifier.padding(vertical = 2.dp))

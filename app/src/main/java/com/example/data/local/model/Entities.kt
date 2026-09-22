@@ -497,28 +497,26 @@ data class Inversion(
     val currency: String = "CUP",
     val originalAmount: Double = 0.0,
     val exchangeRate: Double = 1.0,
-    val convertedAmount: Double = 0.0
+    val convertedAmount: Double = 0.0,
+    val method: String = "VIDA_UTIL", // "VIDA_UTIL" or "RECUPERACION"
+    val dailyAmount: Double = 0.0
 ) {
     fun monthlyDepreciation(): Double {
-        if (usefulLife <= 0.0) return 0.0
-        return when (usefulLifeUnit.uppercase()) {
-            "DIAS", "DÍAS", "DÍA", "DIA" -> (amount / usefulLife) * 30.0
-            "SEMANAS", "SEMANA" -> (amount / usefulLife) * 4.2857
-            "MESES", "MES" -> amount / usefulLife
-            "AÑOS", "AÑO", "ANUAL" -> amount / (usefulLife * 12.0)
-            else -> amount / usefulLife
-        }
+        return dailyDepreciation() * 30.0
     }
 
     fun dailyDepreciation(): Double {
+        if (dailyAmount > 0.0) return dailyAmount
         if (usefulLife <= 0.0) return 0.0
-        return when (usefulLifeUnit.uppercase()) {
-            "DIAS", "DÍAS", "DÍA", "DIA" -> amount / usefulLife
-            "SEMANAS", "SEMANA" -> amount / (usefulLife * 7.0)
-            "MESES", "MES" -> amount / (usefulLife * 30.0)
-            "AÑOS", "AÑO", "ANUAL" -> amount / (usefulLife * 365.0)
-            else -> monthlyDepreciation() / 30.0
+        val days = when (usefulLifeUnit.uppercase()) {
+            "DIAS", "DÍAS", "DIA", "DÍA" -> usefulLife
+            "MESES", "MES" -> usefulLife * 30.0
+            "AÑOS", "AÑO", "ANUAL" -> usefulLife * 360.0
+            else -> usefulLife
         }
+        if (days <= 0.0) return 0.0
+        val targetAmt = if (convertedAmount > 0.0) convertedAmount else amount
+        return targetAmt / days
     }
 }
 
