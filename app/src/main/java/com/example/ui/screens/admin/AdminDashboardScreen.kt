@@ -6,6 +6,10 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.FileProvider
+import java.io.File
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -69,6 +73,69 @@ fun AdminDashboardScreen(
 
     val businessName = uiState.businessConfig?.nombreNegocio?.ifBlank { uiState.businessName } ?: uiState.businessName
     val businessCode = uiState.businessConfig?.codigoNegocio?.ifBlank { "001" } ?: "001"
+
+    val createUsersBackupLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            try {
+                val jsonString = viewModel.generateUsersBackupJson()
+                context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+                    outputStream.write(jsonString.toByteArray(Charsets.UTF_8))
+                }
+                Toast.makeText(context, "Respaldo de usuarios guardado exitosamente", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(context, "Error al respaldar usuarios: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    val restoreUsersLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                    val jsonContent = inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                    viewModel.importUsersFromJsonContent(jsonContent)
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Error al restaurar usuarios: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    val shareApk: (Context) -> Unit = { ctx ->
+        try {
+            val appInfo = ctx.packageManager.getApplicationInfo(ctx.packageName, 0)
+            val sourceApk = File(appInfo.sourceDir)
+            if (sourceApk.exists()) {
+                val apkDir = File(ctx.cacheDir, "apks")
+                if (!apkDir.exists()) apkDir.mkdirs()
+                val targetApk = File(apkDir, "ElQadrePF.apk")
+                
+                // Copiar el APK base al directorio de caché para que FileProvider lo sirva sin restricciones de sandbox de sistema
+                sourceApk.copyTo(targetApk, overwrite = true)
+                
+                val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", targetApk)
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/vnd.android.package-archive"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    putExtra(Intent.EXTRA_TITLE, "ElQadrePF.apk")
+                    putExtra(Intent.EXTRA_SUBJECT, "ElQadrePF Instalador APK")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                val chooser = Intent.createChooser(intent, "Compartir APK instalada").apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                ctx.startActivity(chooser)
+            } else {
+                Toast.makeText(ctx, "No se encontró el archivo APK instalado.", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            Toast.makeText(ctx, "Error al compartir APK: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -287,7 +354,8 @@ fun AdminDashboardScreen(
                             )
                         },
                         onEdit = { selectedUserForEdit = user },
-                        onDelete = { selectedUserForDelete = user }
+                        onDelete = { selectedUserForDelete = user },
+                        onTestAccount = { viewModel.testAccount(user) }
                     )
                 }
 
@@ -360,13 +428,65 @@ fun AdminDashboardScreen(
                                     fontWeight = FontWeight.Bold
                                 )
                             }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = {
+                                        val defaultFileName = "Q_${businessCode}_usuarios_backup.json"
+                                        createUsersBackupLauncher.launch(defaultFileName)
+                                    },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(42.dp),
+                                    shape = RoundedCornerShape(10.dp),
+                                    border = BorderStroke(1.dp, Emerald600),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Emerald700),
+                                    contentPadding = PaddingValues(horizontal = 4.dp)
+                                ) {
+                                    Icon(Icons.Outlined.CloudUpload, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(text = "RESPALDAR USUARIOS", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+
+                                OutlinedButton(
+                                    onClick = { restoreUsersLauncher.launch("application/json") },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(42.dp),
+                                    shape = RoundedCornerShape(10.dp),
+                                    border = BorderStroke(1.dp, ElQadreNavy),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = ElQadreNavy),
+                                    contentPadding = PaddingValues(horizontal = 4.dp)
+                                ) {
+                                    Icon(Icons.Outlined.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(text = "RESTAURAR USUARIOS", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+
+                            OutlinedButton(
+                                onClick = { shareApk(context) },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(42.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                border = BorderStroke(1.dp, Color(0xFF0284C7)),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF0284C7))
+                            ) {
+                                Icon(Icons.Outlined.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(text = "COMPARTIR APK INSTALADA", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
 
                 item {
                     Spacer(modifier = Modifier.height(4.dp))
-                    AppVersionSettingsCard()
+                    AppVersionSettingsCard(showGenerateJson = true)
                     Spacer(modifier = Modifier.height(12.dp))
                 }
             }
@@ -536,7 +656,8 @@ fun AdminUserCard(
     businessCode: String,
     onPrepareSms: (plainPassword: String) -> Unit,
     onEdit: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onTestAccount: () -> Unit
 ) {
     val (roleBg, roleFg, roleIcon) = when (user.role) {
         UserRole.ADMIN -> Triple(Color(0xFFEDE9FE), Color(0xFF6D28D9), Icons.Filled.AdminPanelSettings)
@@ -708,6 +829,25 @@ fun AdminUserCard(
                             fontWeight = FontWeight.Bold
                         )
                     }
+                }
+
+                // Botón Probar Cuenta
+                OutlinedButton(
+                    onClick = onTestAccount,
+                    modifier = Modifier.height(42.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, ElQadreNavy),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = ElQadreNavy),
+                    contentPadding = PaddingValues(horizontal = 8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.PlayArrow,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = ElQadreNavy
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(text = "PROBAR", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
 
                 // Botón Editar

@@ -839,7 +839,7 @@ fun FichaCostoDialog(
 
                             Spacer(modifier = Modifier.height(8.dp))
 
-                            Row(
+                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .background(Slate50, RoundedCornerShape(6.dp))
@@ -851,12 +851,8 @@ fun FichaCostoDialog(
                                     Text("PPD Producto", fontSize = 10.sp, color = Slate500)
                                     Text("${if (costSheet.ppd % 1.0 == 0.0) costSheet.ppd.toLong().toString() else costSheet.ppd} ${costSheet.productionUnit}/día", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = ElQadreNavy)
                                 }
-                                Column {
-                                    Text("PPD Total Cocina", fontSize = 10.sp, color = Slate500)
-                                    Text("${if (costSheet.totalKitchenPpd % 1.0 == 0.0) costSheet.totalKitchenPpd.toLong().toString() else "%.1f".format(costSheet.totalKitchenPpd)} ud/día", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Slate700)
-                                }
                                 Column(horizontalAlignment = Alignment.End) {
-                                    Text("Participación Productiva", fontSize = 10.sp, color = Slate500)
+                                    Text("Participación en Inventario Económico", fontSize = 10.sp, color = Slate500)
                                     Text("${"%.2f".format(costSheet.porcentajeParticipacionPpd)}%", fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, color = ElQadreGoldDark)
                                 }
                             }
@@ -873,7 +869,7 @@ fun FichaCostoDialog(
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             Text(
-                                "5. EGRESOS - PRORRATEO DINÁMICO DE COSTOS INDIRECTOS",
+                                "5. EGRESOS - PRORRATEO ECONÓMICO",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = ElQadreNavy
@@ -895,7 +891,7 @@ fun FichaCostoDialog(
                                 }
                                 Column(horizontalAlignment = Alignment.End) {
                                     Text("Costos Indirectos Totales", fontSize = 10.sp, color = Slate500)
-                                    Text("$${"%.2f".format(costSheet.costosIndirectosDiariosTotales)} / día", fontWeight = FontWeight.ExtraBold, fontSize = 11.sp, color = ElQadreNavy)
+                                    Text("$${"%.2f".format(costSheet.gastosGeneralesDiariosTotales + costSheet.depreciacionInversionesDiariaTotales)} / día", fontWeight = FontWeight.ExtraBold, fontSize = 11.sp, color = ElQadreNavy)
                                 }
                             }
 
@@ -906,9 +902,8 @@ fun FichaCostoDialog(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Column {
-                                    Text("Asignación Indirecta (${"%.2f".format(costSheet.porcentajeParticipacionPpd)}% PPD)", fontSize = 10.sp, color = Slate500)
-                                    Text("G. Gen: $${"%.2f".format(costSheet.gastoGeneralAsignado)} | Inv: $${"%.2f".format(costSheet.depreciacionAsignada)}", fontSize = 10.5.sp, color = Slate700)
-                                    Text("$${"%.2f".format(costSheet.gastoIndirectoAsignado)} CUP / día", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = ElQadreNavy)
+                                    Text("Asignación indirecta (${"%.2f".format(costSheet.porcentajeParticipacionPpd)}%)", fontSize = 10.sp, color = Slate500)
+                                    Text("$${"%.2f".format(costSheet.gastoGeneralAsignado + costSheet.depreciacionAsignada)} CUP / día", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = ElQadreNavy)
                                 }
                                 Column(horizontalAlignment = Alignment.End) {
                                     Text("GASTO INDIRECTO UNITARIO (GIU)", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = ElQadreGoldDark)
@@ -2326,98 +2321,31 @@ fun FichaCostoMercaderiaDialog(
                         color = Color.White,
                         border = BorderStroke(1.dp, ElQadreBorderLight)
                     ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                "3. DEPRECIACIÓN DE INVERSIONES",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ElQadreNavy
+                            )
+
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
+                                Text("Depreciación de inversiones por unidad:", fontSize = 11.sp, color = Slate700)
                                 Text(
-                                    "3. DEPRECIACIÓN DE INVERSIONES (ACTIVOS)",
-                                    fontSize = 11.sp,
+                                    "$${"%.4f".format(costSheet.depreciacionInversionesUnitario)} CUP / ud",
+                                    fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = ElQadreNavy
                                 )
-                                Text(
-                                    "Total Deprec.: $${"%.2f".format(costSheet.totalDepreciacionAsignada)} CUP/día",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = ElQadreGoldDark
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            if (costSheet.detailedInversions.isEmpty()) {
-                                Text(
-                                    "No hay inversiones activas registradas.",
-                                    fontSize = 11.sp,
-                                    color = Slate500,
-                                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
-                                )
-                            } else {
-                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    costSheet.detailedInversions.forEach { item ->
-                                        Surface(
-                                            shape = RoundedCornerShape(6.dp),
-                                            color = if (item.isSpecific) Amber50 else Slate50,
-                                            border = BorderStroke(1.dp, if (item.isSpecific) Amber500.copy(alpha = 0.5f) else Slate200),
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(horizontal = 10.dp, vertical = 8.dp),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Column(modifier = Modifier.weight(1.5f)) {
-                                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                                        Text(
-                                                            item.name,
-                                                            fontWeight = FontWeight.Bold,
-                                                            fontSize = 12.sp,
-                                                            color = ElQadreNavy
-                                                        )
-                                                        Spacer(modifier = Modifier.width(6.dp))
-                                                        Surface(
-                                                            shape = RoundedCornerShape(3.dp),
-                                                            color = if (item.isSpecific) Amber100 else ElQadreNavy.copy(alpha = 0.1f)
-                                                        ) {
-                                                            Text(
-                                                                text = if (item.isSpecific) "ASIGNACIÓN DIRECTA" else "PRORRATEADO",
-                                                                fontSize = 9.sp,
-                                                                fontWeight = FontWeight.Bold,
-                                                                color = if (item.isSpecific) Amber800 else ElQadreNavy,
-                                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                                            )
-                                                        }
-                                                    }
-                                                    Text(
-                                                        "${item.category} • Inversión: $${"%.2f".format(item.originalAmount)} • Vida útil: ${item.usefulLifeText}",
-                                                        fontSize = 10.sp,
-                                                        color = Slate500
-                                                    )
-                                                }
-
-                                                Column(horizontalAlignment = Alignment.End, modifier = Modifier.weight(1f)) {
-                                                    Text(
-                                                        "$${"%.2f".format(item.allocatedDailyAmount)} CUP/día",
-                                                        fontSize = 12.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = ElQadreNavy
-                                                    )
-                                                    Text(
-                                                        "+$${"%.4f".format(item.allocatedUnitAmount)} / u",
-                                                        fontSize = 10.sp,
-                                                        fontWeight = FontWeight.SemiBold,
-                                                        color = ElQadreGoldDark
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
                             }
                         }
                     }

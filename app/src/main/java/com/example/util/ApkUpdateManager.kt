@@ -75,87 +75,90 @@ object ApkUpdateManager {
 
     /**
      * Parsea la cadena JSON de versión devuelta por el servidor.
+     * Sigue estrictamente la estructura oficial: product, versionCode, versionName, apkUrl, releaseDate, notes.
      */
     fun parseVersionJson(jsonString: String): RemoteVersionInfo {
-        var s = jsonString.trim()
-        if (s.startsWith("\uFEFF")) {
-            s = s.substring(1).trim()
-        }
+        val s = jsonString.trim().removePrefix("\uFEFF")
         val json = JSONObject(s)
-        val vCode = when {
-            json.has("versionCode") -> json.optLong("versionCode", json.optString("versionCode", "0").toLongOrNull() ?: 0L)
-            json.has("version_code") -> json.optLong("version_code", json.optString("version_code", "0").toLongOrNull() ?: 0L)
-            json.has("versioncode") -> json.optLong("versioncode", json.optString("versioncode", "0").toLongOrNull() ?: 0L)
-            json.has("code") -> json.optLong("code", json.optString("code", "0").toLongOrNull() ?: 0L)
-            else -> 0L
-        }
-        val vName = (json.optString("versionName", "").ifBlank {
-            json.optString("version_name", json.optString("version", ""))
-        }).trim()
-        val apkUrl = (json.optString("apkUrl", "").ifBlank {
-            json.optString("apk_url", json.optString("downloadUrl", json.optString("download_url", json.optString("url", ""))))
-        }).trim()
-
+        
+        // Validar campos obligatorios según requisito 7
+        if (!json.has("versionCode")) throw Exception("Falta versionCode")
+        if (!json.has("versionName")) throw Exception("Falta versionName")
+        if (!json.has("apkUrl")) throw Exception("Falta apkUrl")
+        
+        val vCode = json.getLong("versionCode")
+        val vName = json.getString("versionName").trim()
+        val apkUrl = json.getString("apkUrl").trim()
+        
         return RemoteVersionInfo(
-            product = json.optString("product", json.optString("name", "ElQadre")),
+            product = json.optString("product", "ElQadrePF"),
             versionCode = vCode,
             versionName = vName,
             apkUrl = apkUrl,
-            releaseDate = json.optString("releaseDate", json.optString("release_date", "")),
-            notes = json.optString("notes", json.optString("changelog", ""))
+            releaseDate = json.optString("releaseDate", ""),
+            notes = json.optString("notes", "")
         )
     }
 
     /**
-     * Obtiene el versionCode y versionName de la APK actualmente instalada en el dispositivo.
+     * Genera el contenido de version.json con la estructura oficial.
      */
-    fun getLocalVersionInfo(context: Context): Pair<Long, String> {
-        val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
-        val localVersionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            packageInfo.longVersionCode
-        } else {
-            @Suppress("DEPRECATION")
-            packageInfo.versionCode.toLong()
-        }
-        val localVersionName = packageInfo.versionName ?: ""
-        return Pair(localVersionCode, localVersionName)
+    fun generateVersionJson(
+        versionCode: Long,
+        versionName: String,
+        apkUrl: String,
+        notes: String = ""
+    ): String {
+        val json = JSONObject()
+        json.put("product", "ElQadrePF")
+        json.put("versionCode", versionCode)
+        json.put("versionName", versionName)
+        json.put("apkUrl", apkUrl)
+        
+        // Fecha actual en formato ISO 8601
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
+        sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
+        val releaseDate = sdf.format(java.util.Date())
+        
+        json.put("releaseDate", releaseDate)
+        json.put("notes", notes)
+        
+        return json.toString(2)
     }
 
     /**
-     * Compara los códigos de versión numéricos y de texto (SemVer).
+     * Obtiene el versionCode y versionName de la APK actualmente instalada en el dispositivo.
+     * Utiliza directamente BuildConfig generado por Gradle como fuente primaria de la versión real.
+     */
+    fun getLocalVersionInfo(context: Context): Pair<Long, String> {
+        val bCode = com.example.BuildConfig.VERSION_CODE.toLong()
+        val bName = com.example.BuildConfig.VERSION_NAME
+        if (bCode > 0L && bName.isNotBlank()) {
+            return Pair(bCode, bName)
+        }
+        return try {
+            val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+            val localVersionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                packageInfo.longVersionCode
+            } else {
+                @Suppress("DEPRECATION")
+                packageInfo.versionCode.toLong()
+            }
+            val localVersionName = packageInfo.versionName ?: "1.0.0"
+            Pair(localVersionCode, localVersionName)
+        } catch (e: Exception) {
+            Pair(1L, "1.0.0")
+        }
+    }
+
+    /**
+     * Compara los códigos de versión numéricos.
+     * Solo permite actualización si el código remoto es estrictamente superior al local.
      */
     fun isUpdateAvailable(
         localVersionCode: Long,
-        localVersionName: String,
-        remoteVersionCode: Long,
-        remoteVersionName: String
+        remoteVersionCode: Long
     ): Boolean {
-        if (remoteVersionCode > localVersionCode) return true
-        if (isVersionNameHigher(remoteVersionName, localVersionName)) return true
-        return false
-    }
-
-    /**
-     * Compatibilidad semántica para nombres de versión (ej: 1.6 > 1.5.2)
-     */
-    fun isVersionNameHigher(remote: String, local: String): Boolean {
-        if (remote.isBlank() || local.isBlank()) return false
-        val cleanRemote = remote.removePrefix("v").removePrefix("V").trim()
-        val cleanLocal = local.removePrefix("v").removePrefix("V").trim()
-        val rParts = cleanRemote.split(".").mapNotNull { it.toIntOrNull() }
-        val lParts = cleanLocal.split(".").mapNotNull { it.toIntOrNull() }
-        if (rParts.isEmpty() || lParts.isEmpty()) return false
-        val maxLen = maxOf(rParts.size, lParts.size)
-        for (i in 0 until maxLen) {
-            val r = rParts.getOrElse(i) { 0 }
-            val l = lParts.getOrElse(i) { 0 }
-            if (r > l) return true
-            if (r < l) return false
-        }
-        return false
-    }
-
-    fun isUpdateAvailable(localVersionCode: Long, remoteVersionCode: Long): Boolean {
         return remoteVersionCode > localVersionCode
     }
 
@@ -261,7 +264,7 @@ object ApkUpdateManager {
             )
         }
 
-        if (isUpdateAvailable(localCode, localName, remoteInfo.versionCode, remoteInfo.versionName)) {
+        if (isUpdateAvailable(localCode, remoteInfo.versionCode)) {
             VersionCheckResult.UpdateAvailable(
                 remoteInfo = remoteInfo,
                 localVersionCode = localCode,

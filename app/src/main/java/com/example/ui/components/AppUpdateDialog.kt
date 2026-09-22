@@ -51,7 +51,7 @@ fun AppUpdateDialog(
         },
         title = {
             Text(
-                text = "Nueva Versión Disponible",
+                text = "Hay una nueva actualización disponible",
                 fontWeight = FontWeight.Bold,
                 color = ElQadreNavy,
                 fontSize = 18.sp,
@@ -154,14 +154,14 @@ fun AppUpdateDialog(
                     ),
                     shape = RoundedCornerShape(10.dp)
                 ) {
-                    Text("ACTUALIZAR AHORA", fontWeight = FontWeight.Bold)
+                    Text("ACTUALIZAR", fontWeight = FontWeight.Bold)
                 }
             }
         },
         dismissButton = {
             if (!isDownloading) {
                 TextButton(onClick = onDismiss) {
-                    Text("MÁS TARDE", color = Slate700, fontWeight = FontWeight.SemiBold)
+                    Text("CANCELAR", color = Slate700, fontWeight = FontWeight.SemiBold)
                 }
             }
         }

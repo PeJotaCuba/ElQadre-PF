@@ -27,6 +27,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Warning
 import com.example.data.local.model.UserRole
 import com.example.util.ApkUpdateManager
 import com.example.ui.components.StartupUpdateOverlay
@@ -174,60 +176,101 @@ fun ElQadreApp(viewModel: MainViewModel) {
 
     Box(modifier = Modifier.fillMaxSize()) {
         val currentUser = uiState.currentUser
+        val adminBackup = uiState.adminBackupUser
         val handleLogout = {
             viewModel.logout()
         }
 
-        if (currentUser == null) {
-            LoginScreen(
-                uiState = uiState,
-                viewModel = viewModel,
-                onLoginSuccess = {},
-                onBack = null
-            )
-        } else {
-            when (currentUser.role) {
-                UserRole.ADMIN -> {
-                    AdminDashboardScreen(
-                        uiState = uiState,
-                        viewModel = viewModel,
-                        onLogout = handleLogout
-                    )
+        Column(modifier = Modifier.fillMaxSize()) {
+            if (adminBackup != null) {
+                Surface(
+                    color = Color(0xFFFEF3C7),
+                    contentColor = Color(0xFF92400E),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { viewModel.exitTestAccount() }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFD97706), modifier = Modifier.size(18.dp))
+                            Text(
+                                text = "MODO PRUEBA: Cuenta de ${currentUser?.username ?: ""} (${currentUser?.role?.displayName ?: ""})",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Text(
+                            text = "REGRESAR A ADMIN ✕",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color(0xFFB45309)
+                        )
+                    }
                 }
-                UserRole.DUENO -> {
-                    DuenoScreen(
+            }
+
+            Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                if (currentUser == null) {
+                    LoginScreen(
                         uiState = uiState,
                         viewModel = viewModel,
-                        onLogout = handleLogout
+                        onLoginSuccess = {},
+                        onBack = null
                     )
-                }
-                UserRole.CAJERO -> {
-                    CajeroScreen(
-                        uiState = uiState,
-                        viewModel = viewModel,
-                        onLogout = handleLogout
-                    )
-                }
-                UserRole.SALON, UserRole.DEPENDIENTE -> {
-                    SalonScreen(
-                        uiState = uiState,
-                        viewModel = viewModel,
-                        onLogout = handleLogout
-                    )
-                }
-                UserRole.BARRA -> {
-                    BarraScreen(
-                        uiState = uiState,
-                        viewModel = viewModel,
-                        onLogout = handleLogout
-                    )
-                }
-                UserRole.COCINA -> {
-                    SalonScreen(
-                        uiState = uiState,
-                        viewModel = viewModel,
-                        onLogout = handleLogout
-                    )
+                } else {
+                    when (currentUser.role) {
+                        UserRole.ADMIN -> {
+                            AdminDashboardScreen(
+                                uiState = uiState,
+                                viewModel = viewModel,
+                                onLogout = handleLogout
+                            )
+                        }
+                        UserRole.DUENO -> {
+                            DuenoScreen(
+                                uiState = uiState,
+                                viewModel = viewModel,
+                                onLogout = handleLogout
+                            )
+                        }
+                        UserRole.CAJERO -> {
+                            CajeroScreen(
+                                uiState = uiState,
+                                viewModel = viewModel,
+                                onLogout = handleLogout
+                            )
+                        }
+                        UserRole.SALON, UserRole.DEPENDIENTE -> {
+                            SalonScreen(
+                                uiState = uiState,
+                                viewModel = viewModel,
+                                onLogout = handleLogout
+                            )
+                        }
+                        UserRole.BARRA -> {
+                            BarraScreen(
+                                uiState = uiState,
+                                viewModel = viewModel,
+                                onLogout = handleLogout
+                            )
+                        }
+                        UserRole.COCINA -> {
+                            SalonScreen(
+                                uiState = uiState,
+                                viewModel = viewModel,
+                                onLogout = handleLogout
+                            )
+                        }
+                    }
                 }
             }
         }

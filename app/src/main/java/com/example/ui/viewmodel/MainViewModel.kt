@@ -21,6 +21,8 @@ import com.example.util.ParsedTransferSms
 import com.example.util.SmsTransferBus
 import com.example.util.SmsTransferParser
 import com.example.util.toSha256
+import org.json.JSONArray
+import org.json.JSONObject
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -39,6 +41,7 @@ data class PendingComandaSmsAlert(
 
 data class MainUiState(
     val currentUser: User? = null,
+    val adminBackupUser: User? = null,
     val activeJornada: Jornada? = null,
     val allJornadas: List<Jornada> = emptyList(),
     val categories: List<Category> = emptyList(),
@@ -1117,11 +1120,61 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun logout() {
+        if (_uiState.value.adminBackupUser != null) {
+            exitTestAccount()
+            return
+        }
         sharedPreferences.edit()
             .remove("loggedInUsername")
             .remove("lastActivityTimestamp")
             .apply()
-        _uiState.update { it.copy(currentUser = null) }
+        _uiState.update { it.copy(currentUser = null, adminBackupUser = null) }
+    }
+
+    fun testAccount(targetUser: User) {
+        val current = _uiState.value.currentUser
+        if (current?.role == UserRole.ADMIN && _uiState.value.adminBackupUser == null) {
+            _uiState.update { it.copy(currentUser = targetUser, adminBackupUser = current) }
+        } else {
+            _uiState.update { it.copy(currentUser = targetUser) }
+        }
+    }
+
+    fun exitTestAccount() {
+        val admin = _uiState.value.adminBackupUser
+        if (admin != null) {
+            _uiState.update { it.copy(currentUser = admin, adminBackupUser = null) }
+        } else {
+            val adminUser = _uiState.value.users.find { it.role == UserRole.ADMIN }
+                ?: User(username = "admin", fullName = "Administrador", passwordHash = "", role = UserRole.ADMIN)
+            _uiState.update { it.copy(currentUser = adminUser, adminBackupUser = null) }
+        }
+    }
+
+    fun generateUsersBackupJson(): String {
+        val jsonObject = JSONObject()
+        jsonObject.put("version", System.currentTimeMillis().toString())
+        jsonObject.put("codigoNegocio", _uiState.value.businessConfig?.codigoNegocio ?: "001")
+        val usersArray = JSONArray()
+        for (user in _uiState.value.users) {
+            val userObj = JSONObject().apply {
+                put("username", user.username)
+                put("fullName", user.fullName)
+                put("passwordHash", user.passwordHash)
+                put("role", user.role.name)
+                put("montoPorProducto", user.montoPorProducto)
+                put("isActive", user.isActive)
+                put("telefono", user.telefono)
+                put("permisoProduccion", user.permisoProduccion)
+                put("permisoMercancias", user.permisoMercancias)
+                put("permisoPersonal", user.permisoPersonal)
+                put("permisoControlNegocio", user.permisoControlNegocio)
+                put("authorizedDeviceId", user.authorizedDeviceId ?: "")
+            }
+            usersArray.put(userObj)
+        }
+        jsonObject.put("usuarios", usersArray)
+        return jsonObject.toString(4)
     }
 
     fun openJornada(

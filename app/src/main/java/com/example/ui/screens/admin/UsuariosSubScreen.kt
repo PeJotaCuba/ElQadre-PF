@@ -55,20 +55,14 @@ fun UsuariosSubScreen(uiState: MainUiState, viewModel: MainViewModel) {
 
     var showCreateDialog by remember { mutableStateOf(false) }
     var showSolicitarUsuarioDialog by remember { mutableStateOf(false) }
+    var showSendDataDialog by remember { mutableStateOf(false) }
+    var sendDataPassword by remember { mutableStateOf("") }
+    var userForSendData by remember { mutableStateOf<User?>(null) }
     var selectedUser by remember { mutableStateOf<User?>(null) }
     var showEditDialog by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf<User?>(null) }
     var showDeviceConfirm by remember { mutableStateOf<User?>(null) }
     var pendingDeviceChange by remember { mutableStateOf<String?>("") }
-
-    // SMS Tracking and Send User Data States
-    var pendingResetList by remember { mutableStateOf<List<Pair<PasswordResetRequest, User>>>(emptyList()) }
-    var currentResetIndex by remember { mutableStateOf(0) }
-    var showResetConfirmDialog by remember { mutableStateOf(false) }
-
-    var userForSendData by remember { mutableStateOf<User?>(null) }
-    var sendDataPassword by remember { mutableStateOf("") }
-    var showSendDataDialog by remember { mutableStateOf(false) }
 
     val scrollState = rememberScrollState()
 
@@ -81,35 +75,6 @@ fun UsuariosSubScreen(uiState: MainUiState, viewModel: MainViewModel) {
         var telefonoCajero by remember(uiState.generalConfig?.telefonoCajero) { mutableStateOf(uiState.generalConfig?.telefonoCajero ?: "") }
         var telefonoAdmin by remember(uiState.generalConfig?.telefonoAdmin) { mutableStateOf(uiState.generalConfig?.telefonoAdmin ?: "") }
 
-        fun runSmsTracking() {
-            val requests = PasswordResetHelper.scanInboxForResetRequests(context)
-            val matchedList = mutableListOf<Pair<PasswordResetRequest, User>>()
-            for (req in requests) {
-                val matchedUser = PasswordResetHelper.matchUserByPhone(uiState.users, req.userPhone)
-                if (matchedUser != null) {
-                    matchedList.add(Pair(req, matchedUser))
-                }
-            }
-
-            if (matchedList.isNotEmpty()) {
-                pendingResetList = matchedList
-                currentResetIndex = 0
-                showResetConfirmDialog = true
-            } else {
-                Toast.makeText(context, "No se encontraron solicitudes pendientes de cambio de contraseña en SMS.", Toast.LENGTH_LONG).show()
-            }
-        }
-
-        val readSmsPermissionLauncher = rememberLauncherForActivityResult(
-            contract = ActivityResultContracts.RequestPermission()
-        ) { isGranted ->
-            if (isGranted) {
-                runSmsTracking()
-            } else {
-                Toast.makeText(context, "Permiso de lectura de SMS denegado. Se requiere para rastrear solicitudes.", Toast.LENGTH_LONG).show()
-            }
-        }
- 
     val currentBizCode = remember(uiState.businessConfig, uiState.generalConfig) {
         BusinessCodeHelper.resolveBusinessCode(context, uiState.businessConfig, uiState.generalConfig)
     }
@@ -274,6 +239,7 @@ fun UsuariosSubScreen(uiState: MainUiState, viewModel: MainViewModel) {
                 .padding(bottom = 80.dp), // Space for FAB
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            // Header and Actions
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -283,24 +249,17 @@ fun UsuariosSubScreen(uiState: MainUiState, viewModel: MainViewModel) {
                     Text("Gestión de Usuarios", style = MaterialTheme.typography.titleLarge, color = ElQadreNavy, fontWeight = FontWeight.Bold)
                     Text("Administración completa de accesos y roles", color = Slate500, fontSize = 12.sp)
                 }
+            }
 
-                FilledTonalButton(
-                    onClick = { showSolicitarUsuarioDialog = true },
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = ElQadreGoldSoft,
-                        contentColor = ElQadreNavy
-                    ),
-                    shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.testTag("btn_solicitar_nuevo_usuario_admin")
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.PersonAdd,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("SOLICITAR USUARIO", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                }
+            Button(
+                onClick = { showCreateDialog = true },
+                modifier = Modifier.fillMaxWidth().height(56.dp).testTag("btn_crear_nuevo_usuario"),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy)
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("CREAR NUEVO USUARIO", fontWeight = FontWeight.Bold)
             }
  
             // URL & Phones Configuration
@@ -426,21 +385,7 @@ fun UsuariosSubScreen(uiState: MainUiState, viewModel: MainViewModel) {
                     
                     Spacer(modifier = Modifier.height(4.dp))
 
-                    Button(
-                        onClick = {
-                            if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED) {
-                                runSmsTracking()
-                            } else {
-                                readSmsPermissionLauncher.launch(Manifest.permission.READ_SMS)
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
-                        modifier = Modifier.fillMaxWidth().testTag("btn_rastrear_sms")
-                    ) {
-                        Icon(Icons.Outlined.Sms, contentDescription = null, tint = Color.White)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("RASTREAR SMS", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                    }
+                    Spacer(modifier = Modifier.height(4.dp))
 
                      Button(
                         onClick = { createQDuenoDocumentLauncher.launch("Q_${currentBizCode}dueño.json") },
@@ -607,9 +552,21 @@ fun UsuariosSubScreen(uiState: MainUiState, viewModel: MainViewModel) {
                         // Actions Row
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            OutlinedButton(
+                                onClick = { viewModel.testAccount(u) },
+                                modifier = Modifier.height(36.dp),
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                                border = BorderStroke(1.dp, ElQadreNavy),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = ElQadreNavy)
+                            ) {
+                                Icon(Icons.Outlined.PlayArrow, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(2.dp))
+                                Text("ENTRAR", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+                            
                             TextButton(
                                 onClick = {
                                     userForSendData = u
@@ -618,10 +575,11 @@ fun UsuariosSubScreen(uiState: MainUiState, viewModel: MainViewModel) {
                                 },
                                 modifier = Modifier.testTag("btn_enviar_datos_usuario_${u.username}")
                             ) {
-                                Icon(Icons.Outlined.Send, contentDescription = null, modifier = Modifier.size(16.dp), tint = ElQadreNavy)
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("ENVIAR DATOS DE USUARIO", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = ElQadreNavy)
+                                Icon(Icons.Outlined.Sms, contentDescription = null, modifier = Modifier.size(14.dp), tint = ElQadreNavy)
+                                Spacer(modifier = Modifier.width(2.dp))
+                                Text("PREPARAR SMS", fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             }
+
                             Spacer(modifier = Modifier.weight(1f))
                             IconButton(onClick = { 
                                 val updatedUser = u.copy(isActive = !u.isActive)
@@ -648,17 +606,7 @@ fun UsuariosSubScreen(uiState: MainUiState, viewModel: MainViewModel) {
             }
         }
         
-        // Floating Action Button for Create (Nuevo Usuario)
-        FloatingActionButton(
-            onClick = { showCreateDialog = true },
-            containerColor = ElQadreGold,
-            contentColor = ElQadreNavy,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(16.dp)
-        ) {
-            Icon(Icons.Filled.Add, contentDescription = "Nuevo Usuario")
-        }
+        // FAB removed
     }
 
     if (showCreateDialog || showSolicitarUsuarioDialog) {
@@ -752,87 +700,15 @@ fun UsuariosSubScreen(uiState: MainUiState, viewModel: MainViewModel) {
         )
     }
 
-    // Dialog for Confirming Password Reset from SMS Tracking
-    if (showResetConfirmDialog && pendingResetList.isNotEmpty() && currentResetIndex < pendingResetList.size) {
-        val (resetReq, matchedUser) = pendingResetList[currentResetIndex]
-        AlertDialog(
-            onDismissRequest = {
-                showResetConfirmDialog = false
-                pendingResetList = emptyList()
-            },
-            title = {
-                Text("SOLICITUD DE CAMBIO DE CONTRASEÑA", fontWeight = FontWeight.Bold, color = ElQadreNavy)
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Se detectó una solicitud por SMS con formato válido:", fontSize = 12.sp, color = Slate600)
-                    Divider(color = Slate200)
-                    Text("Usuario: ${matchedUser.username} (${matchedUser.fullName})", fontWeight = FontWeight.Bold, color = ElQadreNavy)
-                    Text("Rol: ${matchedUser.role.displayName}", fontSize = 13.sp, color = Slate700)
-                    Text("Móvil solicitante: ${resetReq.userPhone}", fontSize = 13.sp, color = Slate700)
-                    Text("Nueva contraseña: ${resetReq.newPassword}", fontWeight = FontWeight.Bold, color = Emerald600)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        "Al confirmar, se actualizará la contraseña del usuario y se generará automáticamente el nuevo archivo Qusuarios.json.",
-                        fontSize = 11.sp,
-                        color = Slate500
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        // 1. Update password
-                        val updatedUser = matchedUser.copy(passwordHash = resetReq.newPassword.toSha256())
-                        viewModel.updateUser(updatedUser)
 
-                        // 2. Mark SMS as processed
-                        PasswordResetHelper.markSmsAsProcessed(context, resetReq.uniqueKey)
-
-                        // 3. Auto-generate Qusuarios.json
-                        val updatedUsersList = uiState.users.map { if (it.username == updatedUser.username) updatedUser else it }
-                        val jsonString = PasswordResetHelper.generateQusuariosJsonString(updatedUsersList, uiState.generalConfig)
-                        PasswordResetHelper.saveQusuariosJsonToAppStorage(context, jsonString)
-
-                        Toast.makeText(context, "Contraseña cambiada para ${updatedUser.username}. Qusuarios.json actualizado.", Toast.LENGTH_LONG).show()
-
-                        if (currentResetIndex + 1 < pendingResetList.size) {
-                            currentResetIndex++
-                        } else {
-                            showResetConfirmDialog = false
-                            pendingResetList = emptyList()
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy)
-                ) {
-                    Text("Confirmar Cambio")
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        PasswordResetHelper.markSmsAsProcessed(context, resetReq.uniqueKey)
-                        if (currentResetIndex + 1 < pendingResetList.size) {
-                            currentResetIndex++
-                        } else {
-                            showResetConfirmDialog = false
-                            pendingResetList = emptyList()
-                        }
-                    }
-                ) {
-                    Text("Descartar")
-                }
-            }
-        )
-    }
-
-    // Dialog for ENVIAR DATOS DE USUARIO
+    
+    // Dialog for PREPARAR SMS DE DATOS
     if (showSendDataDialog && userForSendData != null) {
         val u = userForSendData!!
         AlertDialog(
             onDismissRequest = { showSendDataDialog = false },
             title = {
-                Text("ENVIAR DATOS DE USUARIO", fontWeight = FontWeight.Bold, color = ElQadreNavy)
+                Text("PREPARAR SMS DE DATOS", fontWeight = FontWeight.Bold, color = ElQadreNavy)
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -863,7 +739,7 @@ fun UsuariosSubScreen(uiState: MainUiState, viewModel: MainViewModel) {
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            text = "Active WiFi o Datos Móviles y PULSE BOTÓN ACTUALIZAR.",
+                            text = "Active WiFi o Datos Móviles y PULSE BOTÓN ENVIAR SMS.",
                             fontWeight = FontWeight.Bold,
                             fontSize = 12.sp,
                             color = Amber800,

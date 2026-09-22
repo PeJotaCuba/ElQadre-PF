@@ -244,7 +244,8 @@ object CostCalculationHelper {
         
         // 1. GASTO GENERAL DIARIO TOTAL (activos, SIN depreciación de inversiones)
         val gastoGeneralDiarioTotal = calculateTotalDailyOverheads(gastosGenerales)
-        val depreciacionDiariaTotal = inversiones.sumOf { it.dailyDepreciation() }
+        val depreciacionDiariaProduccion = inversiones.filter { it.scope == "PRODUCCION" || it.scope == "GENERAL" || it.scope.isBlank() }.sumOf { it.dailyDepreciation() }
+        val depreciacionDiariaMercaderias = inversiones.filter { it.scope == "MERCADERIAS" || it.scope == "GENERAL" || it.scope.isBlank() }.sumOf { it.dailyDepreciation() }
         
         // 2. BASE DE PRODUCCIÓN
         val baseProduccionItems = mutableListOf<ProrrateoBaseItem>()
@@ -368,7 +369,7 @@ object CostCalculationHelper {
             val gastoGeneralAsignado = gastoGeneralDiarioTotal * (porcentajeParticipacion / 100.0)
             val gastoGeneralUnitario = if (item.quantity > 0.0) gastoGeneralAsignado / item.quantity else 0.0
             
-            val depreciacionAsignada = depreciacionDiariaTotal * (porcentajeParticipacion / 100.0)
+            val depreciacionAsignada = depreciacionDiariaProduccion * (porcentajeParticipacion / 100.0)
             val depreciacionUnitaria = if (item.quantity > 0.0) depreciacionAsignada / item.quantity else 0.0
 
             allItems.add(
@@ -387,7 +388,7 @@ object CostCalculationHelper {
             val gastoGeneralAsignado = gastoGeneralDiarioTotal * (porcentajeParticipacion / 100.0)
             val gastoGeneralUnitario = if (item.quantity > 0.0) gastoGeneralAsignado / item.quantity else 0.0
             
-            val depreciacionAsignada = depreciacionDiariaTotal * (porcentajeParticipacion / 100.0)
+            val depreciacionAsignada = depreciacionDiariaMercaderias * (porcentajeParticipacion / 100.0)
             val depreciacionUnitaria = if (item.quantity > 0.0) depreciacionAsignada / item.quantity else 0.0
 
             allItems.add(
@@ -410,7 +411,7 @@ object CostCalculationHelper {
                 val porcentajeParticipacion = (item.valorBase / baseTotal) * 100.0
                 val gastoGeneralAsignado = gastoGeneralDiarioTotal * (porcentajeParticipacion / 100.0)
                 val gastoGeneralUnitario = if (item.quantity > 0.0) gastoGeneralAsignado / item.quantity else 0.0
-                val depreciacionAsignada = depreciacionDiariaTotal * (porcentajeParticipacion / 100.0)
+                val depreciacionAsignada = depreciacionDiariaProduccion * (porcentajeParticipacion / 100.0)
                 val depreciacionUnitaria = if (item.quantity > 0.0) depreciacionAsignada / item.quantity else 0.0
                 item.copy(
                     porcentajeParticipacion = porcentajeParticipacion,
@@ -424,7 +425,7 @@ object CostCalculationHelper {
                 val porcentajeParticipacion = (item.valorBase / baseTotal) * 100.0
                 val gastoGeneralAsignado = gastoGeneralDiarioTotal * (porcentajeParticipacion / 100.0)
                 val gastoGeneralUnitario = if (item.quantity > 0.0) gastoGeneralAsignado / item.quantity else 0.0
-                val depreciacionAsignada = depreciacionDiariaTotal * (porcentajeParticipacion / 100.0)
+                val depreciacionAsignada = depreciacionDiariaMercaderias * (porcentajeParticipacion / 100.0)
                 val depreciacionUnitaria = if (item.quantity > 0.0) depreciacionAsignada / item.quantity else 0.0
                 item.copy(
                     porcentajeParticipacion = porcentajeParticipacion,

@@ -768,7 +768,7 @@ fun GestionSubScreen(
 
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     DeviceInfoRow(label = "Identificador de terminal", value = uiState.deviceId)
-                    DeviceInfoRow(label = "Versión de la aplicación", value = "1.4.0")
+                    DeviceInfoRow(label = "Versión de la aplicación", value = com.example.BuildConfig.VERSION_NAME)
                     DeviceInfoRow(label = "Versión del esquema local", value = "6 (SQLite)")
                     DeviceInfoRow(label = "Estado de almacenamiento", value = "SQLite Room (elqadre_local.db)")
                     DeviceInfoRow(label = "Integridad del terminal", value = "Sincronizado / 100% Offline")
