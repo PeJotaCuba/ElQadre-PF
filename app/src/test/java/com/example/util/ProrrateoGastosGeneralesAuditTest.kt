@@ -141,10 +141,10 @@ class ProrrateoGastosGeneralesAuditTest {
             inversiones = emptyList(),
             productosElaborados = prodElaborados
         )
-        // Refresco: $400 + $0.4211 = $400.4211
+        // Refresco: Costo directo ($400) + Gasto Unitario Indirecto ($200 * 21.0526% = $42.1053) = $442.1053
         assertEquals(400.0, refrescoSheet.costoDirectoUnitario, 0.001)
-        assertEquals(0.4211, refrescoSheet.gastoGeneralUnitarioProrrateo, 0.001)
-        assertEquals(400.4211, refrescoSheet.costoTotalUnitario, 0.005)
+        assertEquals(42.1053, refrescoSheet.gastoIndirectoUnitario, 0.01)
+        assertEquals(442.1053, refrescoSheet.costoTotalUnitario, 0.01)
     }
 
     @Test
@@ -277,8 +277,8 @@ class ProrrateoGastosGeneralesAuditTest {
         assertEquals(100.0, refrescoSheet.currentStock, 0.001)
         assertEquals(30.76923, refrescoSheet.porcentajeParticipacion, 0.001)
         assertEquals(307.6923, refrescoSheet.totalGastosAsignados, 0.01)
-        assertEquals(3.076923, refrescoSheet.gastoGeneralUnitarioProrrateo, 0.001)
-        assertEquals(403.076923, refrescoSheet.costoTotalUnitario, 0.001)
-        assertEquals(403.076923, refrescoSheet.costoRealUnitario, 0.001)
+        assertEquals(307.6923, refrescoSheet.gastoIndirectoUnitario, 0.01)
+        assertEquals(707.6923, refrescoSheet.costoTotalUnitario, 0.01)
+        assertEquals(707.6923, refrescoSheet.costoRealUnitario, 0.01)
     }
 }

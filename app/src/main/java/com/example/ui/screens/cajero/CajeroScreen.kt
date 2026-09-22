@@ -3110,7 +3110,81 @@ fun CuadreCajaPane(
     uiState: MainUiState,
     viewModel: MainViewModel
 ) {
-    val activeJornada = uiState.activeJornada ?: return
+    val activeJornada = uiState.activeJornada
+    val isJornadaOpen = activeJornada != null && activeJornada.isOpen
+
+    if (!isJornadaOpen || activeJornada == null) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = Color.White,
+                border = BorderStroke(1.5.dp, Color(0xFFFCA5A5)),
+                shadowElevation = 6.dp,
+                modifier = Modifier.widthIn(max = 500.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(28.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = Color(0xFFFEF2F2),
+                        border = BorderStroke(1.dp, Color(0xFFFCA5A5)),
+                        modifier = Modifier.size(68.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Outlined.Lock,
+                                contentDescription = null,
+                                tint = Color(0xFFDC2626),
+                                modifier = Modifier.size(36.dp)
+                            )
+                        }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = Color(0xFFFEF2F2),
+                        border = BorderStroke(1.dp, Color(0xFFFCA5A5))
+                    ) {
+                        Text(
+                            text = "JORNADA CERRADA",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF991B1B),
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp)
+                        )
+                    }
+
+                    Text(
+                        text = "Cuadre de Caja Bloqueado",
+                        fontSize = 19.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = ElQadreNavy,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Text(
+                        text = "El Cuadre de Caja solo puede utilizarse cuando exista una JORNADA ABIERTA.\n\nPrimero debe abrir la jornada para poder realizar el arqueo y registrar el cuadre de caja.",
+                        fontSize = 14.sp,
+                        color = Slate700,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 20.sp
+                    )
+                }
+            }
+        }
+        return
+    }
+
     val context = LocalContext.current
     val sharedPreferences = remember { context.getSharedPreferences("SessionPrefs", android.content.Context.MODE_PRIVATE) }
 

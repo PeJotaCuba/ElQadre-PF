@@ -1243,6 +1243,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun registrarCuadreSalon(jornadaId: Long, realCash: Double, expectedCash: Double, diferencia: Double, notes: String) {
         viewModelScope.launch {
+            val activeJornada = _uiState.value.activeJornada
+            if (activeJornada == null || !activeJornada.isOpen) {
+                _uiState.update { it.copy(errorMessage = "No se puede guardar el cuadre: La jornada está cerrada.") }
+                return@launch
+            }
             sharedPreferences.edit()
                 .putBoolean("salon_cuadre_registrado_$jornadaId", true)
                 .putFloat("salon_cuadre_real_cash_$jornadaId", realCash.toFloat())
@@ -1287,18 +1292,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     ) {
         viewModelScope.launch {
             val active = repository.getActiveJornadaSync()
-            if (active != null && active.id == jornadaId) {
-                val updated = active.copy(
-                    finalCash = realCash,
-                    expectedCash = expectedCash,
-                    cashDifference = diferencia,
-                    realSalesProduccion = ingresosProduccion,
-                    realSalesMercaderias = ingresosMercaderias,
-                    extracciones = extracciones,
-                    notes = notes
-                )
-                repository.updateJornada(updated)
+            if (active == null || !active.isOpen || active.id != jornadaId) {
+                _uiState.update { it.copy(errorMessage = "No se puede guardar el cuadre: La jornada está cerrada.") }
+                return@launch
             }
+            val updated = active.copy(
+                finalCash = realCash,
+                expectedCash = expectedCash,
+                cashDifference = diferencia,
+                realSalesProduccion = ingresosProduccion,
+                realSalesMercaderias = ingresosMercaderias,
+                extracciones = extracciones,
+                notes = notes
+            )
+            repository.updateJornada(updated)
 
             val username = _uiState.value.currentUser?.username ?: "dueno"
 
@@ -1453,6 +1460,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         physicalCounts: Map<Long, Double>
     ) {
         viewModelScope.launch {
+            val activeJornada = _uiState.value.activeJornada
+            if (activeJornada == null || !activeJornada.isOpen) {
+                _uiState.update { it.copy(errorMessage = "No se puede guardar el cuadre: La jornada está cerrada.") }
+                return@launch
+            }
             val editor = sharedPreferences.edit()
             editor.putBoolean("barra_cuadre_registrado_$jornadaId", true)
             editor.putFloat("barra_expected_income_$jornadaId", expectedIncome.toFloat())

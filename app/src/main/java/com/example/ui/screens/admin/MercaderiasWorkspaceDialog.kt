@@ -3218,263 +3218,569 @@ fun AddEditInversionMercaderiaDialog(
         mutableStateOf(inversion?.endDate?.let { java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault()).format(java.util.Date(it)) } ?: "") 
     }
 
-    var mercDropdownExpanded by remember { mutableStateOf(false) }
-
-    Dialog(onDismissRequest = onDismiss) {
-        Card(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            shape = RoundedCornerShape(16.dp)
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.95f)
+                .fillMaxHeight(0.92f)
+                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .imePadding(),
+            shape = RoundedCornerShape(24.dp),
+            color = Color.White,
+            shadowElevation = 8.dp
         ) {
             Column(
-                modifier = Modifier.fillMaxWidth().padding(20.dp).verticalScroll(rememberScrollState())
+                modifier = Modifier.fillMaxSize()
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                // Header (Fixed Top Bar)
+                Surface(
+                    color = ElQadreNavy,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
-                        text = if (isEdit) "Editar Inversión (Activo)" else "Nueva Inversión (Activo)",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = ElQadreNavy,
-                        fontWeight = FontWeight.Bold
-                    )
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Slate600)
-                    }
-                }
-
-                HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp), color = Slate200)
-
-                // Concepto
-                Text("Concepto del Activo / Inversión *", fontSize = 12.sp, color = Slate600, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(4.dp))
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("Ej. Vitrina refrigerada, Licuadora para barra...", color = Slate400) },
-                    singleLine = true,
-                    shape = RoundedCornerShape(8.dp)
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Monto y Vida útil
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Monto Total ($ CUP) *", fontSize = 12.sp, color = Slate600, fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        OutlinedTextField(
-                            value = amountStr,
-                            onValueChange = { amountStr = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            placeholder = { Text("Ej. 45000", color = Slate400) },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            singleLine = true,
-                            shape = RoundedCornerShape(8.dp)
-                        )
-                    }
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Vida Útil (meses) *", fontSize = 12.sp, color = Slate600, fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        OutlinedTextField(
-                            value = usefulLifeStr,
-                            onValueChange = { usefulLifeStr = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            placeholder = { Text("Ej. 12", color = Slate400) },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            singleLine = true,
-                            shape = RoundedCornerShape(8.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Fechas de Amortización
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Fecha Inicio Amort.", fontSize = 12.sp, color = Slate600, fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        OutlinedTextField(
-                            value = startDateStr,
-                            onValueChange = { startDateStr = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            placeholder = { Text("DD/MM/YYYY", color = Slate400) },
-                            singleLine = true,
-                            shape = RoundedCornerShape(8.dp)
-                        )
-                    }
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Fecha Fin Amort.", fontSize = 12.sp, color = Slate600, fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        OutlinedTextField(
-                            value = endDateStr,
-                            onValueChange = { endDateStr = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            placeholder = { Text("DD/MM/YYYY", color = Slate400) },
-                            singleLine = true,
-                            shape = RoundedCornerShape(8.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // Asignación: General vs Puntual
-                Text("Tipo de Asignación a Mercaderías *", fontSize = 12.sp, color = Slate600, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(6.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    FilterChip(
-                        selected = !isPuntual,
-                        onClick = { isPuntual = false; selectedProductIds = emptySet() },
-                        label = { Text("A) GENERAL (Prorrateo)", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                        modifier = Modifier.weight(1f)
-                    )
-                    FilterChip(
-                        selected = isPuntual,
-                        onClick = {
-                            isPuntual = true
-                            if (selectedProductIds.isEmpty()) {
-                                uiState.mercaderias.firstOrNull()?.let { selectedProductIds = setOf(it.productId) }
-                            }
-                        },
-                        label = { Text("B) PUNTUAL (Selectivo)", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-
-                if (isPuntual) {
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text("Mercaderías Afectadas (${selectedProductIds.size}) *", fontSize = 12.sp, color = Slate600, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    Box(
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 200.dp)
-                            .border(1.dp, Slate200, RoundedCornerShape(8.dp))
-                            .clip(RoundedCornerShape(8.dp))
+                            .padding(horizontal = 20.dp, vertical = 16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        LazyColumn(modifier = Modifier.padding(4.dp)) {
-                            items(uiState.mercaderias.filter { it.isActive }) { merc ->
-                                val prod = uiState.products.find { it.id == merc.productId }
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable { 
-                                            val newSet = selectedProductIds.toMutableSet()
-                                            if (newSet.contains(merc.productId)) newSet.remove(merc.productId)
-                                            else newSet.add(merc.productId)
-                                            selectedProductIds = newSet
-                                        }
-                                        .padding(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Checkbox(
-                                        checked = selectedProductIds.contains(merc.productId),
-                                        onCheckedChange = { checked ->
-                                            val newSet = selectedProductIds.toMutableSet()
-                                            if (checked) newSet.add(merc.productId)
-                                            else newSet.remove(merc.productId)
-                                            selectedProductIds = newSet
-                                        }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Surface(
+                                shape = CircleShape,
+                                color = ElQadreGold.copy(alpha = 0.2f),
+                                modifier = Modifier.size(44.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.TrendingUp,
+                                        contentDescription = null,
+                                        tint = ElQadreGold,
+                                        modifier = Modifier.size(26.dp)
                                     )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(prod?.name ?: "Mercadería #${merc.id}", fontSize = 13.sp)
                                 }
                             }
+                            Column {
+                                Text(
+                                    text = if (isEdit) "EDITAR INVERSIÓN" else "NUEVA INVERSIÓN",
+                                    style = MaterialTheme.typography.titleLarge.copy(
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 20.sp
+                                    ),
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = "Módulo Mercaderías (Barra)",
+                                    fontSize = 12.sp,
+                                    color = Slate300
+                                )
+                            }
+                        }
+                        IconButton(
+                            onClick = onDismiss,
+                            colors = IconButtonDefaults.iconButtonColors(containerColor = Color.White.copy(alpha = 0.15f)),
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Cerrar",
+                                tint = Color.White,
+                                modifier = Modifier.size(22.dp)
+                            )
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
+                // Scrollable Form Body
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    TextButton(onClick = onDismiss) { Text("Cancelar") }
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    val canSave = name.isNotBlank() &&
-                            (amountStr.toDoubleOrNull() ?: 0.0) > 0.0 &&
-                            (usefulLifeStr.toDoubleOrNull() ?: 0.0) > 0.0 &&
-                            (!isPuntual || selectedProductIds.isNotEmpty())
-
-                    Button(
-                        onClick = {
-                            val amt = amountStr.toDoubleOrNull() ?: 0.0
-                            val life = usefulLifeStr.toDoubleOrNull() ?: 12.0
-                            val targetIdsStr = if (isPuntual) selectedProductIds.joinToString(",") else null
-                            
-                            val targetIdSingle = if (isPuntual && selectedProductIds.size == 1) selectedProductIds.first() else null
-                            val sdf = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault())
-                            val sDate = try { sdf.parse(startDateStr)?.time } catch (e: Exception) { null }
-                            val eDate = try {
-                                sdf.parse(endDateStr)?.let {
-                                    val cal = java.util.Calendar.getInstance()
-                                    cal.time = it
-                                    cal.set(java.util.Calendar.HOUR_OF_DAY, 23)
-                                    cal.set(java.util.Calendar.MINUTE, 59)
-                                    cal.set(java.util.Calendar.SECOND, 59)
-                                    cal.set(java.util.Calendar.MILLISECOND, 999)
-                                    cal.timeInMillis
-                                }
-                            } catch (e: Exception) { null }
-
-                            if (isEdit && inversion != null) {
-                                viewModel.updateInversion(
-                                    inversion.copy(
-                                        name = name,
-                                        amount = amt,
-                                        usefulLife = life,
-                                        usefulLifeUnit = usefulLifeUnit,
-                                        targetProductId = targetIdSingle,
-                                        targetProductIds = targetIdsStr,
-                                        observation = observation,
-                                        startDate = sDate,
-                                        endDate = eDate,
-                                        scope = "MERCADERIAS"
-                                    )
+                    // Section 1: Concepto
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = "Concepto del Activo / Inversión *",
+                            fontSize = 14.sp,
+                            color = ElQadreNavy,
+                            fontWeight = FontWeight.Bold
+                        )
+                        OutlinedTextField(
+                            value = name,
+                            onValueChange = { name = it },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("inversion_name_input"),
+                            placeholder = {
+                                Text(
+                                    "Ej. Vitrina refrigerada, Licuadora para barra...",
+                                    color = Slate400,
+                                    fontSize = 14.sp
                                 )
-                            } else {
-                                viewModel.insertInversion(
-                                    Inversion(
-                                        name = name,
-                                        category = "Equipamiento",
-                                        amount = amt,
-                                        usefulLife = life,
-                                        usefulLifeUnit = usefulLifeUnit,
-                                        targetProductId = targetIdSingle,
-                                        targetProductIds = targetIdsStr,
-                                        observation = observation,
-                                        startDate = sDate,
-                                        endDate = eDate,
-                                        scope = "MERCADERIAS"
+                            },
+                            textStyle = androidx.compose.ui.text.TextStyle(
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = ElQadreNavy
+                            ),
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = ElQadreNavy,
+                                unfocusedBorderColor = Slate300,
+                                focusedContainerColor = Color.White,
+                                unfocusedContainerColor = Color.White
+                            )
+                        )
+                    }
+
+                    // Section 2: Monto y Vida útil
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = "Monto Total ($ CUP) *",
+                                fontSize = 14.sp,
+                                color = ElQadreNavy,
+                                fontWeight = FontWeight.Bold
+                            )
+                            OutlinedTextField(
+                                value = amountStr,
+                                onValueChange = { amountStr = it },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("inversion_amount_input"),
+                                placeholder = { Text("Ej. 45000", color = Slate400, fontSize = 14.sp) },
+                                textStyle = androidx.compose.ui.text.TextStyle(
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = ElQadreNavy
+                                ),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                singleLine = true,
+                                shape = RoundedCornerShape(12.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = ElQadreNavy,
+                                    unfocusedBorderColor = Slate300,
+                                    focusedContainerColor = Color.White,
+                                    unfocusedContainerColor = Color.White
+                                )
+                            )
+                        }
+
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = "Vida Útil (meses) *",
+                                fontSize = 14.sp,
+                                color = ElQadreNavy,
+                                fontWeight = FontWeight.Bold
+                            )
+                            OutlinedTextField(
+                                value = usefulLifeStr,
+                                onValueChange = { usefulLifeStr = it },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("inversion_life_input"),
+                                placeholder = { Text("Ej. 12", color = Slate400, fontSize = 14.sp) },
+                                textStyle = androidx.compose.ui.text.TextStyle(
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = ElQadreNavy
+                                ),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                singleLine = true,
+                                shape = RoundedCornerShape(12.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = ElQadreNavy,
+                                    unfocusedBorderColor = Slate300,
+                                    focusedContainerColor = Color.White,
+                                    unfocusedContainerColor = Color.White
+                                )
+                            )
+                        }
+                    }
+
+                    // Live Calculation Preview Card
+                    val amtVal = amountStr.toDoubleOrNull() ?: 0.0
+                    val lifeMonthsVal = usefulLifeStr.toDoubleOrNull() ?: 0.0
+                    if (amtVal > 0.0 && lifeMonthsVal > 0.0) {
+                        val monthlyVal = amtVal / lifeMonthsVal
+                        val dailyVal = monthlyVal / 30.0
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = ElQadreGoldSoft,
+                            border = BorderStroke(1.dp, ElQadreGoldDark.copy(alpha = 0.3f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text("DEPRECIACIÓN ESTIMADA", fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, color = ElQadreGoldDark)
+                                    Text(
+                                        "$${"%.2f".format(monthlyVal)} CUP / mes",
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ElQadreNavy
+                                    )
+                                }
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text("DIARIO DEPRECIACIÓN", fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, color = ElQadreGoldDark)
+                                    Text(
+                                        "$${"%.2f".format(dailyVal)} CUP / día",
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ElQadreGoldDark
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Section 3: Fechas de Amortización
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = "Período de Amortización (Opcional)",
+                            fontSize = 14.sp,
+                            color = ElQadreNavy,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text("Fecha Inicio", fontSize = 12.sp, color = Slate600)
+                                OutlinedTextField(
+                                    value = startDateStr,
+                                    onValueChange = { startDateStr = it },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    placeholder = { Text("DD/MM/YYYY", color = Slate400, fontSize = 13.sp) },
+                                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = ElQadreNavy),
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = ElQadreNavy,
+                                        unfocusedBorderColor = Slate300
                                     )
                                 )
                             }
-                            onDismiss()
-                        },
-                        enabled = canSave,
-                        colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
-                        shape = RoundedCornerShape(8.dp)
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text("Fecha Fin", fontSize = 12.sp, color = Slate600)
+                                OutlinedTextField(
+                                    value = endDateStr,
+                                    onValueChange = { endDateStr = it },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    placeholder = { Text("DD/MM/YYYY", color = Slate400, fontSize = 13.sp) },
+                                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = ElQadreNavy),
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = ElQadreNavy,
+                                        unfocusedBorderColor = Slate300
+                                    )
+                                )
+                            }
+                        }
+                    }
+
+                    // Section 4: Asignación a Mercaderías
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "Tipo de Asignación a Mercaderías *",
+                            fontSize = 14.sp,
+                            color = ElQadreNavy,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Surface(
+                                onClick = { isPuntual = false; selectedProductIds = emptySet() },
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (!isPuntual) ElQadreNavy else Slate100,
+                                border = BorderStroke(1.5.dp, if (!isPuntual) ElQadreNavy else Slate300),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 50.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier.padding(10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "A) GENERAL\n(Prorrateo)",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        textAlign = TextAlign.Center,
+                                        color = if (!isPuntual) Color.White else Slate700
+                                    )
+                                }
+                            }
+
+                            Surface(
+                                onClick = {
+                                    isPuntual = true
+                                    if (selectedProductIds.isEmpty()) {
+                                        uiState.mercaderias.firstOrNull()?.let { selectedProductIds = setOf(it.productId) }
+                                    }
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (isPuntual) ElQadreNavy else Slate100,
+                                border = BorderStroke(1.5.dp, if (isPuntual) ElQadreNavy else Slate300),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 50.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier.padding(10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "B) PUNTUAL\n(Selectivo)",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        textAlign = TextAlign.Center,
+                                        color = if (isPuntual) Color.White else Slate700
+                                    )
+                                }
+                            }
+                        }
+
+                        if (isPuntual) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Mercaderías Afectadas (${selectedProductIds.size}) *",
+                                fontSize = 13.sp,
+                                color = ElQadreNavy,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(1.dp, Slate300),
+                                color = Color.White,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 220.dp)
+                            ) {
+                                LazyColumn(
+                                    modifier = Modifier.padding(6.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    items(uiState.mercaderias.filter { it.isActive }) { merc ->
+                                        val prod = uiState.products.find { it.id == merc.productId }
+                                        val isChecked = selectedProductIds.contains(merc.productId)
+                                        Surface(
+                                            onClick = {
+                                                val newSet = selectedProductIds.toMutableSet()
+                                                if (isChecked) newSet.remove(merc.productId)
+                                                else newSet.add(merc.productId)
+                                                selectedProductIds = newSet
+                                            },
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = if (isChecked) ElQadreGoldSoft else Color.Transparent
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Checkbox(
+                                                    checked = isChecked,
+                                                    onCheckedChange = { checked ->
+                                                        val newSet = selectedProductIds.toMutableSet()
+                                                        if (checked) newSet.add(merc.productId)
+                                                        else newSet.remove(merc.productId)
+                                                        selectedProductIds = newSet
+                                                    },
+                                                    colors = CheckboxDefaults.colors(
+                                                        checkedColor = ElQadreNavy
+                                                    )
+                                                )
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text(
+                                                    text = prod?.name ?: "Mercadería #${merc.id}",
+                                                    fontSize = 14.sp,
+                                                    fontWeight = if (isChecked) FontWeight.Bold else FontWeight.Normal,
+                                                    color = ElQadreNavy
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Section 5: Observaciones
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = "Observaciones o Notas (Opcional)",
+                            fontSize = 14.sp,
+                            color = ElQadreNavy,
+                            fontWeight = FontWeight.Bold
+                        )
+                        OutlinedTextField(
+                            value = observation,
+                            onValueChange = { observation = it },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("inversion_obs_input"),
+                            placeholder = { Text("Ej. Garantía de 1 año con proveedor...", color = Slate400, fontSize = 13.sp) },
+                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = ElQadreNavy),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = ElQadreNavy,
+                                unfocusedBorderColor = Slate300
+                            )
+                        )
+                    }
+                }
+
+                // Fixed Bottom Action Buttons Container (Vertical Stack, Raised, Accessibility Optimized)
+                Surface(
+                    color = Color.White,
+                    shadowElevation = 12.dp,
+                    tonalElevation = 4.dp,
+                    border = BorderStroke(1.dp, Slate200),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 24.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Text("Guardar", color = Color.White)
+                        val canSave = name.isNotBlank() &&
+                                (amountStr.toDoubleOrNull() ?: 0.0) > 0.0 &&
+                                (usefulLifeStr.toDoubleOrNull() ?: 0.0) > 0.0 &&
+                                (!isPuntual || selectedProductIds.isNotEmpty())
+
+                        Button(
+                            onClick = {
+                                val amt = amountStr.toDoubleOrNull() ?: 0.0
+                                val life = usefulLifeStr.toDoubleOrNull() ?: 12.0
+                                val targetIdsStr = if (isPuntual) selectedProductIds.joinToString(",") else null
+                                val targetIdSingle = if (isPuntual && selectedProductIds.size == 1) selectedProductIds.first() else null
+                                val sdf = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault())
+                                val sDate = try { sdf.parse(startDateStr)?.time } catch (e: Exception) { null }
+                                val eDate = try {
+                                    sdf.parse(endDateStr)?.let {
+                                        val cal = java.util.Calendar.getInstance()
+                                        cal.time = it
+                                        cal.set(java.util.Calendar.HOUR_OF_DAY, 23)
+                                        cal.set(java.util.Calendar.MINUTE, 59)
+                                        cal.set(java.util.Calendar.SECOND, 59)
+                                        cal.set(java.util.Calendar.MILLISECOND, 999)
+                                        cal.timeInMillis
+                                    }
+                                } catch (e: Exception) { null }
+
+                                if (isEdit && inversion != null) {
+                                    viewModel.updateInversion(
+                                        inversion.copy(
+                                            name = name,
+                                            amount = amt,
+                                            usefulLife = life,
+                                            usefulLifeUnit = usefulLifeUnit,
+                                            targetProductId = targetIdSingle,
+                                            targetProductIds = targetIdsStr,
+                                            observation = observation,
+                                            startDate = sDate,
+                                            endDate = eDate,
+                                            scope = "MERCADERIAS"
+                                        )
+                                    )
+                                } else {
+                                    viewModel.insertInversion(
+                                        Inversion(
+                                            name = name,
+                                            category = "Equipamiento",
+                                            amount = amt,
+                                            usefulLife = life,
+                                            usefulLifeUnit = usefulLifeUnit,
+                                            targetProductId = targetIdSingle,
+                                            targetProductIds = targetIdsStr,
+                                            observation = observation,
+                                            startDate = sDate,
+                                            endDate = eDate,
+                                            scope = "MERCADERIAS"
+                                        )
+                                    )
+                                }
+                                onDismiss()
+                            },
+                            enabled = canSave,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(54.dp)
+                                .testTag("btn_save_inversion"),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = ElQadreNavy,
+                                disabledContainerColor = Slate300,
+                                disabledContentColor = Slate500
+                            )
+                        ) {
+                            Text(
+                                text = if (isEdit) "ACTUALIZAR INVERSIÓN" else "REGISTRAR INVERSIÓN",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color.White
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = onDismiss,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(52.dp)
+                                .testTag("btn_cancel_inversion"),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = Slate700
+                            ),
+                            border = BorderStroke(1.5.dp, Slate300)
+                        ) {
+                            Text(
+                                text = "CANCELAR",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }

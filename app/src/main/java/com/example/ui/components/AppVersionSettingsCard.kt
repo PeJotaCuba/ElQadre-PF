@@ -43,7 +43,7 @@ import java.io.File
 @Composable
 fun AppVersionSettingsCard(
     modifier: Modifier = Modifier,
-    showGenerateJson: Boolean = true
+    showGenerateJson: Boolean = false
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()

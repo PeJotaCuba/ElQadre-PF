@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -99,14 +100,26 @@ data class ExtraccionItem(
     var descripcion: String = ""
 )
 
+enum class CuadreExecutionMode {
+    INTEGRADO,
+    INDEPENDIENTE
+}
+
+class TandaIndependienteItem(
+    val id: Long = System.currentTimeMillis() + (1..9999).random(),
+    cantidadStr: String = ""
+) {
+    var cantidadStr by mutableStateOf(cantidadStr)
+}
+
 class ProduccionItemState(
     val productId: Long,
     val productName: String,
     val unit: String,
     val price: Double,
-    val tandasCount: Int,
-    val totalProduced: Double,
-    val qtyPerTanda: Double,
+    val tandasCount: Int = 0,
+    val totalProduced: Double = 0.0,
+    val qtyPerTanda: Double = 0.0,
     defectuosoStr: String = "0",
     consumoStr: String = "0",
     regaliaStr: String = "0",
@@ -115,20 +128,41 @@ class ProduccionItemState(
     val cantidadCocineros: Int = 1,
     val pagoDependienteUnitario: Double = 0.0,
     val pagoCajeroUnitario: Double = 0.0,
-    val presentaciones: List<com.example.data.local.model.PresentacionEspecial> = emptyList()
+    val presentaciones: List<com.example.data.local.model.PresentacionEspecial> = emptyList(),
+    val isIndependiente: Boolean = false,
+    initialTandas: List<TandaIndependienteItem> = emptyList()
 ) {
     var defectuosoStr by mutableStateOf(defectuosoStr)
     var consumoStr by mutableStateOf(consumoStr)
     var regaliaStr by mutableStateOf(regaliaStr)
+    var customPriceStr by mutableStateOf(if (price > 0.0) "%.2f".format(price).replace(',', '.') else "")
+
+    val effectivePrice: Double get() = customPriceStr.toDoubleOrNull() ?: price
+
+    val tandasList = mutableStateListOf<TandaIndependienteItem>().apply {
+        if (initialTandas.isNotEmpty()) {
+            addAll(initialTandas)
+        } else if (isIndependiente) {
+            add(TandaIndependienteItem(cantidadStr = ""))
+        }
+    }
+
+    val effectiveTandasCount: Int get() = if (isIndependiente) tandasList.count { (it.cantidadStr.toDoubleOrNull() ?: 0.0) > 0.0 } else tandasCount
+    val effectiveTotalProduced: Double get() = if (isIndependiente) {
+        tandasList.sumOf { it.cantidadStr.toDoubleOrNull() ?: 0.0 }
+    } else {
+        totalProduced
+    }
+    val effectiveQtyPerTanda: Double get() = if (effectiveTandasCount > 0) effectiveTotalProduced / effectiveTandasCount else 0.0
 
     val defectuoso: Double get() = defectuosoStr.toDoubleOrNull() ?: 0.0
     val consumo: Double get() = consumoStr.toDoubleOrNull() ?: 0.0
     val regalia: Double get() = regaliaStr.toDoubleOrNull() ?: 0.0
     val mermaTotal: Double get() = defectuoso + consumo + regalia
-    val vendible: Double get() = (totalProduced - mermaTotal).coerceAtLeast(0.0)
-    val ingresoEstimado: Double get() = vendible * price
+    val vendible: Double get() = (effectiveTotalProduced - mermaTotal).coerceAtLeast(0.0)
+    val ingresoEstimado: Double get() = vendible * effectivePrice
     val costoEstimado: Double get() = vendible * costoUnitarioTeorico
-    val mermaValor: Double get() = mermaTotal * price
+    val mermaValor: Double get() = mermaTotal * effectivePrice
     val pagoCocinaEstimado: Double get() = vendible * pagoCocinaUnitario * (if (cantidadCocineros > 0) cantidadCocineros else 1)
     val pagoDependienteEstimado: Double get() = vendible * pagoDependienteUnitario
     val pagoCajeroEstimado: Double get() = vendible * pagoCajeroUnitario
@@ -149,7 +183,8 @@ class MercaderiaItemState(
     regaliaStr: String = "0",
     val costoUnitarioTeorico: Double = 0.0,
     val pagoDependienteUnitario: Double = 0.0,
-    val pagoCajeroUnitario: Double = 0.0
+    val pagoCajeroUnitario: Double = 0.0,
+    val isIndependiente: Boolean = false
 ) {
     var existenciaInicialStr by mutableStateOf(existenciaInicialStr)
     var entradasStr by mutableStateOf(entradasStr)
@@ -157,20 +192,29 @@ class MercaderiaItemState(
     var defectuosoStr by mutableStateOf(defectuosoStr)
     var consumoStr by mutableStateOf(consumoStr)
     var regaliaStr by mutableStateOf(regaliaStr)
+    var customPriceStr by mutableStateOf(if (price > 0.0) "%.2f".format(price).replace(',', '.') else "")
 
-    val isCompleted: Boolean get() = existenciaFinalStr.isNotBlank()
+    val effectivePrice: Double get() = customPriceStr.toDoubleOrNull() ?: price
+    val isCompleted: Boolean get() = if (isIndependiente) (existenciaInicialStr.isNotBlank() && existenciaFinalStr.isNotBlank()) else existenciaFinalStr.isNotBlank()
     val existenciaInicial: Double get() = existenciaInicialStr.toDoubleOrNull() ?: 0.0
-    val entradas: Double get() = entradasStr.toDoubleOrNull() ?: 0.0
+    val entradas: Double get() = if (isIndependiente) 0.0 else (entradasStr.toDoubleOrNull() ?: 0.0)
     val existenciaFinal: Double get() = existenciaFinalStr.toDoubleOrNull() ?: 0.0
     val defectuoso: Double get() = defectuosoStr.toDoubleOrNull() ?: 0.0
     val consumo: Double get() = consumoStr.toDoubleOrNull() ?: 0.0
     val regalia: Double get() = regaliaStr.toDoubleOrNull() ?: 0.0
     val mermaTotal: Double get() = defectuoso + consumo + regalia
-    val existenciaDisponible: Double get() = existenciaInicial + entradas
-    val ventas: Double get() = if (isCompleted) (existenciaDisponible - existenciaFinal - mermaTotal).coerceAtLeast(0.0) else 0.0
-    val ingresoEstimado: Double get() = if (isCompleted) ventas * price else 0.0
+    val existenciaDisponible: Double get() = if (isIndependiente) existenciaInicial else (existenciaInicial + entradas)
+    val ventas: Double get() = if (isCompleted) {
+        if (isIndependiente) {
+            (existenciaInicial - existenciaFinal).coerceAtLeast(0.0)
+        } else {
+            (existenciaDisponible - existenciaFinal - mermaTotal).coerceAtLeast(0.0)
+        }
+    } else 0.0
+
+    val ingresoEstimado: Double get() = if (isCompleted) ventas * effectivePrice else 0.0
     val costoEstimado: Double get() = if (isCompleted) ventas * costoUnitarioTeorico else 0.0
-    val mermaValor: Double get() = mermaTotal * price
+    val mermaValor: Double get() = mermaTotal * effectivePrice
     val pagoDependienteEstimado: Double get() = ventas * pagoDependienteUnitario
     val pagoCajeroEstimado: Double get() = ventas * pagoCajeroUnitario
 }
@@ -209,9 +253,12 @@ fun CuadreCajaScreen(
 ) {
     val context = LocalContext.current
     var selectedTab by rememberSaveable { mutableStateOf(CuadreTab.PRODUCCION) }
+    var cuadreMode by rememberSaveable { mutableStateOf(CuadreExecutionMode.INTEGRADO) }
+    val isModoIndependiente = cuadreMode == CuadreExecutionMode.INDEPENDIENTE
     var showAvisoPagosDialog by rememberSaveable { mutableStateOf(false) }
 
     val activeJornada = uiState.activeJornada
+    val isJornadaOpen = activeJornada != null && activeJornada.isOpen
     val initialCash = activeJornada?.initialCash ?: 0.0
 
     // Filter tandas of active jornada / current day
@@ -229,8 +276,8 @@ fun CuadreCajaScreen(
         }
     }
 
-    // Build Produccion item states from registered tandas
-    val produccionStates = remember(
+    // Build Produccion item states from registered tandas (Modo Integrado)
+    val produccionStatesIntegrado = remember(
         jornadaTandas, uiState.products, uiState.productosElaborados, uiState.recetaIngredientes,
         uiState.materiasPrimas, uiState.gastosGenerales, uiState.inversiones
     ) {
@@ -278,13 +325,60 @@ fun CuadreCajaScreen(
                 cantidadCocineros = cantCocineros,
                 pagoDependienteUnitario = pagoDepUnit,
                 pagoCajeroUnitario = pagoCajUnit,
-                presentaciones = presList
+                presentaciones = presList,
+                isIndependiente = false
             )
         }.toMutableStateList()
     }
 
-    // Build Mercaderias item states from active mercaderias
-    val mercaderiasStates = remember(
+    // Build Produccion item states directly from product catalog (Modo Independiente)
+    val produccionStatesIndependiente = remember(
+        uiState.products, uiState.productosElaborados, uiState.recetaIngredientes,
+        uiState.materiasPrimas, uiState.gastosGenerales, uiState.inversiones
+    ) {
+        val prodList = uiState.products.filter {
+            it.destination == "COCINA" || it.category.uppercase().contains("PRODUCCION") || uiState.productosElaborados.any { pe -> pe.productId == it.id }
+        }
+        prodList.map { product ->
+            val prodElab = uiState.productosElaborados.find { it.productId == product.id }
+            val prodName = product.name
+            val price = if (prodElab?.hasPrecioDefinitivo == true && prodElab.precioDefinitivo > 0.0) {
+                prodElab.precioDefinitivo
+            } else {
+                product.price
+            }
+            val unit = prodElab?.productionUnit?.ifBlank { product.unitOfMeasure } ?: (if (product.unitOfMeasure.isNotBlank()) product.unitOfMeasure else "U")
+
+            val costSheet = com.example.util.CostCalculationHelper.calculateCostSheet(
+                product = product,
+                uiState = uiState
+            )
+
+            val costoUnitario = costSheet?.costoRealUnitario ?: product.cost
+            val pagoCocinaUnit = costSheet?.totalPagoCocinaUnitario ?: prodElab?.totalPagoCocinaUnitario ?: 0.0
+            val cantCocineros = prodElab?.cantidadCocineros?.takeIf { it > 0 } ?: 1
+            val pagoDepUnit = costSheet?.totalPagoDependienteUnitario ?: prodElab?.totalPagoDependienteUnitario ?: 0.0
+            val pagoCajUnit = costSheet?.totalPagoCajeroUnitario ?: prodElab?.totalPagoCajeroUnitario ?: 0.0
+            val presList = com.example.data.local.model.parsePresentacionesEspeciales(product.presentacionesEspeciales)
+
+            ProduccionItemState(
+                productId = product.id,
+                productName = prodName,
+                unit = unit,
+                price = price,
+                costoUnitarioTeorico = costoUnitario,
+                pagoCocinaUnitario = pagoCocinaUnit,
+                cantidadCocineros = cantCocineros,
+                pagoDependienteUnitario = pagoDepUnit,
+                pagoCajeroUnitario = pagoCajUnit,
+                presentaciones = presList,
+                isIndependiente = true
+            )
+        }.toMutableStateList()
+    }
+
+    // Build Mercaderias item states from active mercaderias (Modo Integrado)
+    val mercaderiasStatesIntegrado = remember(
         uiState.mercaderias, uiState.products, uiState.movimientosMercaderia,
         uiState.tarifasPagoBebidas, uiState.gastosGenerales, uiState.inversiones, activeJornada,
         uiState.productosElaborados, uiState.recetaIngredientes, uiState.materiasPrimas
@@ -334,10 +428,62 @@ fun CuadreCajaScreen(
                 existenciaFinalStr = "",
                 costoUnitarioTeorico = costoUnitario,
                 pagoDependienteUnitario = if (isConfitura) 0.0 else (mercCostSheet?.pagoDependienteUnitario ?: uiState.tarifasPagoBebidas.calcularPagoDependiente(price)),
-                pagoCajeroUnitario = if (isConfitura) 0.0 else (mercCostSheet?.pagoCajeroUnitario ?: uiState.tarifasPagoBebidas.calcularPagoCajero(price))
+                pagoCajeroUnitario = if (isConfitura) 0.0 else (mercCostSheet?.pagoCajeroUnitario ?: uiState.tarifasPagoBebidas.calcularPagoCajero(price)),
+                isIndependiente = false
             )
         }.toMutableStateList()
     }
+
+    // Build Mercaderias item states for direct input without depending on inventory (Modo Independiente)
+    val mercaderiasStatesIndependiente = remember(
+        uiState.mercaderias, uiState.products,
+        uiState.tarifasPagoBebidas, uiState.gastosGenerales, uiState.inversiones,
+        uiState.productosElaborados, uiState.recetaIngredientes, uiState.materiasPrimas
+    ) {
+        uiState.mercaderias.filter { it.isActive }.map { merc ->
+            val product = uiState.products.find { it.id == merc.productId }
+            val prodName = product?.name ?: "Mercadería #${merc.id}"
+            val price = product?.price ?: 0.0
+            val unit = merc.unitOfMeasure.ifBlank { product?.unitOfMeasure ?: "U" }
+            val isConfitura = (product?.category?.uppercase() == "CONFITURAS")
+
+            val mercCostSheet = if (product != null) {
+                com.example.util.CostCalculationHelper.calculateMercaderiaCostSheet(
+                    mercaderia = merc,
+                    mercaderias = uiState.mercaderias,
+                    products = uiState.products,
+                    movimientos = uiState.movimientosMercaderia,
+                    gastosGenerales = uiState.gastosGenerales,
+                    inversiones = uiState.inversiones,
+                    productosElaborados = uiState.productosElaborados,
+                    recetaIngredientes = uiState.recetaIngredientes,
+                    materiasPrimas = uiState.materiasPrimas,
+                    tarifasPagoBebidas = uiState.tarifasPagoBebidas
+                )
+            } else null
+
+            val costoUnitario = mercCostSheet?.costoRealUnitario ?: merc.acquisitionCost
+
+            MercaderiaItemState(
+                mercaderiaId = merc.id,
+                productId = merc.productId,
+                productName = prodName,
+                unit = unit,
+                price = price,
+                isConfitura = isConfitura,
+                existenciaInicialStr = "",
+                entradasStr = "0",
+                existenciaFinalStr = "",
+                costoUnitarioTeorico = costoUnitario,
+                pagoDependienteUnitario = if (isConfitura) 0.0 else (mercCostSheet?.pagoDependienteUnitario ?: uiState.tarifasPagoBebidas.calcularPagoDependiente(price)),
+                pagoCajeroUnitario = if (isConfitura) 0.0 else (mercCostSheet?.pagoCajeroUnitario ?: uiState.tarifasPagoBebidas.calcularPagoCajero(price)),
+                isIndependiente = true
+            )
+        }.toMutableStateList()
+    }
+
+    val produccionStates = if (isModoIndependiente) produccionStatesIndependiente else produccionStatesIntegrado
+    val mercaderiasStates = if (isModoIndependiente) mercaderiasStatesIndependiente else mercaderiasStatesIntegrado
 
     // Build Agregados item states from active materias primas configured as agregados
     val agregadosStates = remember(uiState.materiasPrimas) {
@@ -465,28 +611,41 @@ fun CuadreCajaScreen(
     val performCerrarCaja = {
         isCuadrado = true
         val jId = activeJornada?.id ?: 1L
-        val mercCuadreItems = mercaderiasStates.map { m ->
-            com.example.ui.viewmodel.MercaderiaCuadreItem(
-                mercaderiaId = m.mercaderiaId,
-                productId = m.productId,
-                ventas = m.ventas,
-                mermas = m.mermaTotal,
-                price = m.price
-            )
+        val mercCuadreItems = if (isModoIndependiente) {
+            emptyList()
+        } else {
+            mercaderiasStates.map { m ->
+                com.example.ui.viewmodel.MercaderiaCuadreItem(
+                    mercaderiaId = m.mercaderiaId,
+                    productId = m.productId,
+                    ventas = m.ventas,
+                    mermas = m.mermaTotal,
+                    price = m.price
+                )
+            }
         }
-        val agCuadreItems = agregadosStates.map { ag ->
-            com.example.ui.viewmodel.AgregadoCuadreItem(
-                materiaPrimaId = ag.materiaPrimaId,
-                name = ag.name,
-                racionesEnviadas = ag.racionesEnviadas,
-                racionesVendidas = ag.racionesVendidas,
-                racionesRegalia = ag.racionesRegalia,
-                racionesSobrantes = ag.racionesSobrantes,
-                precioVenta = ag.precioVenta,
-                costoPorRacion = ag.costoPorRacion,
-                rationQuantity = ag.rationQuantity,
-                unit = ag.unit
-            )
+        val agCuadreItems = if (isModoIndependiente) {
+            emptyList()
+        } else {
+            agregadosStates.map { ag ->
+                com.example.ui.viewmodel.AgregadoCuadreItem(
+                    materiaPrimaId = ag.materiaPrimaId,
+                    name = ag.name,
+                    racionesEnviadas = ag.racionesEnviadas,
+                    racionesVendidas = ag.racionesVendidas,
+                    racionesRegalia = ag.racionesRegalia,
+                    racionesSobrantes = ag.racionesSobrantes,
+                    precioVenta = ag.precioVenta,
+                    costoPorRacion = ag.costoPorRacion,
+                    rationQuantity = ag.rationQuantity,
+                    unit = ag.unit
+                )
+            }
+        }
+        val finalNotes = if (isModoIndependiente) {
+            if (notasCuadre.startsWith("[MODO INDEPENDIENTE]")) notasCuadre else "[MODO INDEPENDIENTE] $notasCuadre".trim()
+        } else {
+            notasCuadre
         }
         viewModel.registrarCuadreDueno(
             jornadaId = jId,
@@ -498,11 +657,11 @@ fun CuadreCajaScreen(
             mermas = totalMermasValor,
             transferencias = transferenciasTotalMonto,
             extracciones = extraccionesVal,
-            notes = notasCuadre,
+            notes = finalNotes,
             mercaderiaItems = mercCuadreItems,
             agregadoItems = agCuadreItems
         )
-        Toast.makeText(context, "¡Cuadre de caja registrado con éxito!", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, if (isModoIndependiente) "¡Cuadre Independiente registrado con éxito!" else "¡Cuadre de caja registrado con éxito!", Toast.LENGTH_SHORT).show()
     }
 
     if (showAvisoPagosDialog) {
@@ -626,73 +785,217 @@ fun CuadreCajaScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(6.dp))
+                if (isJornadaOpen) {
+                    Spacer(modifier = Modifier.height(6.dp))
 
-                // COMPACT NAVIGATION CARDS
-                // Row 1: PRODUCCIÓN | MERCADERÍAS
-                // Row 2: TRANSFERENCIAS | GENERALES
-                // Row 3: PAGOS (full width)
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        CuadreNavCard(
-                            label = "PRODUCCIÓN",
-                            isSelected = selectedTab == CuadreTab.PRODUCCION,
-                            onClick = { selectedTab = CuadreTab.PRODUCCION },
-                            testTag = "tab_cuadre_produccion",
-                            modifier = Modifier.weight(1f)
-                        )
-                        CuadreNavCard(
-                            label = "MERCADERÍAS",
-                            isSelected = selectedTab == CuadreTab.MERCADERIA,
-                            onClick = { selectedTab = CuadreTab.MERCADERIA },
-                            testTag = "tab_cuadre_mercaderia",
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        CuadreNavCard(
-                            label = "TRANSFERENCIAS",
-                            isSelected = selectedTab == CuadreTab.TRANSFERENCIA,
-                            onClick = { selectedTab = CuadreTab.TRANSFERENCIA },
-                            testTag = "tab_cuadre_transferencia",
-                            modifier = Modifier.weight(1f)
-                        )
-                        CuadreNavCard(
-                            label = "GENERALES",
-                            isSelected = selectedTab == CuadreTab.GENERALES,
-                            onClick = { selectedTab = CuadreTab.GENERALES },
-                            testTag = "tab_cuadre_generales",
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-
-                    CuadreNavCard(
-                        label = "PAGOS",
-                        isSelected = selectedTab == CuadreTab.PAGOS,
-                        onClick = { selectedTab = CuadreTab.PAGOS },
-                        testTag = "tab_cuadre_pagos",
+                    // SELECTOR DE MODO: INTEGRADO VS INDEPENDIENTE
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color.White.copy(alpha = 0.12f),
                         modifier = Modifier.fillMaxWidth()
-                    )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(2.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = if (cuadreMode == CuadreExecutionMode.INTEGRADO) ElQadreGold else Color.Transparent,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { cuadreMode = CuadreExecutionMode.INTEGRADO }
+                                    .testTag("btn_modo_integrado")
+                            ) {
+                                Text(
+                                    text = "MODO INTEGRADO",
+                                    fontSize = 11.sp,
+                                    fontWeight = if (cuadreMode == CuadreExecutionMode.INTEGRADO) FontWeight.Black else FontWeight.SemiBold,
+                                    color = if (cuadreMode == CuadreExecutionMode.INTEGRADO) ElQadreNavy else Slate300,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(vertical = 6.dp)
+                                )
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = if (cuadreMode == CuadreExecutionMode.INDEPENDIENTE) ElQadreGold else Color.Transparent,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { cuadreMode = CuadreExecutionMode.INDEPENDIENTE }
+                                    .testTag("btn_modo_independiente")
+                            ) {
+                                Text(
+                                    text = "MODO INDEPENDIENTE",
+                                    fontSize = 11.sp,
+                                    fontWeight = if (cuadreMode == CuadreExecutionMode.INDEPENDIENTE) FontWeight.Black else FontWeight.SemiBold,
+                                    color = if (cuadreMode == CuadreExecutionMode.INDEPENDIENTE) ElQadreNavy else Slate300,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(vertical = 6.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    // COMPACT NAVIGATION CARDS
+                    // Row 1: PRODUCCIÓN | MERCADERÍAS
+                    // Row 2: TRANSFERENCIAS | GENERALES
+                    // Row 3: PAGOS (full width)
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            CuadreNavCard(
+                                label = "PRODUCCIÓN",
+                                isSelected = selectedTab == CuadreTab.PRODUCCION,
+                                onClick = { selectedTab = CuadreTab.PRODUCCION },
+                                testTag = "tab_cuadre_produccion",
+                                modifier = Modifier.weight(1f)
+                            )
+                            CuadreNavCard(
+                                label = "MERCADERÍAS",
+                                isSelected = selectedTab == CuadreTab.MERCADERIA,
+                                onClick = { selectedTab = CuadreTab.MERCADERIA },
+                                testTag = "tab_cuadre_mercaderia",
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            CuadreNavCard(
+                                label = "TRANSFERENCIAS",
+                                isSelected = selectedTab == CuadreTab.TRANSFERENCIA,
+                                onClick = { selectedTab = CuadreTab.TRANSFERENCIA },
+                                testTag = "tab_cuadre_transferencia",
+                                modifier = Modifier.weight(1f)
+                            )
+                            CuadreNavCard(
+                                label = "GENERALES",
+                                isSelected = selectedTab == CuadreTab.GENERALES,
+                                onClick = { selectedTab = CuadreTab.GENERALES },
+                                testTag = "tab_cuadre_generales",
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+
+                        CuadreNavCard(
+                            label = "PAGOS",
+                            isSelected = selectedTab == CuadreTab.PAGOS,
+                            onClick = { selectedTab = CuadreTab.PAGOS },
+                            testTag = "tab_cuadre_pagos",
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                 }
             }
         }
 
-        // CONTENT OF SELECTED TAB
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-        ) {
+        // CONTENT AREA
+        if (!isJornadaOpen) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color.White,
+                    border = BorderStroke(1.5.dp, Color(0xFFFCA5A5)),
+                    shadowElevation = 6.dp,
+                    modifier = Modifier.widthIn(max = 500.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(28.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color(0xFFFEF2F2),
+                            border = BorderStroke(1.dp, Color(0xFFFCA5A5)),
+                            modifier = Modifier.size(68.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Lock,
+                                    contentDescription = null,
+                                    tint = Color(0xFFDC2626),
+                                    modifier = Modifier.size(36.dp)
+                                )
+                            }
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = Color(0xFFFEF2F2),
+                            border = BorderStroke(1.dp, Color(0xFFFCA5A5))
+                        ) {
+                            Text(
+                                text = "JORNADA CERRADA",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(0xFF991B1B),
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp)
+                            )
+                        }
+
+                        Text(
+                            text = "Acceso a Cuadre de Caja Bloqueado",
+                            fontSize = 19.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = ElQadreNavy,
+                            textAlign = TextAlign.Center
+                        )
+
+                        Text(
+                            text = "El Cuadre de Caja solo puede utilizarse cuando exista una JORNADA ABIERTA.\n\nPrimero debe abrir la jornada en el sistema para poder realizar el arqueo y registrar el cuadre de caja.",
+                            fontSize = 14.sp,
+                            color = Slate700,
+                            textAlign = TextAlign.Center,
+                            lineHeight = 20.sp
+                        )
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        Button(
+                            onClick = onClose,
+                            colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp)
+                                .testTag("btn_entendido_jornada_cerrada")
+                        ) {
+                            Text(
+                                text = "ENTENDIDO / VOLVER",
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 14.sp,
+                                color = Color.White
+                            )
+                        }
+                    }
+                }
+            }
+        } else {
+            // CONTENT OF SELECTED TAB
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) {
             when (selectedTab) {
                 CuadreTab.PRODUCCION -> {
                     CuadreProduccionTab(
@@ -944,6 +1247,7 @@ fun CuadreCajaScreen(
             }
         }
     }
+}
 }
 
 // -------------------------------------------------------------

@@ -1356,16 +1356,6 @@ fun CostosAnalisisPane(
         }
 
         val context = LocalContext.current
-        Button(
-            onClick = { CostSheetPdfExporter.exportAllCostSheets(context, uiState) },
-            colors = ButtonDefaults.buttonColors(containerColor = ElQadreGoldDark),
-            shape = RoundedCornerShape(8.dp),
-            modifier = Modifier.fillMaxWidth().testTag("download_all_cost_sheets_pdf")
-        ) {
-            Icon(Icons.Default.PictureAsPdf, contentDescription = null, modifier = Modifier.size(16.dp))
-            Spacer(modifier = Modifier.width(6.dp))
-            Text("Descargar Todas las Fichas en PDF", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-        }
 
         if (uiState.products.none { it.destination == "COCINA" }) {
             Box(
@@ -1692,6 +1682,7 @@ fun AddEditMateriaPrimaDialog(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
+                .navigationBarsPadding()
                 .imePadding(),
             color = Color(0xFFF8FAFC)
         ) {
@@ -2676,7 +2667,7 @@ fun AddEditMateriaPrimaDialog(
                     }
                 }
 
-                // ACCIONES INFERIORES: CANCELAR Y GUARDAR (COMPLETAMENTE POR ENCIMA DE LA NAVEGACIÓN DE ANDROID)
+                // ACCIONES INFERIORES: CANCELAR Y GUARDAR (ELEVADAS A UNA POSICIÓN SUPERIOR POR ENCIMA DE LA NAVEGACIÓN DE ANDROID)
                 Surface(
                     color = Color.White,
                     shadowElevation = 8.dp,
@@ -2685,7 +2676,7 @@ fun AddEditMateriaPrimaDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .navigationBarsPadding()
-                        .padding(bottom = 32.dp)
+                        .padding(bottom = 68.dp)
                 ) {
                     Row(
                         modifier = Modifier
@@ -5267,6 +5258,9 @@ fun ToggleAgregadoInsumoDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        modifier = Modifier
+            .navigationBarsPadding()
+            .padding(bottom = 56.dp),
         title = {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(
@@ -5527,13 +5521,18 @@ fun ToggleAgregadoInsumoDialog(
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = if (isAgregado) Color(0xFF16A34A) else ElQadreNavy),
                 shape = RoundedCornerShape(10.dp),
-                modifier = Modifier.testTag("btn_save_toggle_agregado")
+                modifier = Modifier
+                    .height(48.dp)
+                    .testTag("btn_save_toggle_agregado")
             ) {
                 Text(if (isAgregado) "Guardar como Agregado" else "Guardar como Insumo Base", fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.height(48.dp)
+            ) {
                 Text("Cancelar", color = Slate600)
             }
         }

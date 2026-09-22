@@ -3676,331 +3676,638 @@ fun DuenoMercaderiasSubscreen(
             val isBebida = com.example.util.MercaderiaCategoryHelper.isBebida(product)
             val isConfitura = com.example.util.MercaderiaCategoryHelper.isConfitura(product)
 
-            AlertDialog(
+            Dialog(
                 onDismissRequest = { selectedMercaderiaForDetail = null },
-                title = {
-                    Column {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                properties = DialogProperties(usePlatformDefaultWidth = false)
+            ) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .statusBarsPadding()
+                        .navigationBarsPadding(),
+                    color = Color(0xFFF1F5F9)
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        // ENCABEZADO SUPERIOR: FLECHA DE RETORNO (←) Y X DE CIERRE
+                        Surface(
+                            color = Color.White,
+                            shadowElevation = 3.dp,
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text(
-                                text = (product?.name ?: "MERCADERÍA #${merc.id}").uppercase(),
-                                fontWeight = FontWeight.Black,
-                                fontSize = 18.sp,
-                                color = ElQadreNavy
-                            )
-                        }
-                        Text(
-                            text = "Categoría: ${product?.category ?: "Mercadería"} • Almacén y Costos",
-                            fontSize = 13.sp,
-                            color = Slate500
-                        )
-                    }
-                },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Surface(shape = RoundedCornerShape(8.dp), color = Color(0xFFEFF6FF)) {
-                                Text(
-                                    text = "Costo: $${"%.2f".format(realCost)} CUP",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF1D4ED8),
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                )
-                            }
-                            Surface(shape = RoundedCornerShape(8.dp), color = Color(0xFFFFFBEB)) {
-                                Text(
-                                    text = "Margen: ${"%.1f".format(marginPct)}%",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFB45309),
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                )
-                            }
-                            Surface(shape = RoundedCornerShape(8.dp), color = Color(0xFFECFDF5)) {
-                                Text(
-                                    text = "Precio: $${"%.2f".format(price)} CUP",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF047857),
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                // FLECHA DE RETORNO (ESQUINA SUPERIOR IZQUIERDA -> MERCADERÍAS)
+                                IconButton(
+                                    onClick = { selectedMercaderiaForDetail = null },
+                                    modifier = Modifier
+                                        .size(52.dp)
+                                        .testTag("btn_back_mercaderia_detail")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.ArrowBack,
+                                        contentDescription = "Regresar a Mercaderías",
+                                        tint = ElQadreNavy,
+                                        modifier = Modifier.size(30.dp)
+                                    )
+                                }
+
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(horizontal = 8.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(
+                                        text = "DETALLE DE MERCADERÍA",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Slate500,
+                                        letterSpacing = 1.sp
+                                    )
+                                    Text(
+                                        text = (product?.name ?: "MERCADERÍA #${merc.id}").uppercase(),
+                                        fontSize = 19.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = ElQadreNavy,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+
+                                // X DE CIERRE (ESQUINA SUPERIOR DERECHA)
+                                IconButton(
+                                    onClick = { selectedMercaderiaForDetail = null },
+                                    modifier = Modifier
+                                        .size(52.dp)
+                                        .testTag("btn_close_mercaderia_detail")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Cerrar detalle",
+                                        tint = Slate700,
+                                        modifier = Modifier.size(30.dp)
+                                    )
+                                }
                             }
                         }
 
-                        // SECCIÓN DE PAGOS DE PERSONAL (SOLO LECTURA)
-                        if (isBebida) {
+                        // CONTENIDO DESPLAZABLE CON TEXTOS GRANDES Y ACCESIBLES
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .verticalScroll(rememberScrollState())
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            // TARJETA DE INFORMACIÓN PRINCIPAL (NOMBRE, CATEGORÍA, UNIDAD)
                             Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = Color(0xFFEEF2FF),
-                                border = BorderStroke(1.dp, Color(0xFFC7D2FE)),
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color.White,
+                                border = BorderStroke(1.5.dp, Slate200),
+                                shadowElevation = 2.dp,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Column(
-                                    modifier = Modifier.padding(12.dp),
-                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    modifier = Modifier.padding(18.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
+                                    Text(
+                                        text = (product?.name ?: "MERCADERÍA #${merc.id}").uppercase(),
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 22.sp,
+                                        color = ElQadreNavy,
+                                        lineHeight = 28.sp
+                                    )
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = Slate100
                                         ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Payments,
-                                                contentDescription = null,
-                                                tint = Color(0xFF4F46E5),
-                                                modifier = Modifier.size(16.dp)
-                                            )
                                             Text(
-                                                text = "PAGOS DE PERSONAL ASOCIADOS",
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color(0xFF312E81)
+                                                text = "Categoría: ${product?.category ?: "Mercadería"}",
+                                                fontSize = 15.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = Slate700,
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                                             )
                                         }
                                         Surface(
-                                            shape = RoundedCornerShape(4.dp),
+                                            shape = RoundedCornerShape(8.dp),
                                             color = Color(0xFFE0E7FF)
                                         ) {
                                             Text(
-                                                text = "SOLO LECTURA • GLOBAL",
-                                                fontSize = 9.sp,
+                                                text = "Unidad: ${merc.unitOfMeasure}",
+                                                fontSize = 15.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = Color(0xFF3730A3),
-                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            // TARJETAS DE COSTO, MARGEN Y PRECIO DE VENTA
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                // COSTO
+                                Surface(
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = Color(0xFFEFF6FF),
+                                    border = BorderStroke(1.5.dp, Color(0xFFBFDBFE)),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(12.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text("COSTO", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E40AF))
+                                        Text("$${"%.2f".format(realCost)}", fontSize = 18.sp, fontWeight = FontWeight.Black, color = Color(0xFF1D4ED8))
+                                        Text("CUP", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1E40AF))
+                                    }
+                                }
+
+                                // MARGEN
+                                Surface(
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = Color(0xFFFFFBEB),
+                                    border = BorderStroke(1.5.dp, Color(0xFFFDE68A)),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(12.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text("MARGEN", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF92400E))
+                                        Text("${"%.1f".format(marginPct)}%", fontSize = 18.sp, fontWeight = FontWeight.Black, color = Color(0xFFB45309))
+                                        Text("Ganancia", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF92400E))
+                                    }
+                                }
+
+                                // PRECIO VENTA
+                                Surface(
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = Color(0xFFECFDF5),
+                                    border = BorderStroke(1.5.dp, Color(0xFFA7F3D0)),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(12.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text("PRECIO", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF065F46))
+                                        Text("$${"%.2f".format(price)}", fontSize = 18.sp, fontWeight = FontWeight.Black, color = Color(0xFF047857))
+                                        Text("CUP", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF065F46))
+                                    }
+                                }
+                            }
+
+                            // SECCIÓN DE INVENTARIO Y STOCK EN ALMACÉN
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color.White,
+                                border = BorderStroke(1.5.dp, Slate200),
+                                shadowElevation = 2.dp,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(18.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Text(
+                                        text = "ESTADO DE INVENTARIO EN ALMACÉN",
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = ElQadreNavy,
+                                        letterSpacing = 0.5.sp
+                                    )
+
+                                    // BANNER DESTACADO DE EXISTENCIA ACTUAL
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = Color(0xFFF0FDF4),
+                                        border = BorderStroke(2.dp, Color(0xFF86EFAC)),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column {
+                                                Text("EXISTENCIA EN ALMACÉN", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF166534))
+                                                Text("Disponible en Almacén Central", fontSize = 12.sp, color = Slate600)
+                                            }
+                                            Text(
+                                                text = "${"%.1f".format(currentAlmacenStock)} ${merc.unitOfMeasure}",
+                                                fontSize = 24.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = Color(0xFF15803D)
                                             )
                                         }
                                     }
 
+                                    HorizontalDivider(color = Slate200, thickness = 1.dp)
+
+                                    // DESGLOSE DE MOVIMIENTOS
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text("• Pago Dependiente por unidad:", fontSize = 11.5.sp, color = Slate700)
-                                        Text("$${"%.2f".format(uiState.tarifasPagoBebidas.pagoDependientePorUnidad)} CUP", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F766E))
+                                        Text("Stock Inicial Almacén:", fontSize = 15.sp, color = Slate700)
+                                        Text("${"%.1f".format(initialStock)} ${merc.unitOfMeasure}", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Slate800)
                                     }
-
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text("• Pago Cajero por unidad:", fontSize = 11.5.sp, color = Slate700)
-                                        Text("$${"%.2f".format(uiState.tarifasPagoBebidas.pagoCajeroPorUnidad)} CUP", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB45309))
-                                    }
-
-                                    HorizontalDivider(color = Color(0xFFC7D2FE))
 
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(
-                                            text = "TOTAL PAGO PERSONAL:",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Black,
-                                            color = Color(0xFF312E81)
-                                        )
-                                        Text(
-                                            text = "$${"%.2f".format(uiState.tarifasPagoBebidas.totalPagoPersonalPorUnidad)} CUP / u",
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Black,
-                                            color = Color(0xFF4338CA)
-                                        )
+                                        Text("Entradas registradas:", fontSize = 15.sp, color = Color(0xFF0F766E), fontWeight = FontWeight.SemiBold)
+                                        Text("+${"%.1f".format(entries)} ${merc.unitOfMeasure}", fontSize = 16.sp, fontWeight = FontWeight.Black, color = Color(0xFF0F766E))
                                     }
 
-                                    Text(
-                                        text = "Tarifas globales configuradas desde Mercaderías → Pagos.",
-                                        fontSize = 10.sp,
-                                        color = Slate500,
-                                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
-                                    )
-                                }
-                            }
-                        } else if (isConfitura) {
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = Color(0xFFFDF2F8),
-                                border = BorderStroke(1.dp, Color(0xFFFBCFE8)),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.Info,
-                                        contentDescription = null,
-                                        tint = Color(0xFFBE185D),
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Text(
-                                        text = "Confituras: Sin pagos de personal asociados (sin comisión de dependiente ni cajero).",
-                                        fontSize = 11.sp,
-                                        color = Color(0xFF9D174D),
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
-                            }
-                        }
-
-                        HorizontalDivider(color = Slate200)
-
-                        // Resumen de Stock en Almacén
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = Slate50,
-                            border = BorderStroke(1.dp, Slate200),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text("Stock Inicial Almacén:", fontSize = 12.sp, color = Slate600)
-                                    Text("${"%.1f".format(initialStock)} ${merc.unitOfMeasure}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Slate800)
-                                }
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text("Entradas registradas:", fontSize = 12.sp, color = Color(0xFF0F766E))
-                                    Text("+${"%.1f".format(entries)} ${merc.unitOfMeasure}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F766E))
-                                }
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text("Mermas en Almacén:", fontSize = 12.sp, color = Color(0xFFD97706))
-                                    Text("-${"%.1f".format(mermas)} ${merc.unitOfMeasure}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFD97706))
-                                }
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text("Para Venta (a Local):", fontSize = 12.sp, color = Color(0xFF1D4ED8))
-                                    Text("-${"%.1f".format(paraVenta)} ${merc.unitOfMeasure}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1D4ED8))
-                                }
-                                if (otherSalidas > 0.0) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text("Otras Salidas / Ajustes:", fontSize = 12.sp, color = Color(0xFFB45309))
-                                        Text("-${"%.1f".format(otherSalidas)} ${merc.unitOfMeasure}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB45309))
+                                        Text("Mermas en Almacén:", fontSize = 15.sp, color = Color(0xFFD97706), fontWeight = FontWeight.SemiBold)
+                                        Text("-${"%.1f".format(mermas)} ${merc.unitOfMeasure}", fontSize = 16.sp, fontWeight = FontWeight.Black, color = Color(0xFFD97706))
+                                    }
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("Para Venta (enviado a Local):", fontSize = 15.sp, color = Color(0xFF1D4ED8), fontWeight = FontWeight.SemiBold)
+                                        Text("-${"%.1f".format(paraVenta)} ${merc.unitOfMeasure}", fontSize = 16.sp, fontWeight = FontWeight.Black, color = Color(0xFF1D4ED8))
+                                    }
+
+                                    if (otherSalidas > 0.0) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text("Otras Salidas / Ajustes:", fontSize = 15.sp, color = Color(0xFFB45309), fontWeight = FontWeight.SemiBold)
+                                            Text("-${"%.1f".format(otherSalidas)} ${merc.unitOfMeasure}", fontSize = 16.sp, fontWeight = FontWeight.Black, color = Color(0xFFB45309))
+                                        }
                                     }
                                 }
-                                HorizontalDivider(color = Slate200)
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                            }
+
+                            // SECCIÓN DE PAGOS DE PERSONAL (SI ES BEBIDA)
+                            if (isBebida) {
+                                Surface(
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = Color(0xFFEEF2FF),
+                                    border = BorderStroke(1.5.dp, Color(0xFFC7D2FE)),
+                                    shadowElevation = 2.dp,
+                                    modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Text("EXISTENCIA ALMACÉN:", fontSize = 13.sp, fontWeight = FontWeight.Black, color = ElQadreNavy)
-                                    Text("${"%.1f".format(currentAlmacenStock)} ${merc.unitOfMeasure}", fontSize = 16.sp, fontWeight = FontWeight.Black, color = ElQadreNavy)
+                                    Column(
+                                        modifier = Modifier.padding(18.dp),
+                                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Payments,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFF4F46E5),
+                                                    modifier = Modifier.size(22.dp)
+                                                )
+                                                Text(
+                                                    text = "PAGOS DE PERSONAL ASOCIADOS",
+                                                    fontSize = 14.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    color = Color(0xFF312E81)
+                                                )
+                                            }
+                                            Surface(
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = Color(0xFFE0E7FF)
+                                            ) {
+                                                Text(
+                                                    text = "GLOBAL",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFF3730A3),
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                                                )
+                                            }
+                                        }
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text("• Pago Dependiente por unidad:", fontSize = 14.sp, color = Slate700)
+                                            Text("$${"%.2f".format(uiState.tarifasPagoBebidas.pagoDependientePorUnidad)} CUP", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F766E))
+                                        }
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text("• Pago Cajero por unidad:", fontSize = 14.sp, color = Slate700)
+                                            Text("$${"%.2f".format(uiState.tarifasPagoBebidas.pagoCajeroPorUnidad)} CUP", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB45309))
+                                        }
+
+                                        HorizontalDivider(color = Color(0xFFC7D2FE))
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "TOTAL PAGO PERSONAL:",
+                                                fontSize = 14.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = Color(0xFF312E81)
+                                            )
+                                            Text(
+                                                text = "$${"%.2f".format(uiState.tarifasPagoBebidas.totalPagoPersonalPorUnidad)} CUP / u",
+                                                fontSize = 16.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = Color(0xFF4338CA)
+                                            )
+                                        }
+
+                                        Text(
+                                            text = "Tarifas globales configuradas desde Mercaderías → Pagos.",
+                                            fontSize = 12.sp,
+                                            color = Slate500,
+                                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                                        )
+                                    }
+                                }
+                            } else if (isConfitura) {
+                                Surface(
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = Color(0xFFFDF2F8),
+                                    border = BorderStroke(1.5.dp, Color(0xFFFBCFE8)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(14.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Info,
+                                            contentDescription = null,
+                                            tint = Color(0xFFBE185D),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Text(
+                                            text = "Confituras: Sin pagos de personal asociados (sin comisión de dependiente ni cajero).",
+                                            fontSize = 13.sp,
+                                            color = Color(0xFF9D174D),
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
                                 }
                             }
-                        }
 
-                        HorizontalDivider(color = Slate200)
+                            // ==========================================
+                            // SECCIÓN DE BOTONES DE ACCIÓN REORGANIZADOS
+                            // ==========================================
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color.White,
+                                border = BorderStroke(1.5.dp, Slate200),
+                                shadowElevation = 3.dp,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                                ) {
+                                    Text(
+                                        text = "ACCIONES DISPONIBLES",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Slate500,
+                                        letterSpacing = 1.sp
+                                    )
 
-                        // 3 ACCIONES PRINCIPALES OBLIGATORIAS: ENTRADAS | MERMA | PARA VENTA
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Button(
-                                onClick = {
-                                    val target = merc
-                                    selectedMercaderiaForDetail = null
-                                    selectedMercForEntrada = target
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F766E)),
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier.weight(1f).height(44.dp),
-                                contentPadding = PaddingValues(0.dp)
-                            ) {
-                                Text("ENTRADAS", fontSize = 12.sp, fontWeight = FontWeight.Black)
-                            }
-                            Button(
-                                onClick = {
-                                    val target = merc
-                                    selectedMercaderiaForDetail = null
-                                    selectedMercForMerma = target
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier.weight(1f).height(44.dp),
-                                contentPadding = PaddingValues(0.dp)
-                            ) {
-                                Text("MERMA", fontSize = 12.sp, fontWeight = FontWeight.Black)
-                            }
-                            Button(
-                                onClick = {
-                                    val target = merc
-                                    selectedMercaderiaForDetail = null
-                                    selectedMercForParaVenta = target
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier.weight(1f).height(44.dp),
-                                contentPadding = PaddingValues(0.dp)
-                            ) {
-                                Text("PARA VENTA", fontSize = 11.sp, fontWeight = FontWeight.Black)
-                            }
-                        }
+                                    // FILA 1: ENTRADA | MERMO
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        Button(
+                                            onClick = {
+                                                val target = merc
+                                                selectedMercaderiaForDetail = null
+                                                selectedMercForEntrada = target
+                                            },
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F766E)),
+                                            shape = RoundedCornerShape(12.dp),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(56.dp)
+                                                .testTag("btn_merc_entrada"),
+                                            contentPadding = PaddingValues(horizontal = 8.dp)
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Add,
+                                                    contentDescription = null,
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(22.dp)
+                                                )
+                                                Text(
+                                                    text = "ENTRADA",
+                                                    fontSize = 16.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    color = Color.White
+                                                )
+                                            }
+                                        }
 
-                        // Acciones secundarias
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = {
-                                    val target = merc
-                                    selectedMercaderiaForDetail = null
-                                    selectedMercForCostSheet = target
-                                },
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier.weight(1f).height(40.dp),
-                                contentPadding = PaddingValues(0.dp)
-                            ) {
-                                Text("Ficha Costo", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = ElQadreNavy)
+                                        Button(
+                                            onClick = {
+                                                val target = merc
+                                                selectedMercaderiaForDetail = null
+                                                selectedMercForMerma = target
+                                            },
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
+                                            shape = RoundedCornerShape(12.dp),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(56.dp)
+                                                .testTag("btn_merc_merma"),
+                                            contentPadding = PaddingValues(horizontal = 8.dp)
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Warning,
+                                                    contentDescription = null,
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                                Text(
+                                                    text = "MERMO",
+                                                    fontSize = 16.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    color = Color.White
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    // FILA 2: PARA VENTA | EDITAR
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        Button(
+                                            onClick = {
+                                                val target = merc
+                                                selectedMercaderiaForDetail = null
+                                                selectedMercForParaVenta = target
+                                            },
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1D4ED8)),
+                                            shape = RoundedCornerShape(12.dp),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(56.dp)
+                                                .testTag("btn_merc_para_venta"),
+                                            contentPadding = PaddingValues(horizontal = 8.dp)
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Outlined.Storefront,
+                                                    contentDescription = null,
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                                Text(
+                                                    text = "PARA VENTA",
+                                                    fontSize = 15.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    color = Color.White
+                                                )
+                                            }
+                                        }
+
+                                        Button(
+                                            onClick = {
+                                                val target = merc
+                                                selectedMercaderiaForDetail = null
+                                                editingMercaderia = target
+                                            },
+                                            colors = ButtonDefaults.buttonColors(containerColor = Slate700),
+                                            shape = RoundedCornerShape(12.dp),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(56.dp)
+                                                .testTag("btn_merc_editar"),
+                                            contentPadding = PaddingValues(horizontal = 8.dp)
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Edit,
+                                                    contentDescription = null,
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                                Text(
+                                                    text = "EDITAR",
+                                                    fontSize = 16.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    color = Color.White
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    // FILA 3: FICHA DE COSTO (ANCHO COMPLETO, MAYOR TAMAÑO Y RELEVANCIA VISUAL)
+                                    Button(
+                                        onClick = {
+                                            val target = merc
+                                            selectedMercaderiaForDetail = null
+                                            selectedMercForCostSheet = target
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
+                                        shape = RoundedCornerShape(14.dp),
+                                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp, pressedElevation = 8.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(64.dp)
+                                            .testTag("btn_merc_ficha_costo")
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Calculate,
+                                                contentDescription = null,
+                                                tint = Color(0xFFFBBF24),
+                                                modifier = Modifier.size(28.dp)
+                                            )
+                                            Text(
+                                                text = "FICHA DE COSTO",
+                                                fontSize = 18.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = Color.White,
+                                                letterSpacing = 0.5.sp
+                                            )
+                                        }
+                                    }
+                                }
                             }
-                            Button(
-                                onClick = {
-                                    val target = merc
-                                    selectedMercaderiaForDetail = null
-                                    editingMercaderia = target
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = Slate700),
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier.weight(1f).height(40.dp),
-                                contentPadding = PaddingValues(0.dp)
-                            ) {
-                                Text("Editar", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                            }
+
+                            Spacer(modifier = Modifier.height(24.dp))
                         }
-                    }
-                },
-                confirmButton = {},
-                dismissButton = {
-                    TextButton(onClick = { selectedMercaderiaForDetail = null }) {
-                        Text("CERRAR", fontWeight = FontWeight.Bold, color = Slate700)
                     }
                 }
-            )
+            }
         }
 
         if (showPagosBebidasDialog) {
@@ -4734,7 +5041,7 @@ fun RegistrarEntradaInsumoDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .navigationBarsPadding()
-                        .padding(bottom = 32.dp)
+                        .padding(bottom = 68.dp)
                 ) {
                     Row(
                         modifier = Modifier
@@ -12286,7 +12593,7 @@ fun DuenoAjustesView(
             // -------------------------------------------------------------
             // SECCIÓN ACTUALIZACIÓN DE APK Y VERSIÓN DE LA APLICACIÓN
             // -------------------------------------------------------------
-            com.example.ui.components.AppVersionSettingsCard(showGenerateJson = true)
+            com.example.ui.components.AppVersionSettingsCard()
 
         // -------------------------------------------------------------
         // SECCIÓN: CONFIGURACIÓN GENERAL Y DIVISAS (TASA DE CAMBIO)
@@ -13368,6 +13675,9 @@ private fun SalidaParaVentaAgregadoDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        modifier = Modifier
+            .navigationBarsPadding()
+            .padding(bottom = 56.dp),
         shape = RoundedCornerShape(22.dp),
         containerColor = Color.White,
         title = {

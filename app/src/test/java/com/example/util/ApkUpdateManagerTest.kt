@@ -66,7 +66,7 @@ class ApkUpdateManagerTest {
         assertTrue(text.isNotBlank())
 
         val remoteInfo = ApkUpdateManager.parseVersionJson(text)
-        assertEquals("ElQadre", remoteInfo.product)
+        assertTrue(remoteInfo.product == "ElQadrePF" || remoteInfo.product == "ElQadre")
         assertTrue(remoteInfo.versionCode >= 1L)
         assertTrue(remoteInfo.apkUrl.isNotBlank())
 

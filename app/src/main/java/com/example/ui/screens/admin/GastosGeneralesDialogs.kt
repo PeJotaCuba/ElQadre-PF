@@ -891,7 +891,7 @@ fun FichaCostoDialog(
                                 }
                                 Column(horizontalAlignment = Alignment.End) {
                                     Text("Costos Indirectos Totales", fontSize = 10.sp, color = Slate500)
-                                    Text("$${"%.2f".format(costSheet.gastosGeneralesDiariosTotales + costSheet.depreciacionInversionesDiariaTotales)} / día", fontWeight = FontWeight.ExtraBold, fontSize = 11.sp, color = ElQadreNavy)
+                                    Text("$${"%.2f".format(costSheet.costosIndirectosDiariosTotales)} / día", fontWeight = FontWeight.ExtraBold, fontSize = 11.sp, color = ElQadreNavy)
                                 }
                             }
 
@@ -902,8 +902,8 @@ fun FichaCostoDialog(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Column {
-                                    Text("Asignación indirecta (${"%.2f".format(costSheet.porcentajeParticipacionPpd)}%)", fontSize = 10.sp, color = Slate500)
-                                    Text("$${"%.2f".format(costSheet.gastoGeneralAsignado + costSheet.depreciacionAsignada)} CUP / día", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = ElQadreNavy)
+                                    Text("Asignación directa (${"%.2f".format(costSheet.porcentajeParticipacionPpd)}%)", fontSize = 10.sp, color = Slate500)
+                                    Text("$${"%.2f".format(costSheet.gastoIndirectoAsignado)} CUP / día", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = ElQadreNavy)
                                 }
                                 Column(horizontalAlignment = Alignment.End) {
                                     Text("GASTO INDIRECTO UNITARIO (GIU)", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = ElQadreGoldDark)
@@ -1287,17 +1287,8 @@ fun FichaCostoDialog(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("• Gasto General Prorrateado por Unidad:", fontSize = 11.sp, color = Color.White)
-                                    Text("$${"%.2f".format(costSheet.gastoGeneralUnitarioProrrateo)} CUP", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                }
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text("• Depreciación de Inversiones por Unidad:", fontSize = 11.sp, color = Color.White)
-                                    Text("$${"%.2f".format(costSheet.depreciacionInversionesUnitario)} CUP", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                    Text("• Gasto Indirecto Unitario:", fontSize = 11.sp, color = Color.White)
+                                    Text("$${"%.2f".format(costSheet.gastoIndirectoUnitario)} CUP", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
                                 }
 
                                 Row(
@@ -1360,6 +1351,11 @@ fun FichaCostoDialog(
                             )
 
                             // Status and Reference Price Summary
+                            val precioCatalogo = product.price
+                            val margenCatalogoPct = if (costSheet.costoTotalUnitario > 0.0 && precioCatalogo > 0.0) {
+                                ((precioCatalogo - costSheet.costoTotalUnitario) / costSheet.costoTotalUnitario) * 100.0
+                            } else null
+
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1379,7 +1375,12 @@ fun FichaCostoDialog(
                                 }
 
                                 Column(horizontalAlignment = Alignment.End) {
-                                    Text("PRECIO EN CATÁLOGO", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Slate600)
+                                    val catLabel = if (margenCatalogoPct != null) {
+                                        "PRECIO EN CATÁLOGO (${if (margenCatalogoPct >= 0) "+" else ""}${"%.1f".format(margenCatalogoPct)}% GANANCIA)"
+                                    } else {
+                                        "PRECIO EN CATÁLOGO"
+                                    }
+                                    Text(catLabel, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Slate600)
                                     Text(
                                         "$${"%.2f".format(product.price)} CUP",
                                         fontSize = 15.sp,
@@ -1412,6 +1413,14 @@ fun FichaCostoDialog(
                             }
 
                             // OPCIÓN B: ESTABLECER OTRO PRECIO
+                            val manualPrice = manualPriceText.toDoubleOrNull() ?: 0.0
+                            val manualMarginPct = if (costSheet.costoTotalUnitario > 0.0 && manualPrice > 0.0) {
+                                ((manualPrice - costSheet.costoTotalUnitario) / costSheet.costoTotalUnitario) * 100.0
+                            } else null
+                            val manualGanancia = if (costSheet.costoTotalUnitario > 0.0 && manualPrice > 0.0) {
+                                manualPrice - costSheet.costoTotalUnitario
+                            } else null
+
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1448,6 +1457,36 @@ fun FichaCostoDialog(
                                     Text("Fijar Definitivo", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                                 }
                             }
+
+                            if (manualPrice > 0.0 && manualMarginPct != null && manualGanancia != null) {
+                                Surface(
+                                    color = if (manualMarginPct >= 0) Color(0xFFF0FDF4) else Color(0xFFFEF2F2),
+                                    shape = RoundedCornerShape(6.dp),
+                                    border = BorderStroke(1.dp, if (manualMarginPct >= 0) Color(0xFFBBF7D0) else Color(0xFFFECACA)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "Ganancia: $${"%.2f".format(manualGanancia)} CUP",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = if (manualMarginPct >= 0) Emerald700 else Color(0xFFDC2626)
+                                        )
+                                        Text(
+                                            text = "% de ganancia: ${if (manualMarginPct >= 0) "+" else ""}${"%.1f".format(manualMarginPct)}%",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (manualMarginPct >= 0) Emerald700 else Color(0xFFDC2626)
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -1478,28 +1517,13 @@ fun FichaCostoDialog(
                             border = BorderStroke(1.5.dp, ElQadreNavy),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = ElQadreNavy),
                             modifier = Modifier
-                                .weight(1f)
+                                .weight(1.3f)
                                 .height(54.dp)
                                 .testTag("download_pdf_button")
                         ) {
                             Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(20.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("PDF INDIVIDUAL", fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        }
-
-                        OutlinedButton(
-                            onClick = { CostSheetPdfExporter.exportAllCostSheets(context, uiState) },
-                            shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(1.5.dp, ElQadreGoldDark),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = ElQadreGoldDark),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(54.dp)
-                                .testTag("download_all_pdf_button")
-                        ) {
-                            Icon(Icons.Default.PictureAsPdf, contentDescription = null, modifier = Modifier.size(20.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("PDF TODAS", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text("DESCARGAR FICHA DE COSTO", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
 
                         Button(
@@ -1507,7 +1531,7 @@ fun FichaCostoDialog(
                             colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier
-                                .weight(0.9f)
+                                .weight(0.8f)
                                 .height(54.dp)
                                 .testTag("close_ficha_costo_button")
                         ) {
@@ -1597,15 +1621,20 @@ fun AddEditInversionDialog(
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
     ) {
         Surface(
             modifier = Modifier
-                .fillMaxWidth(0.92f)
-                .heightIn(max = 660.dp)
-                .background(Color.Transparent),
-            shape = RoundedCornerShape(16.dp),
-            color = Color.White
+                .fillMaxWidth(0.95f)
+                .fillMaxHeight(0.92f)
+                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .imePadding(),
+            shape = RoundedCornerShape(24.dp),
+            color = Color.White,
+            shadowElevation = 8.dp
         ) {
             Column(
                 modifier = Modifier
@@ -1941,52 +1970,83 @@ fun AddEditInversionDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                Surface(
+                    color = Color.White,
+                    shadowElevation = 12.dp,
+                    tonalElevation = 4.dp,
+                    border = BorderStroke(1.dp, Slate200),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    OutlinedButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Slate600),
-                        border = BorderStroke(1.dp, Slate300)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 24.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Text("Cancelar", fontWeight = FontWeight.Bold)
-                    }
+                        val canSave = name.isNotBlank() && originalAmtVal > 0.0 && lifeVal > 0.0
 
-                    Button(
-                        onClick = {
-                            if (name.isNotBlank() && originalAmtVal > 0.0 && lifeVal > 0.0) {
-                                val inv = Inversion(
-                                    id = inversion?.id ?: 0,
-                                    name = name,
-                                    category = category,
-                                    amount = convertedAmtVal,
-                                    date = date,
-                                    usefulLife = lifeVal,
-                                    usefulLifeUnit = usefulLifeUnit,
-                                    observation = observation,
-                                    targetProductId = targetProductId,
-                                    currency = currency,
-                                    originalAmount = originalAmtVal,
-                                    exchangeRate = exchangeRate,
-                                    convertedAmount = convertedAmtVal,
-                                    scope = inversion?.scope ?: "PRODUCCION",
-                                    method = method,
-                                    dailyAmount = dailyDep
-                                )
-                                onConfirm(inv)
-                            }
-                        },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
-                        enabled = name.isNotBlank() && originalAmtVal > 0.0 && lifeVal > 0.0
-                    ) {
-                        Text("Guardar", fontWeight = FontWeight.Bold)
+                        Button(
+                            onClick = {
+                                if (canSave) {
+                                    val inv = Inversion(
+                                        id = inversion?.id ?: 0,
+                                        name = name,
+                                        category = category,
+                                        amount = convertedAmtVal,
+                                        date = date,
+                                        usefulLife = lifeVal,
+                                        usefulLifeUnit = usefulLifeUnit,
+                                        observation = observation,
+                                        targetProductId = targetProductId,
+                                        currency = currency,
+                                        originalAmount = originalAmtVal,
+                                        exchangeRate = exchangeRate,
+                                        convertedAmount = convertedAmtVal,
+                                        scope = inversion?.scope ?: "PRODUCCION",
+                                        method = method,
+                                        dailyAmount = dailyDep
+                                    )
+                                    onConfirm(inv)
+                                }
+                            },
+                            enabled = canSave,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(54.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = ElQadreNavy,
+                                disabledContainerColor = Slate300,
+                                disabledContentColor = Slate500
+                            )
+                        ) {
+                            Text(
+                                text = if (inversion == null) "REGISTRAR INVERSIÓN" else "ACTUALIZAR INVERSIÓN",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color.White
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = onDismiss,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(52.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = Slate700
+                            ),
+                            border = BorderStroke(1.5.dp, Slate300)
+                        ) {
+                            Text(
+                                text = "CANCELAR",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }
@@ -2107,7 +2167,7 @@ fun FichaCostoMercaderiaDialog(
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     // ==========================================
-                    // SECCIÓN 1: IDENTIFICACIÓN Y DATOS DE COMPRA
+                    // SECCIÓN 1: INFORMACIÓN DEL PRODUCTO
                     // ==========================================
                     Surface(
                         shape = RoundedCornerShape(10.dp),
@@ -2121,7 +2181,7 @@ fun FichaCostoMercaderiaDialog(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    "1. IDENTIFICACIÓN Y ADQUISICIÓN",
+                                    "1. INFORMACIÓN DEL PRODUCTO",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = ElQadreNavy
@@ -2148,12 +2208,12 @@ fun FichaCostoMercaderiaDialog(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text("Artículo", fontSize = 10.sp, color = Slate500)
+                                    Text("Producto", fontSize = 10.sp, color = Slate500)
                                     Text(costSheet.product.name, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = ElQadreNavy)
                                     Text("Código: ${costSheet.product.code}", fontSize = 11.sp, color = Slate600)
                                 }
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text("Categoría / Destino", fontSize = 10.sp, color = Slate500)
+                                    Text("Presentación / Categoría", fontSize = 10.sp, color = Slate500)
                                     Text("${costSheet.product.category} (BARRA)", fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = Slate700)
                                     Text("Unidad: ${mercaderia.unitOfMeasure}", fontSize = 11.sp, color = Slate600)
                                 }
@@ -2210,148 +2270,74 @@ fun FichaCostoMercaderiaDialog(
                     }
 
                     // ==========================================
-                    // SECCIÓN 2: GASTOS INDIRECTOS ASIGNADOS
+                    // SECCIÓN 2: EGRESOS POR RATEO ECONÓMICO
                     // ==========================================
                     Surface(
                         shape = RoundedCornerShape(10.dp),
-                        color = Color.White,
-                        border = BorderStroke(1.dp, ElQadreBorderLight)
+                        color = Slate50,
+                        border = BorderStroke(1.dp, Slate200)
                     ) {
                         Column(modifier = Modifier.padding(14.dp)) {
+                            Text(
+                                "2. EGRESOS POR RATEO ECONÓMICO",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ElQadreNavy
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column {
+                                    Text("Gastos Generales Indirectos", fontSize = 10.sp, color = Slate500)
+                                    Text("$${"%.2f".format(costSheet.gastosGeneralesDiariosTotales)} / día", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = ElQadreNavy)
+                                }
+                                Column {
+                                    Text("Depreciación Inversiones", fontSize = 10.sp, color = Slate500)
+                                    Text("$${"%.2f".format(costSheet.depreciacionInversionesDiariaTotales)} / día", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Slate700)
+                                }
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text("Costos Indirectos Generales", fontSize = 10.sp, color = Slate500)
+                                    Text("$${"%.2f".format(costSheet.costosIndirectosDiariosTotales)} / día", fontWeight = FontWeight.ExtraBold, fontSize = 11.sp, color = ElQadreNavy)
+                                }
+                            }
+
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Slate200)
+
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    "2. GASTOS INDIRECTOS ASIGNADOS",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = ElQadreNavy
-                                )
-                                Text(
-                                    "Total Gastos: $${"%.2f".format(costSheet.totalGastosAsignados)} CUP/día",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = ElQadreGoldDark
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            if (costSheet.detailedExpenses.isEmpty()) {
-                                Text(
-                                    "No hay gastos indirectos activos asignados a este producto.",
-                                    fontSize = 11.sp,
-                                    color = Slate500,
-                                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
-                                )
-                            } else {
-                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    costSheet.detailedExpenses.forEach { item ->
-                                        Surface(
-                                            shape = RoundedCornerShape(6.dp),
-                                            color = if (item.isSpecific) Amber50 else Slate50,
-                                            border = BorderStroke(1.dp, if (item.isSpecific) Amber500.copy(alpha = 0.5f) else Slate200),
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(horizontal = 10.dp, vertical = 8.dp),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Column(modifier = Modifier.weight(1.5f)) {
-                                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                                        Text(
-                                                            item.name,
-                                                            fontWeight = FontWeight.Bold,
-                                                            fontSize = 12.sp,
-                                                            color = ElQadreNavy
-                                                        )
-                                                        Spacer(modifier = Modifier.width(6.dp))
-                                                        Surface(
-                                                            shape = RoundedCornerShape(3.dp),
-                                                            color = if (item.isSpecific) Amber100 else ElQadreNavy.copy(alpha = 0.1f)
-                                                        ) {
-                                                            Text(
-                                                                text = if (item.isSpecific) "ASIGNACIÓN DIRECTA" else "PRORRATEADO",
-                                                                fontSize = 9.sp,
-                                                                fontWeight = FontWeight.Bold,
-                                                                color = if (item.isSpecific) Amber800 else ElQadreNavy,
-                                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                                            )
-                                                        }
-                                                    }
-                                                    Text(
-                                                        "${item.category} • Original: $${"%.2f".format(item.originalAmount)} (${item.period.lowercase()}) → $${"%.2f".format(item.dailyEquivalent)}/día",
-                                                        fontSize = 10.sp,
-                                                        color = Slate500
-                                                    )
-                                                }
-
-                                                Column(horizontalAlignment = Alignment.End, modifier = Modifier.weight(1f)) {
-                                                    Text(
-                                                        "$${"%.2f".format(item.allocatedDailyAmount)} CUP/día",
-                                                        fontSize = 12.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = ElQadreNavy
-                                                    )
-                                                    Text(
-                                                        "+$${"%.4f".format(item.allocatedUnitAmount)} / u",
-                                                        fontSize = 10.sp,
-                                                        fontWeight = FontWeight.SemiBold,
-                                                        color = ElQadreGoldDark
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
+                                Column {
+                                    Text("Costo Indirecto General por Día", fontSize = 10.sp, color = Slate500)
+                                    Text(
+                                        "$${"%.2f".format(costSheet.costosIndirectosDiariosTotales)} CUP / día",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        color = ElQadreNavy
+                                    )
+                                    Text("Participación: ${"%.2f".format(costSheet.porcentajeParticipacion)}%", fontSize = 9.sp, color = Slate500)
+                                }
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text("GASTO UNITARIO INDIRECTO", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = ElQadreGoldDark)
+                                    Text(
+                                        "$${"%.4f".format(costSheet.gastoIndirectoUnitario)} CUP / ud",
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 13.sp,
+                                        color = ElQadreGoldDark
+                                    )
+                                    Text("Costo indirecto/día × % prorrateo", fontSize = 9.sp, color = Slate500)
                                 }
                             }
                         }
                     }
 
                     // ==========================================
-                    // SECCIÓN 3: DEPRECIACIÓN DE INVERSIONES
-                    // ==========================================
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = Color.White,
-                        border = BorderStroke(1.dp, ElQadreBorderLight)
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(14.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Text(
-                                "3. DEPRECIACIÓN DE INVERSIONES",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = ElQadreNavy
-                            )
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("Depreciación de inversiones por unidad:", fontSize = 11.sp, color = Slate700)
-                                Text(
-                                    "$${"%.4f".format(costSheet.depreciacionInversionesUnitario)} CUP / ud",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = ElQadreNavy
-                                )
-                            }
-                        }
-                    }
-
-                    // ==========================================
-                    // SECCIÓN 4 & 5: COSTO DIRECTO, PRORRATEO Y COSTO TOTAL UNITARIO
+                    // SECCIÓN 3: ESTRUCTURA DEL COSTO UNITARIO
                     // ==========================================
                     Surface(
                         shape = RoundedCornerShape(12.dp),
@@ -2360,7 +2346,7 @@ fun FichaCostoMercaderiaDialog(
                     ) {
                         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text(
-                                "4. ESTRUCTURA DE COSTO UNITARIO Y TOTAL",
+                                "3. ESTRUCTURA DEL COSTO UNITARIO",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = ElQadreNavy
@@ -2396,7 +2382,7 @@ fun FichaCostoMercaderiaDialog(
                                 }
                             }
 
-                            // Bloque 2: Costo Unitario Final de la Bebida = Costo Directo + Gasto General Prorrateado + Depreciación de Inversiones + Pago a Personal
+                            // Bloque 2: Estructura del costo unitario final
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
                                 color = ElQadreNavy,
@@ -2424,17 +2410,8 @@ fun FichaCostoMercaderiaDialog(
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text("• Gasto General Prorrateado por Unidad:", fontSize = 11.sp, color = Color.White)
-                                        Text("$${"%.2f".format(costSheet.gastoGeneralUnitarioProrrateo)} CUP", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                    }
-
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text("• Depreciación de Inversiones por Unidad:", fontSize = 11.sp, color = Color.White)
-                                        Text("$${"%.2f".format(costSheet.depreciacionInversionesUnitario)} CUP", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                        Text("• Gasto Unitario Indirecto:", fontSize = 11.sp, color = Color.White)
+                                        Text("$${"%.4f".format(costSheet.gastoIndirectoUnitario)} CUP", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
                                     }
 
                                     Row(
@@ -2454,7 +2431,7 @@ fun FichaCostoMercaderiaDialog(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
-                                            text = "COSTO UNITARIO FINAL DE LA BEBIDA",
+                                            text = "COSTO UNITARIO FINAL",
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.ExtraBold,
                                             color = ElQadreGold
@@ -2469,25 +2446,8 @@ fun FichaCostoMercaderiaDialog(
                                 }
                             }
 
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column {
-                                    Text("Costo Real Unitario (Incl. Gastos Ind. y Deprec.)", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = Slate700)
-                                    Text("Afectación total sobre rentabilidad", fontSize = 8.5.sp, color = Slate500)
-                                }
-                                Text(
-                                    "$${"%.2f".format(costSheet.costoRealUnitario)} CUP",
-                                    fontWeight = FontWeight.Black,
-                                    fontSize = 15.sp,
-                                    color = ElQadreGoldDark
-                                )
-                            }
-
                             Text(
-                                "Nota: El costo de adquisición original ($${"%.2f".format(costSheet.acquisitionCost)} CUP) y sus gastos directos se conservan intactos en la base de datos.",
+                                "Nota: El costo de adquisición original ($${"%.2f".format(costSheet.acquisitionCost)} CUP) y sus gastos directos se conservan intactos en el inventario.",
                                 fontSize = 9.5.sp,
                                 color = Slate600,
                                 fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
@@ -2496,7 +2456,7 @@ fun FichaCostoMercaderiaDialog(
                     }
 
                     // ==========================================
-                    // SECCIÓN 6: PRECIO DE REFERENCIA Y PRECIO DEFINITIVO
+                    // SECCIÓN 4: PRECIO DE REFERENCIA Y PRECIO DEFINITIVO
                     // ==========================================
                     Surface(
                         shape = RoundedCornerShape(10.dp),
@@ -2505,7 +2465,7 @@ fun FichaCostoMercaderiaDialog(
                     ) {
                         Column(modifier = Modifier.padding(14.dp)) {
                             Text(
-                                "5. PRECIO DE REFERENCIA Y PRECIO DEFINITIVO",
+                                "4. PRECIO DE REFERENCIA Y PRECIO DEFINITIVO",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = ElQadreNavy
@@ -2520,7 +2480,7 @@ fun FichaCostoMercaderiaDialog(
                             ) {
                                 Column {
                                     Text("Margen de Referencia", fontSize = 10.sp, color = Slate500)
-                                    Text("+${costSheet.targetMarginPct.toInt()}% sobre Costo Real", fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = Slate700)
+                                    Text("+${costSheet.targetMarginPct.toInt()}% sobre Costo Unitario Final", fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = Slate700)
                                 }
                                 Column(horizontalAlignment = Alignment.End) {
                                     Text("PRECIO DE REFERENCIA SUGERIDO", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Slate600)
@@ -2581,7 +2541,7 @@ fun FichaCostoMercaderiaDialog(
                     }
 
                     // ==========================================
-                    // SECCIÓN 7: ANÁLISIS DE RENTABILIDAD Y UTILIDAD REAL
+                    // SECCIÓN: ANÁLISIS DE RENTABILIDAD Y UTILIDAD REAL
                     // ==========================================
                     Surface(
                         shape = RoundedCornerShape(10.dp),
@@ -2590,7 +2550,7 @@ fun FichaCostoMercaderiaDialog(
                     ) {
                         Column(modifier = Modifier.padding(14.dp)) {
                             Text(
-                                "6. ANÁLISIS DE RENTABILIDAD Y UTILIDAD REAL",
+                                "ANÁLISIS DE RENTABILIDAD Y UTILIDAD REAL",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (costSheet.utilidadUnitaria >= 0) Emerald700 else Rose700
@@ -2610,7 +2570,7 @@ fun FichaCostoMercaderiaDialog(
                                         fontSize = 15.sp,
                                         color = if (costSheet.utilidadUnitaria >= 0) Emerald700 else Rose700
                                     )
-                                    Text("Precio Def. - Costo Real", fontSize = 9.sp, color = Slate500)
+                                    Text("Precio Def. - Costo Unitario Final", fontSize = 9.sp, color = Slate500)
                                 }
 
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -2641,14 +2601,14 @@ fun FichaCostoMercaderiaDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // FOOTER ACTIONS
+                // FOOTER ACTIONS: ÚNICAMENTE DESCARGAR PDF Y CERRAR
                 val context = LocalContext.current
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .navigationBarsPadding()
                         .padding(bottom = 24.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     OutlinedButton(
@@ -2657,7 +2617,7 @@ fun FichaCostoMercaderiaDialog(
                         },
                         modifier = Modifier
                             .weight(1f)
-                            .height(48.dp)
+                            .height(50.dp)
                             .testTag("btn_export_pdf_ficha_mercaderia"),
                         shape = RoundedCornerShape(8.dp),
                         border = BorderStroke(1.dp, ElQadreNavy),
@@ -2665,36 +2625,19 @@ fun FichaCostoMercaderiaDialog(
                     ) {
                         Icon(Icons.Default.PictureAsPdf, contentDescription = null, modifier = Modifier.size(18.dp), tint = Rose700)
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Descargar PDF", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                    }
-
-                    OutlinedButton(
-                        onClick = {
-                            CostSheetPdfExporter.exportAllMercaderiasCostSheetsZip(context, uiState)
-                        },
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(48.dp)
-                            .testTag("btn_export_zip_fichas_mercaderia"),
-                        shape = RoundedCornerShape(8.dp),
-                        border = BorderStroke(1.dp, ElQadreGoldDark),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = ElQadreGoldDark)
-                    ) {
-                        Icon(Icons.Default.FolderZip, contentDescription = null, modifier = Modifier.size(18.dp), tint = ElQadreGoldDark)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Todas (ZIP)", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        Text("DESCARGAR FICHA EN PDF", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                     }
 
                     Button(
                         onClick = onDismiss,
                         colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
                         modifier = Modifier
-                            .weight(0.8f)
-                            .height(48.dp)
+                            .weight(0.7f)
+                            .height(50.dp)
                             .testTag("close_ficha_costo_mercaderia_footer"),
                         shape = RoundedCornerShape(8.dp)
                     ) {
-                        Text("Cerrar", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        Text("CERRAR", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                     }
                 }
             }
