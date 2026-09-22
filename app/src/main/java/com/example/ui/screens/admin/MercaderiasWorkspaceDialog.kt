@@ -1861,16 +1861,29 @@ fun AddEditMercaderiaDialog(
     val purchaseExpenseIncidencePerUnit = if (effectiveUnitsForExpenses > 0.0) assignedExpensesToProduct / effectiveUnitsForExpenses else 0.0
 
     // 3. Prorrateo de Gastos Generales e Inversiones de ElQadre
+    val prorrateoResult = CostCalculationHelper.calcularBaseProrrateoGastosGenerales(
+        products = uiState.products,
+        productosElaborados = uiState.productosElaborados,
+        mercaderias = uiState.mercaderias,
+        movimientosMercaderia = uiState.movimientosMercaderia,
+        gastosGenerales = uiState.gastosGenerales,
+        inversiones = uiState.inversiones,
+        recetaIngredientes = uiState.recetaIngredientes,
+        materiasPrimas = uiState.materiasPrimas
+    )
+
     val activeGastosDiarios = uiState.gastosGenerales.filter { it.isActive }.sumOf { it.dailyCost() }
     val activeInversionesDeprDiaria = uiState.inversiones.sumOf { it.dailyDepreciation() }
     val totalEgresosDiarios = activeGastosDiarios + activeInversionesDeprDiaria
 
-    val totalDiarioEstimadoUnidades = uiState.mercaderias.filter { it.isActive }.sumOf { m ->
-        val p = uiState.products.find { prod -> prod.id == m.productId }
-        (p?.stock?.toDouble() ?: 10.0).coerceAtLeast(1.0)
-    }.coerceAtLeast(1.0)
+    val directCost = baseAcquisitionCostPerUnit + purchaseExpenseIncidencePerUnit
+    val myUnits = if (effectiveUnitsForExpenses > 0.0) effectiveUnitsForExpenses else 1.0
+    val myBaseValue = myUnits * directCost
 
-    val prorratedIndirectCostPerUnit = if (totalDiarioEstimadoUnidades > 0.0) totalEgresosDiarios / totalDiarioEstimadoUnidades else 0.0
+    val baseTotal = if (prorrateoResult.baseTotal > 0.0) prorrateoResult.baseTotal else myBaseValue
+    val myShare = if (baseTotal > 0.0) myBaseValue / baseTotal else 1.0
+    val allocatedDaily = totalEgresosDiarios * myShare
+    val prorratedIndirectCostPerUnit = if (myUnits > 0.0) allocatedDaily / myUnits else 0.0
 
     // COSTO UNITARIO REAL
     val costoUnitarioReal = baseAcquisitionCostPerUnit + purchaseExpenseIncidencePerUnit + prorratedIndirectCostPerUnit

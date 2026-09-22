@@ -41,6 +41,8 @@ fun GastosGeneralesPane(
     var currentSubTab by remember { mutableStateOf(0) } // 0 = Gastos Generales, 1 = Inversiones
     var showAddInversionDialog by remember { mutableStateOf(false) }
     var inversionToEdit by remember { mutableStateOf<Inversion?>(null) }
+    var gastoToDelete by remember { mutableStateOf<GastoGeneral?>(null) }
+    var inversionToDelete by remember { mutableStateOf<Inversion?>(null) }
 
     val totalDaily = remember(uiState.gastosGenerales) {
         CostCalculationHelper.calculateTotalDailyOverheads(uiState.gastosGenerales)
@@ -410,7 +412,7 @@ fun GastosGeneralesPane(
                                     }
 
                                     OutlinedButton(
-                                        onClick = { viewModel.deleteGastoGeneral(gasto) },
+                                        onClick = { gastoToDelete = gasto },
                                         shape = RoundedCornerShape(6.dp),
                                         border = BorderStroke(1.dp, Rose600),
                                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Rose600),
@@ -588,7 +590,7 @@ fun GastosGeneralesPane(
                                     }
 
                                     OutlinedButton(
-                                        onClick = { viewModel.deleteInversion(inv) },
+                                        onClick = { inversionToDelete = inv },
                                         shape = RoundedCornerShape(6.dp),
                                         border = BorderStroke(1.dp, Rose600),
                                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Rose600),
@@ -622,6 +624,56 @@ fun GastosGeneralesPane(
                 }
                 showAddInversionDialog = false
                 inversionToEdit = null
+            }
+        )
+    }
+
+    gastoToDelete?.let { gasto ->
+        AlertDialog(
+            onDismissRequest = { gastoToDelete = null },
+            icon = { Icon(Icons.Default.Warning, contentDescription = null, tint = Rose600, modifier = Modifier.size(36.dp)) },
+            title = { Text("Confirmar Eliminación", fontWeight = FontWeight.Bold, color = Slate900) },
+            text = { Text("¿Está seguro de que desea eliminar el gasto \"${gasto.name}\"? Esta acción no se puede deshacer.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deleteGastoGeneral(gasto)
+                        gastoToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Rose600)
+                ) {
+                    Text("SÍ, ELIMINAR", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { gastoToDelete = null }) {
+                    Text("CANCELAR", color = Slate600, fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
+
+    inversionToDelete?.let { inv ->
+        AlertDialog(
+            onDismissRequest = { inversionToDelete = null },
+            icon = { Icon(Icons.Default.Warning, contentDescription = null, tint = Rose600, modifier = Modifier.size(36.dp)) },
+            title = { Text("Confirmar Eliminación", fontWeight = FontWeight.Bold, color = Slate900) },
+            text = { Text("¿Está seguro de que desea eliminar la inversión \"${inv.name}\"? Esta acción eliminará la inversión y sus depreciaciones asociadas.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deleteInversion(inv)
+                        inversionToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Rose600)
+                ) {
+                    Text("SÍ, ELIMINAR", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { inversionToDelete = null }) {
+                    Text("CANCELAR", color = Slate600, fontWeight = FontWeight.Bold)
+                }
             }
         )
     }

@@ -289,6 +289,7 @@ object CostCalculationHelper {
         }
         
         // 3. BASE DE MERCADERÍAS
+        val productMapForBase = products.associateBy { it.id }
         val baseMercaderiasItems = mutableListOf<ProrrateoBaseItem>()
         for (mercaderia in mercaderias) {
             if (mercaderia.isActive) {
@@ -298,9 +299,20 @@ object CostCalculationHelper {
                     movimientosMercaderia
                 )
                 
-                if (existenciaActual > 0.0) {
+                val p = productMapForBase[mercaderia.productId]
+                val cantidadUnidades = if (existenciaActual > 0.0) {
+                    existenciaActual
+                } else if (p != null && p.stock > 0) {
+                    p.stock.toDouble()
+                } else if (mercaderia.initialStock > 0.0) {
+                    mercaderia.initialStock
+                } else {
+                    1.0
+                }
+                
+                if (cantidadUnidades > 0.0) {
                     val costoDirectoUnitario = mercaderia.acquisitionCost + mercaderia.directExpenses
-                    val valorBase = existenciaActual * costoDirectoUnitario
+                    val valorBase = cantidadUnidades * costoDirectoUnitario
                     
                     if (valorBase > 0.0) {
                         baseMercaderiasItems.add(
@@ -309,7 +321,7 @@ object CostCalculationHelper {
                                 name = mercaderia.productId.toString(), // Se actualizará con el nombre del producto
                                 type = "MERCADERIAS",
                                 productId = mercaderia.productId,
-                                quantity = existenciaActual,
+                                quantity = cantidadUnidades,
                                 costoDirectoUnitario = costoDirectoUnitario,
                                 valorBase = valorBase,
                                 porcentajeParticipacion = 0.0, // Se calcula después
@@ -979,7 +991,11 @@ object CostCalculationHelper {
         // 4. COSTO DIRECTO, PAGOS DE PERSONAL Y COSTO TOTAL UNITARIO
         val directExpenses = mercaderia.directExpenses
         val costoDirectoUnitario = mercaderia.acquisitionCost + directExpenses
-        val gastoGeneralUnitarioProrrateo = prorrateoItem?.gastoGeneralUnitario ?: 0.0
+        val gastoGeneralUnitarioProrrateo = if (prorrateoItem != null && prorrateoItem.gastoGeneralUnitario > 0.0) {
+            prorrateoItem.gastoGeneralUnitario
+        } else {
+            gastoIndirectoUnitario
+        }
 
         val isBebida = MercaderiaCategoryHelper.isBebida(product) || (!MercaderiaCategoryHelper.isConfitura(product) && product.category.equals("Bebidas", ignoreCase = true))
         val pagoDependienteUnitario = if (isBebida) tarifasPagoBebidas.pagoDependientePorUnidad else 0.0

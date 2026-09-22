@@ -8456,6 +8456,7 @@ fun DuenoInversionesView(
     
     var showAddDialog by remember { mutableStateOf(false) }
     var selectedInversionForDetail by remember { mutableStateOf<Inversion?>(null) }
+    var selectedInversionForEdit by remember { mutableStateOf<Inversion?>(null) }
     var inversionToDelete by remember { mutableStateOf<Inversion?>(null) }
 
     val allInversiones = uiState.inversiones
@@ -8839,11 +8840,15 @@ fun DuenoInversionesView(
         }
     }
 
-    if (showAddDialog) {
+    if (showAddDialog || selectedInversionForEdit != null) {
         AddEditInversionDuenoDialog(
+            inversion = selectedInversionForEdit,
             uiState = uiState,
             viewModel = viewModel,
-            onDismiss = { showAddDialog = false }
+            onDismiss = {
+                showAddDialog = false
+                selectedInversionForEdit = null
+            }
         )
     }
 
@@ -8851,6 +8856,10 @@ fun DuenoInversionesView(
         InversionDetailDialog(
             inversion = selectedInversionForDetail!!,
             onDismiss = { selectedInversionForDetail = null },
+            onEditClick = {
+                selectedInversionForEdit = selectedInversionForDetail
+                selectedInversionForDetail = null
+            },
             onDeleteClick = {
                 inversionToDelete = selectedInversionForDetail
                 selectedInversionForDetail = null
@@ -9033,14 +9042,20 @@ fun InversionCard(
 
 @Composable
 fun AddEditInversionDuenoDialog(
+    inversion: Inversion? = null,
     uiState: MainUiState,
     viewModel: MainViewModel,
     onDismiss: () -> Unit
 ) {
-    var name by remember { mutableStateOf("") }
-    var amountText by remember { mutableStateOf("") }
-    var currency by remember { mutableStateOf("CUP") }
-    var observation by remember { mutableStateOf("") }
+    var name by remember { mutableStateOf(inversion?.name ?: "") }
+    var amountText by remember {
+        mutableStateOf(
+            if (inversion != null && inversion.originalAmount > 0.0) inversion.originalAmount.toString()
+            else inversion?.amount?.toString() ?: ""
+        )
+    }
+    var currency by remember { mutableStateOf(inversion?.currency ?: "CUP") }
+    var observation by remember { mutableStateOf(inversion?.observation ?: "") }
     
     val generalConfig = uiState.generalConfig
     val tasaUsd = generalConfig?.tasaUsd ?: 0.0
@@ -9080,7 +9095,7 @@ fun AddEditInversionDuenoDialog(
                         modifier = Modifier.size(28.dp)
                     )
                     Text(
-                        text = "Registrar Nueva Inversión",
+                        text = if (inversion == null) "Registrar Nueva Inversión" else "Editar Inversión",
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
                         color = ElQadreNavy
@@ -9247,20 +9262,26 @@ fun AddEditInversionDuenoDialog(
                     if (name.trim().isBlank() || amountVal <= 0.0) return@Button
                     
                     val inv = Inversion(
+                        id = inversion?.id ?: 0L,
                         name = name.trim(),
-                        category = "DUEÑO",
+                        category = inversion?.category ?: "DUEÑO",
                         amount = convertedAmount,
-                        date = System.currentTimeMillis(),
-                        usefulLife = 12.0,
-                        usefulLifeUnit = "MESES",
+                        date = inversion?.date ?: System.currentTimeMillis(),
+                        usefulLife = inversion?.usefulLife ?: 12.0,
+                        usefulLifeUnit = inversion?.usefulLifeUnit ?: "MESES",
                         observation = observation.trim(),
-                        scope = "PRODUCCION",
+                        scope = inversion?.scope ?: "PRODUCCION",
                         currency = currency,
                         originalAmount = amountVal,
                         exchangeRate = exchangeRate,
-                        convertedAmount = convertedAmount
+                        convertedAmount = convertedAmount,
+                        targetProductId = inversion?.targetProductId
                     )
-                    viewModel.insertInversion(inv)
+                    if (inversion == null) {
+                        viewModel.insertInversion(inv)
+                    } else {
+                        viewModel.updateInversion(inv)
+                    }
                     onDismiss()
                 },
                 modifier = Modifier
@@ -9271,7 +9292,7 @@ fun AddEditInversionDuenoDialog(
                 enabled = name.trim().isNotBlank() && amountVal > 0.0
             ) {
                 Text(
-                    text = "GUARDAR INVERSIÓN",
+                    text = if (inversion == null) "GUARDAR INVERSIÓN" else "ACTUALIZAR INVERSIÓN",
                     color = Color.White,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.ExtraBold
@@ -9302,6 +9323,7 @@ fun AddEditInversionDuenoDialog(
 fun InversionDetailDialog(
     inversion: Inversion,
     onDismiss: () -> Unit,
+    onEditClick: () -> Unit,
     onDeleteClick: () -> Unit
 ) {
     AlertDialog(
@@ -9385,29 +9407,60 @@ fun InversionDetailDialog(
             }
         },
         confirmButton = {
-            Button(
-                onClick = onDeleteClick,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Rose600),
-                shape = RoundedCornerShape(10.dp)
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                Button(
+                    onClick = onEditClick,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
+                    shape = RoundedCornerShape(10.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Delete,
-                        contentDescription = null,
-                        tint = Color.White
-                    )
-                    Text(
-                        text = "ELIMINAR INVERSIÓN",
-                        color = Color.White,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = null,
+                            tint = Color.White
+                        )
+                        Text(
+                            text = "EDITAR INVERSIÓN",
+                            color = Color.White,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                Button(
+                    onClick = onDeleteClick,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Rose600),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Delete,
+                            contentDescription = null,
+                            tint = Color.White
+                        )
+                        Text(
+                            text = "ELIMINAR INVERSIÓN",
+                            color = Color.White,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
         },
@@ -11479,6 +11532,8 @@ fun DuenoGastosSubScreen(
 ) {
     val gastosList = uiState.gastosGenerales
     var showAddGastoDialog by remember { mutableStateOf(false) }
+    var gastoToEdit by remember { mutableStateOf<GastoGeneral?>(null) }
+    var gastoToDelete by remember { mutableStateOf<GastoGeneral?>(null) }
 
     Column(
         modifier = Modifier
@@ -11655,12 +11710,32 @@ fun DuenoGastosSubScreen(
                                     modifier = Modifier.padding(top = 4.dp)
                                 )
                             }
-                            Text(
-                                text = "$${"%.2f".format(gasto.amount)} CUP",
-                                fontWeight = FontWeight.Black,
-                                fontSize = 17.sp,
-                                color = ElQadreNavy
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = "$${"%.2f".format(gasto.amount)} CUP",
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 17.sp,
+                                    color = ElQadreNavy
+                                )
+                                IconButton(
+                                    onClick = {
+                                        gastoToEdit = gasto
+                                        showAddGastoDialog = true
+                                    },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(Icons.Default.Edit, contentDescription = "Editar", tint = ElQadreNavy, modifier = Modifier.size(18.dp))
+                                }
+                                IconButton(
+                                    onClick = { gastoToDelete = gasto },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(Icons.Outlined.Delete, contentDescription = "Eliminar", tint = Rose600, modifier = Modifier.size(18.dp))
+                                }
+                            }
                         }
                     }
                 }
@@ -11670,12 +11745,62 @@ fun DuenoGastosSubScreen(
 
     if (showAddGastoDialog) {
         AddEditGastoGeneralDialog(
-            gasto = null,
+            gasto = gastoToEdit,
             products = uiState.products,
-            onDismiss = { showAddGastoDialog = false },
-            onConfirm = { savedGasto ->
-                viewModel.insertGastoGeneral(savedGasto)
+            onDismiss = {
                 showAddGastoDialog = false
+                gastoToEdit = null
+            },
+            onConfirm = { savedGasto ->
+                if (gastoToEdit == null) {
+                    viewModel.insertGastoGeneral(savedGasto)
+                } else {
+                    viewModel.updateGastoGeneral(savedGasto)
+                }
+                showAddGastoDialog = false
+                gastoToEdit = null
+            }
+        )
+    }
+
+    gastoToDelete?.let { gasto ->
+        AlertDialog(
+            onDismissRequest = { gastoToDelete = null },
+            icon = { Icon(Icons.Default.Warning, contentDescription = null, tint = Rose600, modifier = Modifier.size(40.dp)) },
+            title = {
+                Text(
+                    text = "Confirmar Eliminación",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Slate900
+                )
+            },
+            text = {
+                Text(
+                    text = "¿Está seguro de que desea eliminar el gasto \"${gasto.name}\"? Esta acción no se puede deshacer.",
+                    fontSize = 16.sp,
+                    color = Slate700
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deleteGastoGeneral(gasto)
+                        gastoToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Rose600),
+                    modifier = Modifier.height(48.dp)
+                ) {
+                    Text("SÍ, ELIMINAR", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { gastoToDelete = null },
+                    modifier = Modifier.height(48.dp)
+                ) {
+                    Text("CANCELAR", color = Slate600, fontWeight = FontWeight.Bold)
+                }
             }
         )
     }

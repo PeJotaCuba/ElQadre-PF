@@ -99,7 +99,7 @@ data class ExtraccionItem(
     var descripcion: String = ""
 )
 
-data class ProduccionItemState(
+class ProduccionItemState(
     val productId: Long,
     val productName: String,
     val unit: String,
@@ -107,9 +107,9 @@ data class ProduccionItemState(
     val tandasCount: Int,
     val totalProduced: Double,
     val qtyPerTanda: Double,
-    var defectuosoStr: String = "0",
-    var consumoStr: String = "0",
-    var regaliaStr: String = "0",
+    defectuosoStr: String = "0",
+    consumoStr: String = "0",
+    regaliaStr: String = "0",
     val costoUnitarioTeorico: Double = 0.0,
     val pagoCocinaUnitario: Double = 0.0,
     val cantidadCocineros: Int = 1,
@@ -117,6 +117,10 @@ data class ProduccionItemState(
     val pagoCajeroUnitario: Double = 0.0,
     val presentaciones: List<com.example.data.local.model.PresentacionEspecial> = emptyList()
 ) {
+    var defectuosoStr by mutableStateOf(defectuosoStr)
+    var consumoStr by mutableStateOf(consumoStr)
+    var regaliaStr by mutableStateOf(regaliaStr)
+
     val defectuoso: Double get() = defectuosoStr.toDoubleOrNull() ?: 0.0
     val consumo: Double get() = consumoStr.toDoubleOrNull() ?: 0.0
     val regalia: Double get() = regaliaStr.toDoubleOrNull() ?: 0.0
@@ -130,23 +134,31 @@ data class ProduccionItemState(
     val pagoCajeroEstimado: Double get() = vendible * pagoCajeroUnitario
 }
 
-data class MercaderiaItemState(
+class MercaderiaItemState(
     val mercaderiaId: Long,
     val productId: Long,
     val productName: String,
     val unit: String,
     val price: Double,
     val isConfitura: Boolean = false,
-    var existenciaInicialStr: String = "0",
-    var entradasStr: String = "0",
-    var existenciaFinalStr: String = "0",
-    var defectuosoStr: String = "0",
-    var consumoStr: String = "0",
-    var regaliaStr: String = "0",
+    existenciaInicialStr: String = "0",
+    entradasStr: String = "0",
+    existenciaFinalStr: String = "",
+    defectuosoStr: String = "0",
+    consumoStr: String = "0",
+    regaliaStr: String = "0",
     val costoUnitarioTeorico: Double = 0.0,
     val pagoDependienteUnitario: Double = 0.0,
     val pagoCajeroUnitario: Double = 0.0
 ) {
+    var existenciaInicialStr by mutableStateOf(existenciaInicialStr)
+    var entradasStr by mutableStateOf(entradasStr)
+    var existenciaFinalStr by mutableStateOf(existenciaFinalStr)
+    var defectuosoStr by mutableStateOf(defectuosoStr)
+    var consumoStr by mutableStateOf(consumoStr)
+    var regaliaStr by mutableStateOf(regaliaStr)
+
+    val isCompleted: Boolean get() = existenciaFinalStr.isNotBlank()
     val existenciaInicial: Double get() = existenciaInicialStr.toDoubleOrNull() ?: 0.0
     val entradas: Double get() = entradasStr.toDoubleOrNull() ?: 0.0
     val existenciaFinal: Double get() = existenciaFinalStr.toDoubleOrNull() ?: 0.0
@@ -155,15 +167,15 @@ data class MercaderiaItemState(
     val regalia: Double get() = regaliaStr.toDoubleOrNull() ?: 0.0
     val mermaTotal: Double get() = defectuoso + consumo + regalia
     val existenciaDisponible: Double get() = existenciaInicial + entradas
-    val ventas: Double get() = (existenciaDisponible - existenciaFinal - mermaTotal).coerceAtLeast(0.0)
-    val ingresoEstimado: Double get() = ventas * price
-    val costoEstimado: Double get() = ventas * costoUnitarioTeorico
+    val ventas: Double get() = if (isCompleted) (existenciaDisponible - existenciaFinal - mermaTotal).coerceAtLeast(0.0) else 0.0
+    val ingresoEstimado: Double get() = if (isCompleted) ventas * price else 0.0
+    val costoEstimado: Double get() = if (isCompleted) ventas * costoUnitarioTeorico else 0.0
     val mermaValor: Double get() = mermaTotal * price
     val pagoDependienteEstimado: Double get() = ventas * pagoDependienteUnitario
     val pagoCajeroEstimado: Double get() = ventas * pagoCajeroUnitario
 }
 
-data class AgregadoCuadreItemState(
+class AgregadoCuadreItemState(
     val materiaPrimaId: Long,
     val name: String,
     val unit: String,
@@ -171,10 +183,14 @@ data class AgregadoCuadreItemState(
     val rationUnit: String,
     val precioVenta: Double,
     val costoPorRacion: Double,
-    var racionesEnviadasStr: String = "0",
-    var racionesVendidasStr: String = "0",
-    var racionesRegaliaStr: String = "0"
+    racionesEnviadasStr: String = "0",
+    racionesVendidasStr: String = "0",
+    racionesRegaliaStr: String = "0"
 ) {
+    var racionesEnviadasStr by mutableStateOf(racionesEnviadasStr)
+    var racionesVendidasStr by mutableStateOf(racionesVendidasStr)
+    var racionesRegaliaStr by mutableStateOf(racionesRegaliaStr)
+
     val racionesEnviadas: Double get() = racionesEnviadasStr.toDoubleOrNull() ?: 0.0
     val racionesVendidas: Double get() = racionesVendidasStr.toDoubleOrNull() ?: 0.0
     val racionesRegalia: Double get() = racionesRegaliaStr.toDoubleOrNull() ?: 0.0
@@ -315,7 +331,7 @@ fun CuadreCajaScreen(
                 isConfitura = isConfitura,
                 existenciaInicialStr = if (merc.initialStock > 0.0) "%.1f".format(merc.initialStock).replace(',', '.') else "0",
                 entradasStr = if (entradasJornada > 0.0) "%.1f".format(entradasJornada).replace(',', '.') else "0",
-                existenciaFinalStr = "0",
+                existenciaFinalStr = "",
                 costoUnitarioTeorico = costoUnitario,
                 pagoDependienteUnitario = if (isConfitura) 0.0 else uiState.tarifasPagoBebidas.pagoDependientePorUnidad,
                 pagoCajeroUnitario = if (isConfitura) 0.0 else uiState.tarifasPagoBebidas.pagoCajeroPorUnidad
@@ -2180,6 +2196,46 @@ fun CuadreProduccionTab(
             }
         }
 
+        item {
+            val totalIngresosProduccion = produccionStates.sumOf { it.ingresoEstimado } + agregadosStates.sumOf { it.ingresoEstimado }
+            val totalTandas = produccionStates.sumOf { it.tandasCount }
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = ElQadreNavy),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = "INGRESOS TOTALES DE PRODUCCIÓN",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Slate400
+                        )
+                        Text(
+                            text = "$totalTandas tandas registradas",
+                            fontSize = 12.sp,
+                            color = Slate300
+                        )
+                    }
+                    Text(
+                        text = "$${"%.2f".format(totalIngresosProduccion)} CUP",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color(0xFF4ADE80)
+                    )
+                }
+            }
+        }
+
         if (produccionStates.isNotEmpty()) {
             item {
                 Text(
@@ -2237,14 +2293,11 @@ fun CuadreProduccionTab(
 fun AgregadoCuadreCard(
     item: AgregadoCuadreItemState
 ) {
-    var enviadasText by remember { mutableStateOf(item.racionesEnviadasStr) }
-    var vendidasText by remember { mutableStateOf(item.racionesVendidasStr) }
-    var regaliaText by remember { mutableStateOf(item.racionesRegaliaStr) }
-
     Card(
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        modifier = Modifier.testTag("card_agregado_${item.materiaPrimaId}")
     ) {
         Column(
             modifier = Modifier
@@ -2300,11 +2353,9 @@ fun AgregadoCuadreCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     OutlinedTextField(
-                        value = enviadasText,
-                        onValueChange = {
-                            val clean = it.filter { c -> c.isDigit() || c == '.' }
-                            enviadasText = clean
-                            item.racionesEnviadasStr = clean
+                        value = item.racionesEnviadasStr,
+                        onValueChange = { clean ->
+                            item.racionesEnviadasStr = clean.filter { c -> c.isDigit() || c == '.' }
                         },
                         label = { Text("Enviadas", fontSize = 10.sp) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -2313,11 +2364,9 @@ fun AgregadoCuadreCard(
                     )
 
                     OutlinedTextField(
-                        value = vendidasText,
-                        onValueChange = {
-                            val clean = it.filter { c -> c.isDigit() || c == '.' }
-                            vendidasText = clean
-                            item.racionesVendidasStr = clean
+                        value = item.racionesVendidasStr,
+                        onValueChange = { clean ->
+                            item.racionesVendidasStr = clean.filter { c -> c.isDigit() || c == '.' }
                         },
                         label = { Text("Vendidas", fontSize = 10.sp) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -2326,11 +2375,9 @@ fun AgregadoCuadreCard(
                     )
 
                     OutlinedTextField(
-                        value = regaliaText,
-                        onValueChange = {
-                            val clean = it.filter { c -> c.isDigit() || c == '.' }
-                            regaliaText = clean
-                            item.racionesRegaliaStr = clean
+                        value = item.racionesRegaliaStr,
+                        onValueChange = { clean ->
+                            item.racionesRegaliaStr = clean.filter { c -> c.isDigit() || c == '.' }
                         },
                         label = { Text("Regalía", fontSize = 10.sp) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -2378,14 +2425,11 @@ fun AgregadoCuadreCard(
 fun ProduccionCuadreCard(
     item: ProduccionItemState
 ) {
-    var defectuosoText by remember { mutableStateOf(item.defectuosoStr) }
-    var consumoText by remember { mutableStateOf(item.consumoStr) }
-    var regaliaText by remember { mutableStateOf(item.regaliaStr) }
-
     Card(
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        modifier = Modifier.testTag("card_produccion_${item.productId}")
     ) {
         Column(
             modifier = Modifier
@@ -2409,7 +2453,7 @@ fun ProduccionCuadreCard(
                     color = Color(0xFFF1F5F9)
                 ) {
                     Text(
-                        text = "Precio: $${"%.2f".format(item.price)} CUP",
+                        text = "Precio Ficha: $${"%.2f".format(item.price)} CUP / ${item.unit}",
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.sp,
                         color = ElQadreNavy,
@@ -2434,7 +2478,7 @@ fun ProduccionCuadreCard(
                     Text("${"%.1f".format(item.qtyPerTanda)} ${item.unit}", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Slate800)
                 }
                 Column {
-                    Text("Total Producido:", fontSize = 11.sp, color = Slate500)
+                    Text("Producido:", fontSize = 11.sp, color = Slate500)
                     Text("${"%.1f".format(item.totalProduced)} ${item.unit}", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF1D4ED8))
                 }
             }
@@ -2453,7 +2497,7 @@ fun ProduccionCuadreCard(
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Text(
-                            text = "Presentaciones Configuraradas (Equivalencias):",
+                            text = "Presentaciones Configuradas (Equivalencias):",
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             color = Slate600
@@ -2490,7 +2534,7 @@ fun ProduccionCuadreCard(
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Text(
-                    text = "MERMA (Reduce cantidad vendible):",
+                    text = "DESCUENTOS DE EXISTENCIA (Merma, Consumo, Regalía):",
                     fontWeight = FontWeight.Bold,
                     fontSize = 11.sp,
                     color = Color(0xFF92400E)
@@ -2501,24 +2545,20 @@ fun ProduccionCuadreCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     OutlinedTextField(
-                        value = defectuosoText,
-                        onValueChange = {
-                            val clean = it.filter { c -> c.isDigit() || c == '.' }
-                            defectuosoText = clean
-                            item.defectuosoStr = clean
+                        value = item.defectuosoStr,
+                        onValueChange = { clean ->
+                            item.defectuosoStr = clean.filter { c -> c.isDigit() || c == '.' }
                         },
-                        label = { Text("Defectuoso", fontSize = 10.sp) },
+                        label = { Text("Merma", fontSize = 10.sp) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         singleLine = true,
                         modifier = Modifier.weight(1f)
                     )
 
                     OutlinedTextField(
-                        value = consumoText,
-                        onValueChange = {
-                            val clean = it.filter { c -> c.isDigit() || c == '.' }
-                            consumoText = clean
-                            item.consumoStr = clean
+                        value = item.consumoStr,
+                        onValueChange = { clean ->
+                            item.consumoStr = clean.filter { c -> c.isDigit() || c == '.' }
                         },
                         label = { Text("Consumo", fontSize = 10.sp) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -2527,11 +2567,9 @@ fun ProduccionCuadreCard(
                     )
 
                     OutlinedTextField(
-                        value = regaliaText,
-                        onValueChange = {
-                            val clean = it.filter { c -> c.isDigit() || c == '.' }
-                            regaliaText = clean
-                            item.regaliaStr = clean
+                        value = item.regaliaStr,
+                        onValueChange = { clean ->
+                            item.regaliaStr = clean.filter { c -> c.isDigit() || c == '.' }
                         },
                         label = { Text("Regalía", fontSize = 10.sp) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -2545,19 +2583,20 @@ fun ProduccionCuadreCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color(0xFFF8FAFC), RoundedCornerShape(8.dp))
-                    .padding(8.dp),
+                    .background(Color(0xFFF0FDF4), RoundedCornerShape(8.dp))
+                    .border(1.dp, Color(0xFFBBF7D0), RoundedCornerShape(8.dp))
+                    .padding(10.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Vendible: ${"%.1f".format(item.vendible)} ${item.unit}",
+                    text = "Cantidad Vendida: ${"%.1f".format(item.vendible)} ${item.unit}",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Slate700
+                    color = Color(0xFF166534)
                 )
                 Text(
-                    text = "Ingreso Estimado: $${"%.2f".format(item.ingresoEstimado)} CUP",
+                    text = "Ingreso: $${"%.2f".format(item.ingresoEstimado)} CUP",
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Black,
                     color = Color(0xFF15803D)
@@ -2637,9 +2676,49 @@ fun CuadreMercaderiasTab(
                 ) {
                     Icon(Icons.Outlined.Info, contentDescription = null, tint = Color(0xFFD97706), modifier = Modifier.size(18.dp))
                     Text(
-                        text = "Control del LOCAL DE VENTAS (independiente de Almacén). Ventas = Existencia inicial − Existencia final − Mermas.",
+                        text = "Control del LOCAL DE VENTAS (independiente de Almacén). Ventas = Existencia inicial + Entradas − Existencia final − Mermas.",
                         fontSize = 12.sp,
                         color = Color(0xFF78350F)
+                    )
+                }
+            }
+        }
+
+        item {
+            val totalIngresosMercaderias = mercaderiasStates.sumOf { it.ingresoEstimado }
+            val completedCount = mercaderiasStates.count { it.isCompleted }
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = ElQadreNavy),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = "INGRESOS TOTALES DE MERCADERÍAS",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Slate400
+                        )
+                        Text(
+                            text = "$completedCount de ${mercaderiasStates.size} productos completados",
+                            fontSize = 12.sp,
+                            color = Slate300
+                        )
+                    }
+                    Text(
+                        text = "$${"%.2f".format(totalIngresosMercaderias)} CUP",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color(0xFF4ADE80)
                     )
                 }
             }
@@ -2675,17 +2754,17 @@ fun CuadreMercaderiasTab(
 fun MercaderiaCuadreCard(
     item: MercaderiaItemState
 ) {
-    var inicialText by remember { mutableStateOf(item.existenciaInicialStr) }
-    var entradasText by remember { mutableStateOf(item.entradasStr) }
-    var finalText by remember { mutableStateOf(item.existenciaFinalStr) }
-    var defectuosoText by remember { mutableStateOf(item.defectuosoStr) }
-    var consumoText by remember { mutableStateOf(item.consumoStr) }
-    var regaliaText by remember { mutableStateOf(item.regaliaStr) }
+    var isExpanded by remember { mutableStateOf(false) }
 
     Card(
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .clickable { isExpanded = !isExpanded }
+            .testTag("card_mercaderia_${item.mercaderiaId}")
     ) {
         Column(
             modifier = Modifier
@@ -2693,187 +2772,252 @@ fun MercaderiaCuadreCard(
                 .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            // Header Row (Always visible in compact mode)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = item.productName,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
-                    color = ElQadreNavy
-                )
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = Color(0xFFF1F5F9)
-                ) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Precio: $${"%.2f".format(item.price)} CUP",
+                        text = item.productName,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
-                        color = ElQadreNavy,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
-                }
-            }
-
-            HorizontalDivider(color = Slate200)
-
-            // EXISTENCIAS LOCAL DE VENTAS: Inicio, Entradas, Final
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedTextField(
-                    value = inicialText,
-                    onValueChange = {
-                        val clean = it.filter { c -> c.isDigit() || c == '.' }
-                        inicialText = clean
-                        item.existenciaInicialStr = clean
-                    },
-                    label = { Text("Inicio", fontSize = 10.sp) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    singleLine = true,
-                    modifier = Modifier.weight(1f)
-                )
-
-                OutlinedTextField(
-                    value = entradasText,
-                    onValueChange = {
-                        val clean = it.filter { c -> c.isDigit() || c == '.' }
-                        entradasText = clean
-                        item.entradasStr = clean
-                    },
-                    label = { Text("Entradas", fontSize = 10.sp) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    singleLine = true,
-                    modifier = Modifier.weight(1f)
-                )
-
-                OutlinedTextField(
-                    value = finalText,
-                    onValueChange = {
-                        val clean = it.filter { c -> c.isDigit() || c == '.' }
-                        finalText = clean
-                        item.existenciaFinalStr = clean
-                    },
-                    label = { Text("Final", fontSize = 10.sp) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    singleLine = true,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = Color(0xFFEFF6FF),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Disponible (Inicio + Entradas):",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF1E40AF)
+                        fontSize = 15.sp,
+                        color = ElQadreNavy
                     )
                     Text(
-                        text = "${"%.1f".format(item.existenciaDisponible)} ${item.unit}",
+                        text = "Precio: $${"%.2f".format(item.price)} CUP / ${item.unit}",
                         fontSize = 12.sp,
-                        fontWeight = FontWeight.Black,
-                        color = Color(0xFF1E40AF)
+                        color = Slate500
                     )
                 }
-            }
-
-            // MERMAS SECTION
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFFFFFBEB), RoundedCornerShape(10.dp))
-                    .border(1.dp, Color(0xFFFDE68A), RoundedCornerShape(10.dp))
-                    .padding(10.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Text(
-                    text = "MERMA (Defectuoso, Consumo, Regalía):",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp,
-                    color = Color(0xFF92400E)
-                )
 
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    OutlinedTextField(
-                        value = defectuosoText,
-                        onValueChange = {
-                            val clean = it.filter { c -> c.isDigit() || c == '.' }
-                            defectuosoText = clean
-                            item.defectuosoStr = clean
-                        },
-                        label = { Text("Defectuoso", fontSize = 10.sp) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
+                    if (item.isCompleted) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFFDCFCE7),
+                            border = BorderStroke(1.dp, Color(0xFF86EFAC))
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                horizontalAlignment = Alignment.End
+                            ) {
+                                Text(
+                                    text = "Venta: ${"%.1f".format(item.ventas)} ${item.unit}",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF15803D)
+                                )
+                                Text(
+                                    text = "$${"%.2f".format(item.ingresoEstimado)} CUP",
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 12.sp,
+                                    color = Color(0xFF15803D)
+                                )
+                            }
+                        }
+                    } else {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFFFEF3C7),
+                            border = BorderStroke(1.dp, Color(0xFFFCD34D))
+                        ) {
+                            Text(
+                                text = "Pendiente",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp,
+                                color = Color(0xFFB45309),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
 
-                    OutlinedTextField(
-                        value = consumoText,
-                        onValueChange = {
-                            val clean = it.filter { c -> c.isDigit() || c == '.' }
-                            consumoText = clean
-                            item.consumoStr = clean
-                        },
-                        label = { Text("Consumo", fontSize = 10.sp) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-
-                    OutlinedTextField(
-                        value = regaliaText,
-                        onValueChange = {
-                            val clean = it.filter { c -> c.isDigit() || c == '.' }
-                            regaliaText = clean
-                            item.regaliaStr = clean
-                        },
-                        label = { Text("Regalía", fontSize = 10.sp) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
+                    Icon(
+                        imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                        contentDescription = if (isExpanded) "Contraer" else "Expandir",
+                        tint = Slate500,
+                        modifier = Modifier.size(24.dp)
                     )
                 }
             }
 
-            // RESULTS ROW
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFFF8FAFC), RoundedCornerShape(8.dp))
-                    .padding(8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Ventas: ${"%.1f".format(item.ventas)} ${item.unit}",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Slate700
-                )
-                Text(
-                    text = "Ingreso Estimado: $${"%.2f".format(item.ingresoEstimado)} CUP",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Black,
-                    color = Color(0xFF15803D)
-                )
+            // Expanded Detail Section
+            if (isExpanded) {
+                HorizontalDivider(color = Slate200)
+
+                // EXISTENCIAS LOCAL DE VENTAS: Inicio, Entradas, Final
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "EXISTENCIAS (LOCAL DE VENTAS):",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                        color = Slate700
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = item.existenciaInicialStr,
+                            onValueChange = { clean ->
+                                item.existenciaInicialStr = clean.filter { c -> c.isDigit() || c == '.' }
+                            },
+                            label = { Text("Inicio", fontSize = 10.sp) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        OutlinedTextField(
+                            value = item.entradasStr,
+                            onValueChange = { clean ->
+                                item.entradasStr = clean.filter { c -> c.isDigit() || c == '.' }
+                            },
+                            label = { Text("Entradas", fontSize = 10.sp) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        OutlinedTextField(
+                            value = item.existenciaFinalStr,
+                            onValueChange = { clean ->
+                                item.existenciaFinalStr = clean.filter { c -> c.isDigit() || c == '.' }
+                            },
+                            label = { Text("Final *", fontSize = 10.sp) },
+                            placeholder = { Text("Ingrese final", fontSize = 10.sp) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFFEFF6FF),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Disponible (Inicio + Entradas):",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFF1E40AF)
+                        )
+                        Text(
+                            text = "${"%.1f".format(item.existenciaDisponible)} ${item.unit}",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color(0xFF1E40AF)
+                        )
+                    }
+                }
+
+                // MERMAS SECTION
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFFFFFBEB), RoundedCornerShape(10.dp))
+                        .border(1.dp, Color(0xFFFDE68A), RoundedCornerShape(10.dp))
+                        .padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = "MERMAS Y DESCUENTOS:",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                        color = Color(0xFF92400E)
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = item.defectuosoStr,
+                            onValueChange = { clean ->
+                                item.defectuosoStr = clean.filter { c -> c.isDigit() || c == '.' }
+                            },
+                            label = { Text("Merma", fontSize = 10.sp) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        OutlinedTextField(
+                            value = item.consumoStr,
+                            onValueChange = { clean ->
+                                item.consumoStr = clean.filter { c -> c.isDigit() || c == '.' }
+                            },
+                            label = { Text("Consumo", fontSize = 10.sp) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        OutlinedTextField(
+                            value = item.regaliaStr,
+                            onValueChange = { clean ->
+                                item.regaliaStr = clean.filter { c -> c.isDigit() || c == '.' }
+                            },
+                            label = { Text("Regalía", fontSize = 10.sp) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+
+                // RESULTS ROW
+                if (item.isCompleted) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFFF0FDF4), RoundedCornerShape(8.dp))
+                            .border(1.dp, Color(0xFFBBF7D0), RoundedCornerShape(8.dp))
+                            .padding(10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Ventas: ${"%.1f".format(item.ventas)} ${item.unit}",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF166534)
+                        )
+                        Text(
+                            text = "Ingreso: $${"%.2f".format(item.ingresoEstimado)} CUP",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color(0xFF15803D)
+                        )
+                    }
+                } else {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFFF8FAFC),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "Ingrese la existencia Final para calcular la Venta e Ingreso del producto.",
+                            fontSize = 11.sp,
+                            color = Slate500,
+                            modifier = Modifier.padding(8.dp),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
             }
         }
     }
