@@ -2854,76 +2854,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun insertInversion(inv: com.example.data.local.model.Inversion) {
         viewModelScope.launch {
-            val id = repository.insertInversion(inv)
-            val monthlyDep = inv.monthlyDepreciation()
-            val gg = com.example.data.local.model.GastoGeneral(
-                name = "Depreciación de ${inv.name}",
-                description = "Depreciación mensual calculada automáticamente de la inversión.",
-                amount = monthlyDep,
-                period = "MENSUAL",
-                periodDays = 30,
-                category = "Otros",
-                isActive = true,
-                inversionId = id,
-                targetProductId = inv.targetProductId,
-                targetProductIds = inv.targetProductIds,
-                startDate = inv.startDate,
-                endDate = inv.endDate,
-                scope = inv.scope
-            )
-            repository.insertGastoGeneral(gg)
-            _uiState.update { it.copy(successMessage = "Inversión registrada exitosamente y depreciación incorporada") }
+            repository.insertInversion(inv)
+            _uiState.update { it.copy(successMessage = "Inversión registrada exitosamente") }
         }
     }
 
     fun updateInversion(inv: com.example.data.local.model.Inversion) {
         viewModelScope.launch {
             repository.updateInversion(inv)
-            val monthlyDep = inv.monthlyDepreciation()
-            val ggList = _uiState.value.gastosGenerales
-            val existingGG = ggList.find { it.inversionId == inv.id }
-            if (existingGG != null) {
-                val updatedGG = existingGG.copy(
-                    name = "Depreciación de ${inv.name}",
-                    amount = monthlyDep,
-                    targetProductId = inv.targetProductId,
-                    targetProductIds = inv.targetProductIds,
-                    startDate = inv.startDate,
-                    endDate = inv.endDate,
-                    scope = inv.scope
-                )
-                repository.updateGastoGeneral(updatedGG)
-            } else {
-                val gg = com.example.data.local.model.GastoGeneral(
-                    name = "Depreciación de ${inv.name}",
-                    description = "Depreciación mensual calculada automáticamente de la inversión.",
-                    amount = monthlyDep,
-                    period = "MENSUAL",
-                    periodDays = 30,
-                    category = "Otros",
-                    isActive = true,
-                    inversionId = inv.id,
-                    targetProductId = inv.targetProductId,
-                    targetProductIds = inv.targetProductIds,
-                    startDate = inv.startDate,
-                    endDate = inv.endDate,
-                    scope = inv.scope
-                )
-                repository.insertGastoGeneral(gg)
-            }
-            _uiState.update { it.copy(successMessage = "Inversión y depreciación actualizadas exitosamente") }
+            _uiState.update { it.copy(successMessage = "Inversión actualizada exitosamente") }
         }
     }
 
     fun deleteInversion(inv: com.example.data.local.model.Inversion) {
         viewModelScope.launch {
             repository.deleteInversion(inv)
-            val ggList = _uiState.value.gastosGenerales
-            val existingGG = ggList.find { it.inversionId == inv.id }
-            if (existingGG != null) {
-                repository.deleteGastoGeneral(existingGG)
-            }
-            _uiState.update { it.copy(successMessage = "Inversión y depreciación eliminadas exitosamente") }
+            _uiState.update { it.copy(successMessage = "Inversión eliminada exitosamente") }
         }
     }
 

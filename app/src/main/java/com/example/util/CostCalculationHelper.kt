@@ -163,11 +163,8 @@ object CostCalculationHelper {
     /**
      * Calcula la depreciación diaria total acumulada de inversiones activas.
      */
-    fun calculateTotalDailyDepreciation(inversiones: List<Inversion>, gastosGenerales: List<GastoGeneral>): Double {
-        if (inversiones.isNotEmpty()) {
-            return inversiones.filter { it.scope == "PRODUCCION" }.sumOf { it.dailyDepreciation() }
-        }
-        return gastosGenerales.filter { it.isActive && it.inversionId != null && it.scope == "PRODUCCION" }.sumOf { it.dailyCost() }
+    fun calculateTotalDailyDepreciation(inversiones: List<Inversion>, gastosGenerales: List<GastoGeneral> = emptyList()): Double {
+        return inversiones.sumOf { it.dailyDepreciation() }
     }
 
     /**

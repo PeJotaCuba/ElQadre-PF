@@ -506,8 +506,6 @@ data class Inversion(
     }
 
     fun dailyDepreciation(): Double {
-        if (dailyAmount > 0.0) return dailyAmount
-        if (usefulLife <= 0.0) return 0.0
         val days = when (usefulLifeUnit.uppercase()) {
             "DIAS", "DÍAS", "DIA", "DÍA" -> usefulLife
             "MESES", "MES" -> usefulLife * 30.0
@@ -515,8 +513,10 @@ data class Inversion(
             else -> usefulLife
         }
         if (days <= 0.0) return 0.0
-        val targetAmt = if (convertedAmount > 0.0) convertedAmount else amount
-        return targetAmt / days
+        val targetAmt = if (convertedAmount > 0.0) convertedAmount else (if (originalAmount > 0.0) originalAmount * exchangeRate else amount)
+        val computed = targetAmt / days
+        if (computed > 0.0) return computed
+        return if (dailyAmount > 0.0) dailyAmount else 0.0
     }
 }
 

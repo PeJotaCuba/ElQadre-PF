@@ -256,8 +256,8 @@ class ProrrateoGastosGeneralesAuditTest {
         assertEquals(69.230769, pizzaSheet.porcentajeParticipacionPpd, 0.001)
         assertEquals(692.30769, pizzaSheet.gastoGeneralAsignado, 0.01)
         assertEquals(2.30769, pizzaSheet.gastoIndirectoUnitario, 0.001)
-        // Costo unitario antes de pagos de personal: $300.00 + $2.31 = $302.30769
-        assertEquals(302.30769, pizzaSheet.costoTotalUnitario, 0.001)
+        // Costo unitario total incluyendo pagos de personal ($5.00): $300.00 + $2.30769 + $5.00 = $307.30769
+        assertEquals(307.30769, pizzaSheet.costoTotalUnitario, 0.001)
         // Costo real unitario incluyendo pagos de personal ($5.00): $302.30769 + $5.00 = $307.30769
         assertEquals(307.30769, pizzaSheet.costoRealUnitario, 0.001)
         assertEquals(5.0, pizzaSheet.totalPagoPersonalUnitario, 0.001)
