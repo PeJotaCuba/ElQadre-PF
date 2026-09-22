@@ -2685,6 +2685,7 @@ fun AddEditMateriaPrimaDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .navigationBarsPadding()
+                        .padding(bottom = 32.dp)
                 ) {
                     Row(
                         modifier = Modifier
@@ -3859,6 +3860,7 @@ fun AddEditProductoElaboradoDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .navigationBarsPadding()
+                        .padding(bottom = 32.dp)
                 ) {
                     Row(
                         modifier = Modifier

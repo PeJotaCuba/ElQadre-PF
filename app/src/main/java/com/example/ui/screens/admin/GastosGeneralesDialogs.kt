@@ -434,7 +434,9 @@ fun FichaCostoDialog(
         uiState.recetaIngredientes,
         uiState.materiasPrimas,
         uiState.gastosGenerales,
-        uiState.inversiones
+        uiState.inversiones,
+        uiState.mercaderias,
+        uiState.movimientosMercaderia
     ) {
         CostCalculationHelper.calculateCostSheet(
             product = product,
@@ -443,7 +445,9 @@ fun FichaCostoDialog(
             recetaIngredientes = uiState.recetaIngredientes,
             materiasPrimas = uiState.materiasPrimas,
             gastosGenerales = uiState.gastosGenerales,
-            inversiones = uiState.inversiones
+            inversiones = uiState.inversiones,
+            mercaderias = uiState.mercaderias,
+            movimientosMercaderia = uiState.movimientosMercaderia
         )
     }
 
@@ -1974,7 +1978,10 @@ fun FichaCostoMercaderiaDialog(
         uiState.products,
         uiState.movimientosMercaderia,
         uiState.gastosGenerales,
-        uiState.inversiones
+        uiState.inversiones,
+        uiState.productosElaborados,
+        uiState.recetaIngredientes,
+        uiState.materiasPrimas
     ) {
         CostCalculationHelper.calculateMercaderiaCostSheet(
             mercaderia = mercaderia,
@@ -1982,7 +1989,10 @@ fun FichaCostoMercaderiaDialog(
             products = uiState.products,
             movimientos = uiState.movimientosMercaderia,
             gastosGenerales = uiState.gastosGenerales,
-            inversiones = uiState.inversiones
+            inversiones = uiState.inversiones,
+            productosElaborados = uiState.productosElaborados,
+            recetaIngredientes = uiState.recetaIngredientes,
+            materiasPrimas = uiState.materiasPrimas
         )
     }
 

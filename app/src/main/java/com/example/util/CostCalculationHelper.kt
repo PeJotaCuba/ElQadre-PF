@@ -150,7 +150,7 @@ object CostCalculationHelper {
      * Calcula los gastos generales diarios totales activos convirtiendo cada período a base diaria.
      */
     fun calculateTotalDailyOverheads(gastosGenerales: List<GastoGeneral>): Double {
-        return gastosGenerales.filter { it.isActive && it.inversionId == null && it.scope == "PRODUCCION" }.sumOf { it.dailyCost() }
+        return gastosGenerales.filter { it.isActive && it.inversionId == null }.sumOf { it.dailyCost() }
     }
 
     /**
@@ -530,7 +530,9 @@ object CostCalculationHelper {
         recetaIngredientes: List<RecetaIngrediente>,
         materiasPrimas: List<MateriaPrima>,
         gastosGenerales: List<GastoGeneral>,
-        inversiones: List<Inversion> = emptyList()
+        inversiones: List<Inversion> = emptyList(),
+        mercaderias: List<Mercaderia> = emptyList(),
+        movimientosMercaderia: List<MovimientoMercaderia> = emptyList()
     ): ProductCostSheet {
         val prodElaborado = productosElaborados.find { it.productId == product.id }
         val isProdElaboradoMissing = prodElaborado == null
@@ -567,7 +569,7 @@ object CostCalculationHelper {
         val costosIndirectosDiariosTotales = gastosGeneralesDiariosTotales + depreciacionInversionesDiariaTotales
 
         // 4. PRORRATEO DE COSTOS INDIRECTOS (PPD + RECURSO ESPECÍFICO SI EXISTE)
-        val (gastoGeneralAsignado, depreciacionAsignada) = if (product.isAvailable && productPpd > 0.0) {
+        val (_, depreciacionAsignada) = if (product.isAvailable && productPpd > 0.0) {
             calculateAllocatedIndirectCosts(
                 product = product,
                 productPpd = productPpd,
@@ -580,6 +582,18 @@ object CostCalculationHelper {
         } else {
             Pair(0.0, 0.0)
         }
+
+        val prorrateoResult = calcularBaseProrrateoGastosGenerales(
+            products = products,
+            productosElaborados = productosElaborados,
+            mercaderias = mercaderias,
+            movimientosMercaderia = movimientosMercaderia,
+            gastosGenerales = gastosGenerales,
+            recetaIngredientes = recetaIngredientes,
+            materiasPrimas = materiasPrimas
+        )
+        val prorrateoItem = prorrateoResult.itemsProrrateo.find { it.productId == product.id && it.type == "PRODUCCION" }
+        val gastoGeneralAsignado = prorrateoItem?.gastoGeneralAsignado ?: 0.0
         val gastoIndirectoAsignado = gastoGeneralAsignado + depreciacionAsignada
 
         val gastoIndirectoUnitario = if (productPpd > 0.0 && product.isAvailable) {
@@ -713,7 +727,10 @@ object CostCalculationHelper {
             movimientos = uiState.movimientosMercaderia,
             gastosGenerales = uiState.gastosGenerales,
             inversiones = uiState.inversiones,
-            targetMarginPct = targetMarginPct
+            targetMarginPct = targetMarginPct,
+            productosElaborados = uiState.productosElaborados,
+            recetaIngredientes = uiState.recetaIngredientes,
+            materiasPrimas = uiState.materiasPrimas
         )
     }
 
@@ -724,7 +741,10 @@ object CostCalculationHelper {
         movimientos: List<MovimientoMercaderia>,
         gastosGenerales: List<GastoGeneral>,
         inversiones: List<Inversion> = emptyList(),
-        targetMarginPct: Double = 30.0
+        targetMarginPct: Double = 30.0,
+        productosElaborados: List<ProductoElaborado> = emptyList(),
+        recetaIngredientes: List<RecetaIngrediente> = emptyList(),
+        materiasPrimas: List<MateriaPrima> = emptyList()
     ): MercaderiaCostSheet {
         val product = products.find { it.id == mercaderia.productId }
             ?: Product(
@@ -748,23 +768,25 @@ object CostCalculationHelper {
         var gastosComunesAsignados = 0.0
         var gastosEspecificosAsignados = 0.0
 
-        val activeGastos = gastosGenerales.filter { it.isActive && it.inversionId == null && it.scope == "MERCADERIAS" }
+        val prorrateoResult = calcularBaseProrrateoGastosGenerales(
+            products = products,
+            productosElaborados = productosElaborados,
+            mercaderias = mercaderias,
+            movimientosMercaderia = movimientos,
+            gastosGenerales = gastosGenerales,
+            recetaIngredientes = recetaIngredientes,
+            materiasPrimas = materiasPrimas
+        )
+        val prorrateoItem = prorrateoResult.itemsProrrateo.find { it.id == mercaderia.id && it.type == "MERCADERIAS" }
+
+        // Procesamos TODOS los gastos activos (sin inversiones)
+        val activeGastos = gastosGenerales.filter { it.isActive && it.inversionId == null }
         for (g in activeGastos) {
             val dailyEq = g.dailyCost()
             
             // Verificación de Período
             if (g.startDate != null && g.startDate != 0L && now < g.startDate) continue
             if (g.endDate != null && g.endDate != 0L && now > g.endDate) continue
-
-            val pDays = when (g.period.uppercase()) {
-                "ÚNICO", "UNICO", "DIARIO" -> 1
-                "SEMANAL" -> if (g.periodDays > 0) g.periodDays else 7
-                "MENSUAL" -> if (g.periodDays > 0) g.periodDays else 30
-                else -> if (g.periodDays > 0) g.periodDays else 30
-            }
-
-            val windowStart = g.startDate ?: (now - pDays * 86400000L)
-            val windowEnd = g.endDate ?: (g.startDate?.plus(pDays * 86400000L) ?: now)
 
             val targetIds = mutableListOf<Long>()
             if (!g.targetProductIds.isNullOrBlank()) {
@@ -773,60 +795,65 @@ object CostCalculationHelper {
                 targetIds.add(g.targetProductId!!)
             }
 
-            val sharingMercs = if (targetIds.isNotEmpty()) {
-                mercaderias.filter { m -> targetIds.contains(m.productId) && m.isActive }
-            } else {
-                mercaderias.filter { it.isActive }
-            }
+            val isSpecific = targetIds.isNotEmpty()
 
-            val isMyShare = if (targetIds.isNotEmpty()) targetIds.contains(product.id) else mercaderia.isActive
-
-            if (isMyShare) {
-                var totalPeriodValue = sharingMercs.sumOf { m ->
-                    getPeriodAcquisitionQuantity(m.id, movimientos, windowStart, windowEnd) * m.acquisitionCost
-                }
-                
-                val useFallback = totalPeriodValue <= 0.0
-                
-                if (useFallback) {
-                    totalPeriodValue = sharingMercs.sumOf { m ->
+            if (isSpecific) {
+                val isMyShare = targetIds.contains(product.id)
+                if (isMyShare) {
+                    val sharingMercs = mercaderias.filter { m -> targetIds.contains(m.productId) && m.isActive }
+                    val totalPeriodValue = sharingMercs.sumOf { m ->
                         val s = getMercaderiaCurrentStock(m.id, m.initialStock, movimientos)
                         val effS = if (s > 0.0) s else maxOf(m.initialStock, 1.0)
                         m.acquisitionCost * effS
                     }.takeIf { it > 0.0 } ?: 1.0
-                }
 
-                val myPeriodQty = if (useFallback) effectiveStock else getPeriodAcquisitionQuantity(mercaderia.id, movimientos, windowStart, windowEnd)
-                val myPeriodValue = myPeriodQty * mercaderia.acquisitionCost
+                    val myValue = effectiveStock * mercaderia.acquisitionCost
+                    val myShare = myValue / totalPeriodValue
 
-                val myShare = myPeriodValue / totalPeriodValue
-                
-                // Si es UNICO, el monto a repartir es g.amount completo
-                // Si es MENSUAL o SEMANAL, calculamos la cuota diaria y la repartimos
-                val isUnico = g.period.uppercase() in listOf("ÚNICO", "UNICO")
-                val allocatedTotal = if (isUnico) g.amount * myShare else (dailyEq * pDays) * myShare
-                val unitAlloc = if (myPeriodQty > 0.0) allocatedTotal / myPeriodQty else 0.0
-                val allocatedDaily = if (isUnico) allocatedTotal else dailyEq * myShare
+                    val allocatedDaily = dailyEq * myShare
+                    val unitAlloc = if (effectiveStock > 0.0) allocatedDaily / effectiveStock else 0.0
 
-                if (targetIds.isNotEmpty()) {
                     gastosEspecificosAsignados += allocatedDaily
-                } else {
-                    gastosComunesAsignados += allocatedDaily
-                }
 
-                detailedExpenses.add(
-                    AllocatedCostItem(
-                        id = g.id,
-                        name = g.name,
-                        category = g.category,
-                        originalAmount = g.amount,
-                        period = g.period,
-                        dailyEquivalent = dailyEq,
-                        isSpecific = targetIds.isNotEmpty(),
-                        allocatedDailyAmount = allocatedDaily,
-                        allocatedUnitAmount = unitAlloc
+                    detailedExpenses.add(
+                        AllocatedCostItem(
+                            id = g.id,
+                            name = g.name,
+                            category = g.category,
+                            originalAmount = g.amount,
+                            period = g.period,
+                            dailyEquivalent = dailyEq,
+                            isSpecific = true,
+                            allocatedDailyAmount = allocatedDaily,
+                            allocatedUnitAmount = unitAlloc
+                        )
                     )
-                )
+                }
+            } else {
+                val baseTotal = prorrateoResult.baseTotal
+                val myBaseValue = effectiveStock * (mercaderia.acquisitionCost + mercaderia.directExpenses)
+                val myShare = if (baseTotal > 0.0) myBaseValue / baseTotal else 0.0
+
+                if (myShare > 0.0) {
+                    val allocatedDaily = dailyEq * myShare
+                    val unitAlloc = if (effectiveStock > 0.0) allocatedDaily / effectiveStock else 0.0
+
+                    gastosComunesAsignados += allocatedDaily
+
+                    detailedExpenses.add(
+                        AllocatedCostItem(
+                            id = g.id,
+                            name = g.name,
+                            category = g.category,
+                            originalAmount = g.amount,
+                            period = g.period,
+                            dailyEquivalent = dailyEq,
+                            isSpecific = false,
+                            allocatedDailyAmount = allocatedDaily,
+                            allocatedUnitAmount = unitAlloc
+                        )
+                    )
+                }
             }
         }
         val totalGastosAsignados = gastosComunesAsignados + gastosEspecificosAsignados
@@ -850,40 +877,24 @@ object CostCalculationHelper {
                 targetIds.add(inv.targetProductId!!)
             }
 
-            val sharingMercs = if (targetIds.isNotEmpty()) {
-                mercaderias.filter { m -> targetIds.contains(m.productId) && m.isActive }
-            } else {
-                mercaderias.filter { it.isActive }
-            }
-
             val isMyShare = if (targetIds.isNotEmpty()) targetIds.contains(product.id) else mercaderia.isActive
 
             if (isMyShare) {
-                // Periodo estandar de 30 dias para evaluar prorrateo de inversiones
-                val windowStart = now - 30L * 86400000L
-                val windowEnd = now
-                
+                val sharingMercs = if (targetIds.isNotEmpty()) {
+                    mercaderias.filter { m -> targetIds.contains(m.productId) && m.isActive }
+                } else {
+                    mercaderias.filter { it.isActive }
+                }
                 var totalPeriodValue = sharingMercs.sumOf { m ->
-                    getPeriodAcquisitionQuantity(m.id, movimientos, windowStart, windowEnd) * m.acquisitionCost
-                }
-                
-                val useFallback = totalPeriodValue <= 0.0
-                
-                if (useFallback) {
-                    totalPeriodValue = sharingMercs.sumOf { m ->
-                        val s = getMercaderiaCurrentStock(m.id, m.initialStock, movimientos)
-                        val effS = if (s > 0.0) s else maxOf(m.initialStock, 1.0)
-                        m.acquisitionCost * effS
-                    }.takeIf { it > 0.0 } ?: 1.0
-                }
+                    val s = getMercaderiaCurrentStock(m.id, m.initialStock, movimientos)
+                    val effS = if (s > 0.0) s else maxOf(m.initialStock, 1.0)
+                    m.acquisitionCost * effS
+                }.takeIf { it > 0.0 } ?: 1.0
 
-                val myPeriodQty = if (useFallback) effectiveStock else getPeriodAcquisitionQuantity(mercaderia.id, movimientos, windowStart, windowEnd)
-                val myPeriodValue = myPeriodQty * mercaderia.acquisitionCost
-
-                val myShare = myPeriodValue / totalPeriodValue
+                val myShare = myAcquisitionValue / totalPeriodValue
                 
                 val allocatedDaily = dailyDep * myShare
-                val unitAlloc = if (myPeriodQty > 0.0) allocatedDaily / (myPeriodQty / 30.0) else 0.0
+                val unitAlloc = if (effectiveStock > 0.0) allocatedDaily / effectiveStock else 0.0
 
                 if (targetIds.isNotEmpty()) {
                     depreciacionEspecificaAsignada += allocatedDaily
@@ -910,14 +921,13 @@ object CostCalculationHelper {
         val totalDepreciacionAsignada = depreciacionComunAsignada + depreciacionEspecificaAsignada
 
         // 3. COSTOS INDIRECTOS TOTALES Y UNITARIOS
-        // Calculamos el unitario sumando todos los unitAlloc de los detalles
         val totalCostosIndirectosAsignados = totalGastosAsignados + totalDepreciacionAsignada
         val gastoIndirectoUnitario = detailedExpenses.sumOf { it.allocatedUnitAmount } + detailedInversions.sumOf { it.allocatedUnitAmount }
 
         // 4. COSTO DIRECTO Y COSTO TOTAL UNITARIO (PROMPT 4)
         val directExpenses = mercaderia.directExpenses
         val costoDirectoUnitario = mercaderia.acquisitionCost + directExpenses
-        val gastoGeneralUnitarioProrrateo = detailedExpenses.filter { !it.isSpecific }.sumOf { it.allocatedUnitAmount }
+        val gastoGeneralUnitarioProrrateo = prorrateoItem?.gastoGeneralUnitario ?: 0.0
         val costoTotalUnitario = costoDirectoUnitario + gastoGeneralUnitarioProrrateo
 
         // COSTO REAL UNITARIO: COSTO DIRECTO UNITARIO + COSTOS INDIRECTOS

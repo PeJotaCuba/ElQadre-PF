@@ -5486,6 +5486,7 @@ fun CerrarTandaDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .navigationBarsPadding()
+                        .padding(bottom = 32.dp)
                 ) {
                     Row(
                         modifier = Modifier
