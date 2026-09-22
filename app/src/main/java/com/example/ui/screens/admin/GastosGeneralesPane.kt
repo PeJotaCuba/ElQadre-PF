@@ -403,8 +403,7 @@ fun GastosGeneralesPane(
                                         colors = ButtonDefaults.outlinedButtonColors(contentColor = ElQadreNavy),
                                         modifier = Modifier
                                             .weight(1f)
-                                            .height(36.dp),
-                                        enabled = gasto.inversionId == null // Inversion depreciations are edited via Inversion menu
+                                            .height(36.dp)
                                     ) {
                                         Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(14.dp))
                                         Spacer(modifier = Modifier.width(4.dp))
@@ -416,8 +415,7 @@ fun GastosGeneralesPane(
                                         shape = RoundedCornerShape(6.dp),
                                         border = BorderStroke(1.dp, Rose600),
                                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Rose600),
-                                        modifier = Modifier.height(36.dp),
-                                        enabled = gasto.inversionId == null // Inversion depreciations are deleted via Inversion menu
+                                        modifier = Modifier.height(36.dp)
                                     ) {
                                         Icon(Icons.Default.DeleteOutline, contentDescription = "Eliminar", modifier = Modifier.size(16.dp))
                                     }
