@@ -128,7 +128,7 @@ class ProduccionItemState(
     regaliaStr: String = "0",
     val costoUnitarioTeorico: Double = 0.0,
     val pagoCocinaUnitario: Double = 0.0,
-    val cantidadCocineros: Int = 1,
+    cantidadCocineros: Int = 1,
     val pagoDependienteUnitario: Double = 0.0,
     val pagoCajeroUnitario: Double = 0.0,
     val presentaciones: List<com.example.data.local.model.PresentacionEspecial> = emptyList(),
@@ -139,6 +139,8 @@ class ProduccionItemState(
     var consumoStr by mutableStateOf(consumoStr)
     var regaliaStr by mutableStateOf(regaliaStr)
     var customPriceStr by mutableStateOf(if (price > 0.0) "%.2f".format(price).replace(',', '.') else "")
+    var cantidadCocinerosStr by mutableStateOf(if (cantidadCocineros > 0) cantidadCocineros.toString() else "1")
+    val cantidadCocineros: Int get() = cantidadCocinerosStr.toIntOrNull()?.coerceAtLeast(1) ?: 1
 
     val effectivePrice: Double get() = customPriceStr.toDoubleOrNull() ?: price
 
@@ -268,6 +270,10 @@ fun CuadreCajaScreen(
     val activeJornada = uiState.activeJornada
     val isJornadaOpen = activeJornada != null && activeJornada.isOpen
     val initialCash = activeJornada?.initialCash ?: 0.0
+    val activeJornadaId = activeJornada?.id ?: 1L
+    val savedPagos = remember(activeJornadaId) {
+        CuadrePagosManager.getPagosJornada(context, activeJornadaId)
+    }
 
     // Filter tandas of active jornada / current day
     val jornadaTandas = remember(uiState.tandas, activeJornada) {
@@ -314,8 +320,8 @@ fun CuadreCajaScreen(
             } else null
 
             val costoUnitario = costSheet?.costoRealUnitario ?: product?.cost ?: 0.0
-            val pagoCocinaUnit = costSheet?.totalPagoCocinaUnitario ?: prodElab?.totalPagoCocinaUnitario ?: 0.0
-            val cantCocineros = prodElab?.cantidadCocineros?.takeIf { it > 0 } ?: 1
+            val pagoCocinaUnit = costSheet?.pagoCocinaUnitario ?: prodElab?.pagoCocinaUnitario ?: 0.0
+            val cantCocineros = savedPagos?.cantidadCocineros ?: 1
             val pagoDepUnit = costSheet?.totalPagoDependienteUnitario ?: prodElab?.totalPagoDependienteUnitario ?: 0.0
             val pagoCajUnit = costSheet?.totalPagoCajeroUnitario ?: prodElab?.totalPagoCajeroUnitario ?: 0.0
             val presList = product?.let { com.example.data.local.model.parsePresentacionesEspeciales(it.presentacionesEspeciales) } ?: emptyList()
@@ -363,8 +369,8 @@ fun CuadreCajaScreen(
             )
 
             val costoUnitario = costSheet?.costoRealUnitario ?: product.cost
-            val pagoCocinaUnit = costSheet?.totalPagoCocinaUnitario ?: prodElab?.totalPagoCocinaUnitario ?: 0.0
-            val cantCocineros = prodElab?.cantidadCocineros?.takeIf { it > 0 } ?: 1
+            val pagoCocinaUnit = costSheet?.pagoCocinaUnitario ?: prodElab?.pagoCocinaUnitario ?: 0.0
+            val cantCocineros = savedPagos?.cantidadCocineros ?: 1
             val pagoDepUnit = costSheet?.totalPagoDependienteUnitario ?: prodElab?.totalPagoDependienteUnitario ?: 0.0
             val pagoCajUnit = costSheet?.totalPagoCajeroUnitario ?: prodElab?.totalPagoCajeroUnitario ?: 0.0
             val presList = com.example.data.local.model.parsePresentacionesEspeciales(product.presentacionesEspeciales)
@@ -536,10 +542,6 @@ fun CuadreCajaScreen(
         transferenciasForJornada.sumOf { it.amount }
     }
 
-    val activeJornadaId = activeJornada?.id ?: 1L
-    val savedPagos = remember(activeJornadaId) {
-        CuadrePagosManager.getPagosJornada(context, activeJornadaId)
-    }
     var pagosConfirmados by rememberSaveable(activeJornadaId) {
         mutableStateOf(savedPagos?.isConfirmed ?: false)
     }
@@ -1214,7 +1216,7 @@ fun CuadreCajaScreen(
                         efectivoRealVal = efectivoRealVal,
                         utilidadTeorica = utilidadTeorica,
                         pagosConfirmados = pagosConfirmados,
-                        onConfirmarPagos = { totalP, totalCoc, totalCaj, totalDep, cantDeps, depsList, distMode ->
+                        onConfirmarPagos = { totalP, totalCoc, totalCaj, totalDep, cantDeps, depsList, distMode, cantCoc ->
                             val finalCash = (efectivoRealVal - totalP).coerceAtLeast(0.0)
                             val record = CuadrePagosJornada(
                                 jornadaId = activeJornadaId,
@@ -1229,7 +1231,8 @@ fun CuadreCajaScreen(
                                 dependientes = depsList,
                                 distributionMode = distMode,
                                 efectivoContado = efectivoRealVal,
-                                dineroFinalEnCaja = finalCash
+                                dineroFinalEnCaja = finalCash,
+                                cantidadCocineros = cantCoc
                             )
                             CuadrePagosManager.savePagosJornada(context, record)
                             val detallesStr = depsList.joinToString("; ") { "${it.name}: $${"%.2f".format(it.montoPago)} CUP (${"%.1f".format(it.ventasTotales)} u)" }
@@ -3960,15 +3963,30 @@ fun CuadrePagosTab(
         totalDependiente: Double,
         cantidadDependientes: Int,
         dependientes: List<DependientePagoDistribucion>,
-        distributionMode: String
-    ) -> Unit = { _, _, _, _, _, _, _ -> },
+        distributionMode: String,
+        cantidadCocineros: Int
+    ) -> Unit = { _, _, _, _, _, _, _, _ -> },
     onModificarPagos: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
 
+    // Cargar distribución previa guardada si existe
+    val savedPagos = remember(activeJornadaId) {
+        CuadrePagosManager.getPagosJornada(context, activeJornadaId)
+    }
+
+    // Estado de trabajadores de cocina a pagar hoy (independiente de la Ficha de Costo)
+    var cantidadCocineros by rememberSaveable(activeJornadaId) {
+        mutableStateOf(savedPagos?.cantidadCocineros ?: 1)
+    }
+
+    LaunchedEffect(cantidadCocineros) {
+        produccionStates.forEach { it.cantidadCocinerosStr = cantidadCocineros.toString() }
+    }
+
     // 1. CÁLCULO DE PAGOS COCINA (Producción)
-    // Fórmula requerida: cantidad correspondiente × pago por unidad × cantidad de cocineros
+    // Pago unitario de la Ficha × Cantidad de trabajadores indicada en el Pago de ese día
     val totalPagoCocina = produccionStates.sumOf { item ->
         item.vendible * item.pagoCocinaUnitario * item.cantidadCocineros
     }
@@ -4010,11 +4028,6 @@ fun CuadrePagosTab(
 
     // Dinero final en caja = Efectivo contado − Pagos reales
     val dineroFinalEnCaja = (efectivoRealVal - (if (pagosConfirmados) totalPagoPersonal else 0.0)).coerceAtLeast(0.0)
-
-    // Cargar distribución previa guardada si existe
-    val savedPagos = remember(activeJornadaId) {
-        CuadrePagosManager.getPagosJornada(context, activeJornadaId)
-    }
 
     // Usuarios con rol de dependiente o salón
     val dependienteUsers = remember(users) {
@@ -4371,7 +4384,7 @@ fun CuadrePagosTab(
                                 color = ElQadreNavy
                             )
                             Text(
-                                text = "cantidad × pago por unidad × cantidad de cocineros",
+                                text = "Pago unitario de Ficha × Trabajadores de hoy",
                                 fontSize = 10.sp,
                                 color = Slate500
                             )
@@ -4388,6 +4401,82 @@ fun CuadrePagosTab(
                             color = Color(0xFFEA580C),
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                         )
+                    }
+                }
+
+                // Selector de cantidad de trabajadores de cocina a pagar en la jornada
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Slate50,
+                    border = BorderStroke(1.dp, Slate200),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "Trabajadores a pagar hoy",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Slate800
+                            )
+                            Text(
+                                text = "Independiente de la Ficha de Costo",
+                                fontSize = 10.sp,
+                                color = Slate500
+                            )
+                        }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            FilledTonalIconButton(
+                                onClick = {
+                                    if (cantidadCocineros > 1) {
+                                        cantidadCocineros--
+                                        produccionStates.forEach { it.cantidadCocinerosStr = cantidadCocineros.toString() }
+                                    }
+                                },
+                                enabled = !pagosConfirmados && cantidadCocineros > 1,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(Icons.Default.Remove, contentDescription = "Menos trabajadores", modifier = Modifier.size(16.dp))
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color.White,
+                                border = BorderStroke(1.dp, Slate300),
+                                modifier = Modifier.widthIn(min = 44.dp)
+                            ) {
+                                Text(
+                                    text = "$cantidadCocineros",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = ElQadreNavy,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                )
+                            }
+
+                            FilledTonalIconButton(
+                                onClick = {
+                                    if (cantidadCocineros < 99) {
+                                        cantidadCocineros++
+                                        produccionStates.forEach { it.cantidadCocinerosStr = cantidadCocineros.toString() }
+                                    }
+                                },
+                                enabled = !pagosConfirmados,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = "Más trabajadores", modifier = Modifier.size(16.dp))
+                            }
+                        }
                     }
                 }
 
@@ -4415,7 +4504,7 @@ fun CuadrePagosTab(
                                     color = Slate800
                                 )
                                 Text(
-                                    text = "${"%.1f".format(item.vendible)} ${item.unit} vendibles × $${"%.2f".format(item.pagoCocinaUnitario)} × ${item.cantidadCocineros} ${if (item.cantidadCocineros > 1) "cocineros" else "cocinero"}",
+                                    text = "${"%.1f".format(item.vendible)} ${item.unit} vendibles × $${"%.2f".format(item.pagoCocinaUnitario)} × ${item.cantidadCocineros} ${if (item.cantidadCocineros > 1) "trabajadores" else "trabajador"}",
                                     fontSize = 11.sp,
                                     color = Slate500
                                 )
@@ -4437,7 +4526,7 @@ fun CuadrePagosTab(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = "Tarifas de Cocina fijadas por Ficha de Costo y Producción. Sin recálculos manuales.",
+                        text = "Pago Cocina = Pago unitario de Ficha ($${"%.2f".format(produccionStates.firstOrNull()?.pagoCocinaUnitario ?: 0.0)} CUP) × Cantidad de trabajadores indicada hoy ($cantidadCocineros). La cantidad configurada en la Ficha de Costo no fija los cocineros del día.",
                         fontSize = 10.sp,
                         color = Color(0xFFB45309),
                         modifier = Modifier.padding(8.dp)
@@ -5375,7 +5464,8 @@ fun CuadrePagosTab(
                                 totalPagoDependiente,
                                 cantidadDependientes,
                                 dependientesList,
-                                distributionMode
+                                distributionMode,
+                                cantidadCocineros
                             )
                         }
                     },

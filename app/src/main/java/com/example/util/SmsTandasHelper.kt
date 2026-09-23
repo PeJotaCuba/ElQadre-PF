@@ -5,7 +5,11 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Telephony
 import androidx.core.content.ContextCompat
+import com.example.data.local.model.Product
+import com.example.data.local.model.ProductoElaborado
 import com.example.data.local.model.Tanda
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 
 sealed class CocinaTandasScanResult {
@@ -207,6 +211,81 @@ object SmsTandasHelper {
      * Escanea el buzón de SMS recibidos (content://sms/inbox) buscando exclusivamente
      * mensajes provenientes de los números registrados para Cocina con formato ElQadre Tandas.
      */
+    /**
+     * Escanea el buzón de SMS recibidos (content://sms/inbox) de CUALQUIER chat/remitente
+     * buscando mensajes que contengan información de tandas (formato oficial ELQADRE|TANDAS o formato estructurado).
+     */
+    fun scanInboxForAllTandas(
+        context: Context
+    ): List<SmsTandaInboxMessage> {
+        if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_SMS) != PackageManager.PERMISSION_GRANTED) {
+            return emptyList()
+        }
+
+        val results = mutableListOf<SmsTandaInboxMessage>()
+        try {
+            val uri = Uri.parse("content://sms/inbox")
+            val projection = arrayOf(
+                Telephony.Sms.ADDRESS,
+                Telephony.Sms.BODY,
+                Telephony.Sms.DATE
+            )
+
+            val cursor = context.contentResolver.query(
+                uri,
+                projection,
+                null,
+                null,
+                Telephony.Sms.DATE + " DESC LIMIT 200"
+            )
+
+            cursor?.use {
+                val addressIdx = it.getColumnIndexOrThrow(Telephony.Sms.ADDRESS)
+                val bodyIdx = it.getColumnIndexOrThrow(Telephony.Sms.BODY)
+                val dateIdx = it.getColumnIndexOrThrow(Telephony.Sms.DATE)
+
+                while (it.moveToNext()) {
+                    val senderAddress = it.getString(addressIdx) ?: "Desconocido"
+                    val body = it.getString(bodyIdx) ?: ""
+                    val smsDate = it.getLong(dateIdx)
+
+                    if (isTandasSms(body)) {
+                        val (_, tandas) = parseTandasSms(body)
+                        val count = if (tandas.isNotEmpty()) tandas.size else 1
+                        val preview = if (tandas.isNotEmpty()) {
+                            tandas.joinToString("; ") { t -> "Tanda ${t.tandaNumber}: ${t.productName} (${t.estimatedYield.toInt()} ${t.productionUnit})" }
+                        } else body.take(80)
+                        results.add(
+                            SmsTandaInboxMessage(
+                                senderPhone = senderAddress,
+                                date = smsDate,
+                                body = body,
+                                tandasCount = count,
+                                previewText = preview
+                            )
+                        )
+                    } else if (body.contains("Tanda", ignoreCase = true) && (body.contains("Producto", ignoreCase = true) || body.contains("Base", ignoreCase = true) || body.contains("Esperada", ignoreCase = true) || body.contains("Real", ignoreCase = true))) {
+                        // Plain text format
+                        val count = Regex("""Tanda\s*[:#\d]""", RegexOption.IGNORE_CASE).findAll(body).count().coerceAtLeast(1)
+                        results.add(
+                            SmsTandaInboxMessage(
+                                senderPhone = senderAddress,
+                                date = smsDate,
+                                body = body,
+                                tandasCount = count,
+                                previewText = body.lines().take(2).joinToString(" | ")
+                            )
+                        )
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        return results
+    }
+
     fun scanInboxForCocinaTandas(
         context: Context,
         cocinaPhoneNumbers: List<String>,
@@ -303,6 +382,86 @@ object SmsTandasHelper {
 
         return CocinaTandasScanResult.NoSmsFound
     }
+
+    /**
+     * Escanea automáticamente el buzón de SMS buscando mensajes de tandas de las ÚLTIMAS 48 HORAS.
+     */
+    fun scanInboxForTandasLast48Hours(
+        context: Context,
+        elaboratedProductsMap: Map<String, Pair<ProductoElaborado, Product>>,
+        jornadaOpenedAt: Long
+    ): List<CandidateTandaGroup> {
+        if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_SMS) != PackageManager.PERMISSION_GRANTED) {
+            return emptyList()
+        }
+
+        val cutoff48h = System.currentTimeMillis() - (48L * 60 * 60 * 1000L)
+        val sdfDay = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+        val sdfTime = SimpleDateFormat("HH:mm", Locale.getDefault())
+        val jornadaDateToCompare = if (jornadaOpenedAt > 0) jornadaOpenedAt else System.currentTimeMillis()
+        val jornadaDateStr = sdfDay.format(Date(jornadaDateToCompare))
+
+        val results = mutableListOf<CandidateTandaGroup>()
+        try {
+            val uri = Uri.parse("content://sms/inbox")
+            val projection = arrayOf(
+                Telephony.Sms.ADDRESS,
+                Telephony.Sms.BODY,
+                Telephony.Sms.DATE
+            )
+
+            val cursor = context.contentResolver.query(
+                uri,
+                projection,
+                "${Telephony.Sms.DATE} >= ?",
+                arrayOf(cutoff48h.toString()),
+                "${Telephony.Sms.DATE} DESC"
+            )
+
+            cursor?.use {
+                val addressIdx = it.getColumnIndexOrThrow(Telephony.Sms.ADDRESS)
+                val bodyIdx = it.getColumnIndexOrThrow(Telephony.Sms.BODY)
+                val dateIdx = it.getColumnIndexOrThrow(Telephony.Sms.DATE)
+
+                while (it.moveToNext()) {
+                    val senderAddress = it.getString(addressIdx) ?: "Desconocido"
+                    val body = it.getString(bodyIdx) ?: ""
+                    val smsDate = it.getLong(dateIdx)
+
+                    if (smsDate < cutoff48h) continue
+
+                    // Comprobar si el mensaje contiene estructura de tandas
+                    if (isTandasSms(body) || (body.contains("Tanda", ignoreCase = true) && 
+                        (body.contains("Producto", ignoreCase = true) || body.contains("Base", ignoreCase = true) || body.contains("Esperada", ignoreCase = true)))) {
+                        val parseResult = parseImportedTandasText(body, elaboratedProductsMap)
+                        if (parseResult.items.isNotEmpty()) {
+                            val smsDateStr = sdfDay.format(Date(smsDate))
+                            val smsTimeStr = sdfTime.format(Date(smsDate))
+                            val isDateMatch = (smsDateStr == jornadaDateStr)
+
+                            results.add(
+                                CandidateTandaGroup(
+                                    id = "SMS_${smsDate}_${senderAddress.hashCode()}",
+                                    senderPhone = senderAddress,
+                                    date = smsDate,
+                                    body = body,
+                                    tandas = parseResult.items,
+                                    formattedDate = smsDateStr,
+                                    formattedTime = smsTimeStr,
+                                    isDateMatch = isDateMatch,
+                                    jornadaDateStr = jornadaDateStr
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        return results
+    }
 }
 
 data class ParsedHeader(
@@ -311,3 +470,177 @@ data class ParsedHeader(
     val timestamp: Long,
     val reportedCount: Int
 )
+
+data class SmsTandaInboxMessage(
+    val senderPhone: String,
+    val date: Long,
+    val body: String,
+    val tandasCount: Int,
+    val previewText: String
+)
+
+data class CandidateTandaGroup(
+    val id: String,
+    val senderPhone: String,
+    val date: Long,
+    val body: String,
+    val tandas: List<ParsedTandaImport>,
+    val formattedDate: String,
+    val formattedTime: String,
+    val isDateMatch: Boolean,
+    val jornadaDateStr: String
+)
+
+data class ParsedTandaImport(
+    val tandaNumber: String,
+    val pe: ProductoElaborado,
+    val product: Product,
+    val baseQtyUsed: Double,
+    val expectedYield: Double,
+    val actualYield: Double
+)
+
+data class ParseImportResult(
+    val items: List<ParsedTandaImport>,
+    val errorMessage: String?
+)
+
+fun parseImportedTandasText(
+    text: String,
+    elaboratedProductsMap: Map<String, Pair<ProductoElaborado, Product>>
+): ParseImportResult {
+    val trimmed = text.trim()
+    if (trimmed.isEmpty()) {
+        return ParseImportResult(emptyList(), "El texto proporcionado está vacío.")
+    }
+
+    // 1. Si es formato oficial SMS ELQADRE|TANDAS|V1|
+    if (SmsTandasHelper.isTandasSms(trimmed)) {
+        val (_, parsedTandas) = SmsTandasHelper.parseTandasSms(trimmed)
+        if (parsedTandas.isEmpty()) {
+            return ParseImportResult(emptyList(), "El SMS contiene cabecera pero no se encontraron tandas válidas.")
+        }
+
+        val parsedList = mutableListOf<ParsedTandaImport>()
+        parsedTandas.forEach { t ->
+            val pair = elaboratedProductsMap.values.find { it.second.id == t.productId }
+                ?: elaboratedProductsMap.entries.find { (pName, _) ->
+                    t.productName.lowercase().contains(pName) || pName.contains(t.productName.lowercase())
+                }?.value
+
+            if (pair != null) {
+                val (pe, p) = pair
+                parsedList.add(
+                    ParsedTandaImport(
+                        tandaNumber = t.tandaNumber,
+                        pe = pe,
+                        product = p,
+                        baseQtyUsed = if (t.baseQuantityUsed > 0.0) t.baseQuantityUsed else pe.baseQuantity,
+                        expectedYield = if (t.expectedYield > 0.0) t.expectedYield else pe.baseYield,
+                        actualYield = if (t.actualYield > 0.0) t.actualYield else (if (t.expectedYield > 0.0) t.expectedYield else pe.baseYield)
+                    )
+                )
+            } else {
+                val firstPair = elaboratedProductsMap.values.firstOrNull()
+                if (firstPair != null) {
+                    val (pe, p) = firstPair
+                    parsedList.add(
+                        ParsedTandaImport(
+                            tandaNumber = t.tandaNumber,
+                            pe = pe,
+                            product = p.copy(name = t.productName),
+                            baseQtyUsed = if (t.baseQuantityUsed > 0.0) t.baseQuantityUsed else pe.baseQuantity,
+                            expectedYield = if (t.expectedYield > 0.0) t.expectedYield else pe.baseYield,
+                            actualYield = if (t.actualYield > 0.0) t.actualYield else (if (t.expectedYield > 0.0) t.expectedYield else pe.baseYield)
+                        )
+                    )
+                }
+            }
+        }
+
+        if (parsedList.isNotEmpty()) {
+            return ParseImportResult(parsedList, null)
+        }
+    }
+
+    // 2. Formato estructurado por líneas / texto plano
+    val lines = trimmed.lines().map { it.trim() }.filter { it.isNotEmpty() }
+    if (lines.isEmpty()) {
+        return ParseImportResult(emptyList(), "El texto proporcionado está vacío.")
+    }
+
+    val blocks = mutableListOf<MutableList<String>>()
+    var currentBlock = mutableListOf<String>()
+
+    lines.forEach { line ->
+        if (line.startsWith("Tanda", ignoreCase = true) && currentBlock.isNotEmpty()) {
+            blocks.add(currentBlock)
+            currentBlock = mutableListOf()
+        }
+        currentBlock.add(line)
+    }
+    if (currentBlock.isNotEmpty()) {
+        blocks.add(currentBlock)
+    }
+
+    val parsedList = mutableListOf<ParsedTandaImport>()
+
+    blocks.forEachIndexed { index, block ->
+        var tandaNum = "${index + 1}"
+        var productName = ""
+        var baseQty = 0.0
+        var expYield = 0.0
+        var actYield = 0.0
+
+        block.forEach { l ->
+            val parts = l.split(":", "=")
+            if (parts.size >= 2) {
+                val key = parts[0].lowercase().trim()
+                val valStr = parts.subList(1, parts.size).joinToString(":").trim()
+
+                when {
+                    key.contains("tanda") -> tandaNum = valStr.replace("N°", "").replace("#", "").trim()
+                    key.contains("producto") -> productName = valStr.lowercase().trim()
+                    key.contains("base") || key.contains("cantidad") -> {
+                        val numeric = valStr.replace(Regex("[^0-9.]"), " ").trim().split("\\s+".toRegex()).firstOrNull()
+                        baseQty = numeric?.toDoubleOrNull() ?: 0.0
+                    }
+                    key.contains("esperada") || key.contains("esperado") -> {
+                        val numeric = valStr.replace(Regex("[^0-9.]"), " ").trim().split("\\s+".toRegex()).firstOrNull()
+                        expYield = numeric?.toDoubleOrNull() ?: 0.0
+                    }
+                    key.contains("real") || key.contains("obtenida") -> {
+                        val numeric = valStr.replace(Regex("[^0-9.]"), " ").trim().split("\\s+".toRegex()).firstOrNull()
+                        actYield = numeric?.toDoubleOrNull() ?: 0.0
+                    }
+                }
+            }
+        }
+
+        if (productName.isNotEmpty()) {
+            val pair = elaboratedProductsMap.entries.find { (pName, _) ->
+                productName.contains(pName) || pName.contains(productName)
+            }?.value
+
+            if (pair != null) {
+                val (pe, p) = pair
+                if (baseQty <= 0.0) baseQty = pe.baseQuantity
+                if (expYield <= 0.0) expYield = pe.baseYield
+                if (actYield <= 0.0) actYield = expYield
+
+                parsedList.add(
+                    ParsedTandaImport(
+                        tandaNumber = tandaNum,
+                        pe = pe,
+                        product = p,
+                        baseQtyUsed = baseQty,
+                        expectedYield = expYield,
+                        actualYield = actYield
+                    )
+                )
+            }
+        }
+    }
+
+    return ParseImportResult(parsedList, if (parsedList.isEmpty()) "No se pudieron reconocer datos válidos de tanda en el texto." else null)
+}

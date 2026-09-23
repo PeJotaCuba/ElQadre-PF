@@ -3487,26 +3487,40 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     ) {
         viewModelScope.launch {
             try {
-                // 0. Validar stock
-                val insufficientStock = consumos.find { (mpId, qtyToDeduct, _) ->
-                    val raw = _uiState.value.materiasPrimas.find { it.id == mpId }
-                    raw == null || raw.stock < qtyToDeduct
-                }
-                if (insufficientStock != null) {
-                    val raw = _uiState.value.materiasPrimas.find { it.id == insufficientStock.first }
-                    val rawName = raw?.name ?: "Materia prima desconocida"
-                    _uiState.update { it.copy(errorMessage = "Stock insuficiente para $rawName (requiere ${"%.2f".format(insufficientStock.second)}). Tanda no activada.") }
+                // Validación estricta: NO SE PUEDE CREAR UNA NUEVA TANDA SI NO EXISTE UNA JORNADA ABIERTA
+                val activeJornada = _uiState.value.activeJornada
+                if (activeJornada == null || !activeJornada.isOpen) {
+                    _uiState.update { 
+                        it.copy(errorMessage = "No se puede registrar una nueva tanda sin una jornada abierta. Por favor, abra la jornada primero.") 
+                    }
                     return@launch
                 }
 
-                // 1. Guardar la tanda
-                val activeJornada = _uiState.value.activeJornada
-                val tandaToInsert = if (tanda.jornadaId == 0L && activeJornada != null) {
-                    tanda.copy(jornada = "Jornada #${activeJornada.id}", jornadaId = activeJornada.id)
-                } else tanda
-                repository.insertTanda(tandaToInsert)
+                // 1. Guardar la tanda en Room vinculada a la jornada abierta
+                val tandaToInsert = if (tanda.jornadaId == 0L) {
+                    tanda.copy(
+                        jornada = "Jornada #${activeJornada.id}",
+                        jornadaId = activeJornada.id,
+                        status = "ABIERTA"
+                    )
+                } else {
+                    tanda.copy(status = "ABIERTA")
+                }
+                
+                val generatedId = repository.insertTanda(tandaToInsert)
+                val finalTanda = tandaToInsert.copy(id = if (generatedId > 0) generatedId else tandaToInsert.id)
 
-                // 2. Descontar stock de materias primas y registrar movimientos
+                // Actualización inmediata del estado UI para respuesta instantánea en Tandas
+                _uiState.update { state ->
+                    val updatedList = state.tandas.filter { it.uuid != finalTanda.uuid && it.id != finalTanda.id } + finalTanda
+                    state.copy(
+                        tandas = updatedList,
+                        successMessage = "Tanda #${finalTanda.tandaNumber} registrada como ABIERTA",
+                        errorMessage = null
+                    )
+                }
+
+                // 2. Descontar stock de materias primas y registrar movimientos en inventario si existen
                 consumos.forEach { (mpId, qtyToDeduct, originalText) ->
                     val raw = _uiState.value.materiasPrimas.find { it.id == mpId }
                     if (raw != null) {
@@ -3521,8 +3535,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             type = "TANDA_CONSUMO",
                             quantity = qtyToDeduct,
                             unit = raw.unit,
-                            responsibleUser = tandaToInsert.responsibleUser,
-                            notes = "Consumo para tanda ${tandaToInsert.uuid} (${originalText})",
+                            responsibleUser = finalTanda.responsibleUser,
+                            notes = "Consumo para tanda ${finalTanda.uuid} (${originalText})",
                             resultingStock = nextStock
                         )
                         repository.insertMovimientoMateriaPrima(mov)
@@ -3532,16 +3546,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 // 3. Registrar en Bitácora
                 repository.insertBitacora(
                     BitacoraEntry(
-                        title = "Activación de Tanda #${tanda.tandaNumber}",
-                        content = "Tanda de ${tanda.productName} activada con base de ${tanda.baseQuantityUsed} ${tanda.baseQuantityUnit}. Producción esperada: ${tanda.estimatedYield.toInt()} ${tanda.productionUnit}. Materias primas descontadas.",
+                        title = "Registro de Tanda #${finalTanda.tandaNumber} (ABIERTA)",
+                        content = "Tanda de ${finalTanda.productName} registrada como ABIERTA con base de ${finalTanda.baseQuantityUsed} ${finalTanda.baseQuantityUnit}. Producción esperada: ${finalTanda.estimatedYield.toInt()} ${finalTanda.productionUnit}.",
                         category = "PRODUCCIÓN",
-                        authorUsername = tanda.responsibleUser
+                        authorUsername = finalTanda.responsibleUser
                     )
                 )
-
-                _uiState.update { it.copy(successMessage = "Tanda ${tanda.tandaNumber} activada y materias primas descontadas con éxito") }
             } catch (e: Exception) {
-                _uiState.update { it.copy(errorMessage = "Error al registrar la tanda: ${e.message}") }
+                e.printStackTrace()
+                _uiState.update { it.copy(errorMessage = "Error al registrar tanda: ${e.message}") }
             }
         }
     }
@@ -3722,6 +3735,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 repository.updateTanda(tanda)
 
+                _uiState.update { state ->
+                    val updatedTandas = state.tandas.map {
+                        if (it.id == tanda.id || (tanda.uuid.isNotBlank() && it.uuid == tanda.uuid)) tanda else it
+                    }
+                    state.copy(
+                        tandas = updatedTandas,
+                        successMessage = "Tanda #${tanda.tandaNumber} cerrada con éxito",
+                        errorMessage = null
+                    )
+                }
+
                 repository.insertBitacora(
                     BitacoraEntry(
                         title = "Cierre de Tanda #${tanda.tandaNumber}",
@@ -3730,8 +3754,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         authorUsername = tanda.responsibleUser
                     )
                 )
-
-                _uiState.update { it.copy(successMessage = "Tanda #${tanda.tandaNumber} cerrada con éxito") }
             } catch (e: Exception) {
                 _uiState.update { it.copy(errorMessage = "Error al cerrar la tanda: ${e.message}") }
             }
@@ -4794,6 +4816,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clearErrorMessage() {
         _uiState.update { it.copy(errorMessage = null) }
+    }
+
+    fun setSuccessMessage(msg: String) {
+        _uiState.update { it.copy(successMessage = msg) }
+    }
+
+    fun clearSuccessMessage() {
+        _uiState.update { it.copy(successMessage = null) }
     }
 
     fun servirComandaSalon(order: TableOrder) {

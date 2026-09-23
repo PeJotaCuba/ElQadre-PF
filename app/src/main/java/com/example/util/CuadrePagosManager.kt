@@ -33,7 +33,8 @@ data class CuadrePagosJornada(
     val dependientes: List<DependientePagoDistribucion> = emptyList(),
     val distributionMode: String = "CATEGORIA", // "CATEGORIA" o "GLOBAL"
     val efectivoContado: Double = 0.0,
-    val dineroFinalEnCaja: Double = 0.0
+    val dineroFinalEnCaja: Double = 0.0,
+    val cantidadCocineros: Int = 1
 )
 
 /**
@@ -79,7 +80,8 @@ object CuadrePagosManager {
                 dependientes = depsList,
                 distributionMode = obj.optString("distributionMode", "CATEGORIA"),
                 efectivoContado = obj.optDouble("efectivoContado", 0.0),
-                dineroFinalEnCaja = obj.optDouble("dineroFinalEnCaja", 0.0)
+                dineroFinalEnCaja = obj.optDouble("dineroFinalEnCaja", 0.0),
+                cantidadCocineros = obj.optInt("cantidadCocineros", 1)
             )
         } catch (e: Exception) {
             null
@@ -101,6 +103,7 @@ object CuadrePagosManager {
         obj.put("distributionMode", pagos.distributionMode)
         obj.put("efectivoContado", pagos.efectivoContado)
         obj.put("dineroFinalEnCaja", pagos.dineroFinalEnCaja)
+        obj.put("cantidadCocineros", pagos.cantidadCocineros)
 
         val depsArray = JSONArray()
         for (dep in pagos.dependientes) {
