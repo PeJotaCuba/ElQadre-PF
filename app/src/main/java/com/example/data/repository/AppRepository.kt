@@ -815,6 +815,13 @@ class AppRepository(private val db: AppDatabase) {
     suspend fun getAllTandasSync(): List<Tanda> = db.tandaDao().getAllSync()
     suspend fun insertTanda(tanda: Tanda): Long = db.tandaDao().insert(tanda)
     suspend fun updateTanda(tanda: Tanda) = db.tandaDao().update(tanda)
+    suspend fun deleteTanda(tanda: Tanda) = db.tandaDao().delete(tanda)
+    suspend fun deleteTandas(tandas: List<Tanda>) {
+        val ids = tandas.map { it.id }.filter { it > 0 }
+        if (ids.isNotEmpty()) {
+            db.tandaDao().deleteByIds(ids)
+        }
+    }
 
     // Movimientos Materia Prima
     val allMovimientosMateriaPrima: Flow<List<MovimientoMateriaPrima>> = db.movimientoMateriaPrimaDao().getAll()

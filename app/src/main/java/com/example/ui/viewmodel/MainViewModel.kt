@@ -3521,37 +3521,51 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 // 2. Descontar stock de materias primas y registrar movimientos en inventario si existen
-                consumos.forEach { (mpId, qtyToDeduct, originalText) ->
-                    val raw = _uiState.value.materiasPrimas.find { it.id == mpId }
-                    if (raw != null) {
-                        val nextStock = raw.stock - qtyToDeduct
-                        val updatedMp = raw.copy(stock = nextStock)
-                        repository.updateMateriaPrima(updatedMp)
+                // REGLA CRÍTICA TANDA 00: La Tanda 00 representa unidades de la jornada anterior y NUNCA descuenta insumos
+                if (finalTanda.tandaNumber != "00") {
+                    consumos.forEach { (mpId, qtyToDeduct, originalText) ->
+                        val raw = _uiState.value.materiasPrimas.find { it.id == mpId }
+                        if (raw != null) {
+                            val nextStock = raw.stock - qtyToDeduct
+                            val updatedMp = raw.copy(stock = nextStock)
+                            repository.updateMateriaPrima(updatedMp)
 
-                        // Registrar movimiento
-                        val mov = MovimientoMateriaPrima(
-                            materiaPrimaId = mpId,
-                            materiaPrimaName = raw.name,
-                            type = "TANDA_CONSUMO",
-                            quantity = qtyToDeduct,
-                            unit = raw.unit,
-                            responsibleUser = finalTanda.responsibleUser,
-                            notes = "Consumo para tanda ${finalTanda.uuid} (${originalText})",
-                            resultingStock = nextStock
-                        )
-                        repository.insertMovimientoMateriaPrima(mov)
+                            // Registrar movimiento
+                            val mov = MovimientoMateriaPrima(
+                                materiaPrimaId = mpId,
+                                materiaPrimaName = raw.name,
+                                type = "TANDA_CONSUMO",
+                                quantity = qtyToDeduct,
+                                unit = raw.unit,
+                                responsibleUser = finalTanda.responsibleUser,
+                                notes = "Consumo para tanda ${finalTanda.uuid} (${originalText})",
+                                resultingStock = nextStock
+                            )
+                            repository.insertMovimientoMateriaPrima(mov)
+                        }
                     }
                 }
 
                 // 3. Registrar en Bitácora
-                repository.insertBitacora(
-                    BitacoraEntry(
-                        title = "Registro de Tanda #${finalTanda.tandaNumber} (ABIERTA)",
-                        content = "Tanda de ${finalTanda.productName} registrada como ABIERTA con base de ${finalTanda.baseQuantityUsed} ${finalTanda.baseQuantityUnit}. Producción esperada: ${finalTanda.estimatedYield.toInt()} ${finalTanda.productionUnit}.",
-                        category = "PRODUCCIÓN",
-                        authorUsername = finalTanda.responsibleUser
+                if (finalTanda.tandaNumber == "00") {
+                    repository.insertBitacora(
+                        BitacoraEntry(
+                            title = "Registro de Tanda 00 (Unidades Pendientes)",
+                            content = "Tanda 00 de ${finalTanda.productName} registrada en Jornada #${activeJornada.id} procedente de la jornada anterior. Unidades disponibles: ${finalTanda.estimatedYield.toInt()} ${finalTanda.productionUnit}. Equivalente de insumo base (informativo): ${finalTanda.baseQuantityUsed} ${finalTanda.baseQuantityUnit}. Sin consumo ni descuento de insumos de inventario.",
+                            category = "PRODUCCIÓN",
+                            authorUsername = finalTanda.responsibleUser
+                        )
                     )
-                )
+                } else {
+                    repository.insertBitacora(
+                        BitacoraEntry(
+                            title = "Registro de Tanda #${finalTanda.tandaNumber} (ABIERTA)",
+                            content = "Tanda de ${finalTanda.productName} registrada como ABIERTA con base de ${finalTanda.baseQuantityUsed} ${finalTanda.baseQuantityUnit}. Producción esperada: ${finalTanda.estimatedYield.toInt()} ${finalTanda.productionUnit}.",
+                            category = "PRODUCCIÓN",
+                            authorUsername = finalTanda.responsibleUser
+                        )
+                    )
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
                 _uiState.update { it.copy(errorMessage = "Error al registrar tanda: ${e.message}") }
@@ -3756,6 +3770,98 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
             } catch (e: Exception) {
                 _uiState.update { it.copy(errorMessage = "Error al cerrar la tanda: ${e.message}") }
+            }
+        }
+    }
+
+    fun archivarTandasConUnidadesPendientes(updatedTandas: List<Tanda>, summaryBitacora: String = "") {
+        viewModelScope.launch {
+            try {
+                updatedTandas.forEach { tanda ->
+                    repository.updateTanda(tanda)
+                }
+                val updatedIds = updatedTandas.map { it.id }.toSet()
+                val updatedUuids = updatedTandas.map { it.uuid }.filter { it.isNotBlank() }.toSet()
+                _uiState.update { state ->
+                    val newList = state.tandas.map { existing ->
+                        if (existing.id in updatedIds || existing.uuid in updatedUuids) {
+                            updatedTandas.find { it.id == existing.id || (existing.uuid.isNotBlank() && it.uuid == existing.uuid) } ?: existing
+                        } else existing
+                    }
+                    state.copy(
+                        tandas = newList,
+                        successMessage = "Tandas archivadas correctamente con el registro de unidades pendientes."
+                    )
+                }
+                if (summaryBitacora.isNotBlank()) {
+                    repository.insertBitacora(
+                        BitacoraEntry(
+                            title = "Archivado de Tandas y Unidades Pendientes",
+                            content = summaryBitacora,
+                            category = "PRODUCCIÓN",
+                            authorUsername = _uiState.value.currentUser?.username ?: "admin"
+                        )
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "Error al archivar tandas: ${e.message}") }
+            }
+        }
+    }
+
+    fun eliminarJornadaArchivadaDeTandas(jornadaId: Long, tandasList: List<Tanda>, onComplete: () -> Unit = {}) {
+        viewModelScope.launch {
+            try {
+                val tandaIds = tandasList.map { it.id }.filter { it > 0 }.toSet()
+                val tandaUuids = tandasList.map { it.uuid }.filter { it.isNotBlank() }.toSet()
+
+                repository.deleteTandas(tandasList)
+                if (jornadaId > 0) {
+                    repository.deleteJornadaById(jornadaId)
+                }
+
+                _uiState.update { current ->
+                    val newTandas = current.tandas.filterNot { it.id in tandaIds || (it.uuid.isNotBlank() && it.uuid in tandaUuids) }
+                    val newJornadas = if (jornadaId > 0) current.allJornadas.filterNot { it.id == jornadaId } else current.allJornadas
+                    current.copy(
+                        tandas = newTandas,
+                        allJornadas = newJornadas,
+                        successMessage = if (jornadaId > 0) "Jornada #$jornadaId y sus tandas fueron eliminadas del archivo." else "Tandas seleccionadas eliminadas del archivo."
+                    )
+                }
+                onComplete()
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "Error al eliminar la jornada del archivo: ${e.message}") }
+            }
+        }
+    }
+
+    fun limpiarTodoElArchivoDeTandas(archivedJornadasConTandas: List<Pair<Jornada, List<Tanda>>>, onComplete: () -> Unit = {}) {
+        viewModelScope.launch {
+            try {
+                val allTandasToDelete = archivedJornadasConTandas.flatMap { it.second }
+                val tandaIds = allTandasToDelete.map { it.id }.filter { it > 0 }.toSet()
+                val tandaUuids = allTandasToDelete.map { it.uuid }.filter { it.isNotBlank() }.toSet()
+
+                val jornadaIdsToDelete = archivedJornadasConTandas.map { it.first.id }.filter { it > 0 }.toSet()
+
+                repository.deleteTandas(allTandasToDelete)
+                jornadaIdsToDelete.forEach { jId ->
+                    repository.deleteJornadaById(jId)
+                }
+
+                _uiState.update { current ->
+                    val newTandas = current.tandas.filterNot { it.id in tandaIds || (it.uuid.isNotBlank() && it.uuid in tandaUuids) }
+                    val newJornadas = current.allJornadas.filterNot { it.id in jornadaIdsToDelete }
+                    current.copy(
+                        tandas = newTandas,
+                        allJornadas = newJornadas,
+                        successMessage = "Todo el archivo de tandas ha sido eliminado correctamente."
+                    )
+                }
+                onComplete()
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "Error al limpiar el archivo de tandas: ${e.message}") }
             }
         }
     }

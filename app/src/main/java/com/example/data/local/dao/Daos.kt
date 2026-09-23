@@ -425,6 +425,12 @@ interface TandaDao {
     @Update
     suspend fun update(tanda: Tanda)
 
+    @Delete
+    suspend fun delete(tanda: Tanda)
+
+    @Query("DELETE FROM tandas WHERE id IN (:ids)")
+    suspend fun deleteByIds(ids: List<Long>)
+
     @Query("DELETE FROM tandas")
     suspend fun deleteAllTandas()
 }

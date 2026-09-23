@@ -28,7 +28,8 @@ data class TandaPdfItem(
     val costFormatted: String,
     val potentialRevenueFormatted: String,
     val rawCost: Double,
-    val rawPotentialRevenue: Double
+    val rawPotentialRevenue: Double,
+    val observation: String = ""
 )
 
 data class ProductTandasPdfGroup(
@@ -104,7 +105,8 @@ object TandasJornadaPdfExporter {
                         costFormatted = "$${"%.2f".format(tanda.totalBatchCost)}",
                         potentialRevenueFormatted = "$${"%.2f".format(potRev)}",
                         rawCost = tanda.totalBatchCost,
-                        rawPotentialRevenue = potRev
+                        rawPotentialRevenue = potRev,
+                        observation = tanda.observation
                     )
                 }
 
@@ -244,7 +246,8 @@ object TandasJornadaPdfExporter {
                         paint.color = Color.parseColor("#0F172A")
                         paint.textSize = 8.5f
                         paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                        canvas.drawText("Tanda ${tanda.tandaNumber}", 38f, y + 12f, paint)
+                        val tNumLabel = if (tanda.tandaNumber == "00") "Tanda 00 (Pend.)" else "Tanda ${tanda.tandaNumber}"
+                        canvas.drawText(tNumLabel, 38f, y + 12f, paint)
 
                         paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
                         paint.color = Color.parseColor("#334155")
@@ -297,7 +300,63 @@ object TandasJornadaPdfExporter {
                 }
             }
 
-            // 3. RESUMEN FINAL CONSOLIDADO
+            // 3. UNIDADES PENDIENTES AL CIERRE
+            y = checkNewPage(60f, y)
+
+            paint.color = Color.parseColor("#334155")
+            canvas.drawRect(30f, y, (pageWidth - 30).toFloat(), y + 20f, paint)
+
+            paint.color = Color.WHITE
+            paint.textSize = 9.5f
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            canvas.drawText("UNIDADES PENDIENTES AL CIERRE DE LA JORNADA", 38f, y + 14f, paint)
+
+            y += 20f
+
+            val pendingProducts = groups.map { group ->
+                val pendingStr = group.tandas.firstNotNullOfOrNull { tanda ->
+                    if (tanda.observation.contains("Pendientes:")) {
+                        val part = tanda.observation.substringAfter("Pendientes:").trim()
+                        if (part.isNotBlank() && part != "0") part else null
+                    } else null
+                }
+                group.productName to pendingStr
+            }
+
+            val hasAnyPending = pendingProducts.any { it.second != null }
+
+            if (!hasAnyPending) {
+                y = checkNewPage(24f, y)
+                paint.color = Color.parseColor("#F8FAFC")
+                canvas.drawRect(30f, y, (pageWidth - 30).toFloat(), y + 20f, paint)
+
+                paint.color = Color.parseColor("#64748B")
+                paint.textSize = 9f
+                paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                canvas.drawText("Sin unidades pendientes.", 38f, y + 14f, paint)
+                y += 26f
+            } else {
+                for ((prodName, pStr) in pendingProducts) {
+                    y = checkNewPage(22f, y)
+                    paint.color = Color.parseColor("#F1F5F9")
+                    canvas.drawRect(30f, y, (pageWidth - 30).toFloat(), y + 18f, paint)
+
+                    paint.color = Color.parseColor("#0F172A")
+                    paint.textSize = 8.5f
+                    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                    canvas.drawText(prodName.uppercase(), 38f, y + 12f, paint)
+
+                    paint.color = if (pStr != null) Color.parseColor("#0284C7") else Color.parseColor("#64748B")
+                    paint.typeface = Typeface.create(Typeface.DEFAULT, if (pStr != null) Typeface.BOLD else Typeface.NORMAL)
+                    canvas.drawText(pStr ?: "Sin unidades pendientes", 220f, y + 12f, paint)
+
+                    canvas.drawLine(30f, y + 18f, (pageWidth - 30).toFloat(), y + 18f, linePaint)
+                    y += 18f
+                }
+                y += 8f
+            }
+
+            // 4. RESUMEN FINAL CONSOLIDADO
             y = checkNewPage(65f, y)
             paint.color = Color.parseColor("#1E293B")
             canvas.drawRoundRect(30f, y, (pageWidth - 30).toFloat(), y + 54f, 6f, 6f, paint)
