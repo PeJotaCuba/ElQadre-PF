@@ -733,24 +733,17 @@ fun DuenoScreen(
                         }
 
                         DuenoView.TANDAS -> {
-                            Column(
+                            Box(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                DuenoSubscreenHeader(
-                                    title = "Tandas de Producción",
-                                    subtitle = "Lotes de producción, control de costos y rendimientos",
-                                    icon = Icons.Outlined.History,
+                                TandasPane(
+                                    uiState = uiState,
+                                    viewModel = viewModel,
                                     onBack = {
                                         currentView = previousView ?: DuenoView.INICIO
                                         previousView = null
                                     }
-                                )
-                                TandasPane(
-                                    uiState = uiState,
-                                    viewModel = viewModel
                                 )
                             }
                         }

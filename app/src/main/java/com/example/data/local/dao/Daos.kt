@@ -416,6 +416,9 @@ interface TandaDao {
     @Query("SELECT * FROM tandas ORDER BY date DESC")
     fun getAll(): Flow<List<Tanda>>
 
+    @Query("SELECT * FROM tandas ORDER BY date DESC")
+    suspend fun getAllSync(): List<Tanda>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(tanda: Tanda): Long
 

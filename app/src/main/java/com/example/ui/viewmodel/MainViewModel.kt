@@ -1519,6 +1519,37 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val currentJornada = _uiState.value.activeJornada ?: return@launch
             val username = _uiState.value.currentUser?.username ?: "dueno"
+            val state = _uiState.value
+
+            // 1. CIERRE AUTOMÁTICO DE TANDAS AL CERRAR JORNADA
+            val openTandas = state.tandas.filter {
+                (it.jornadaId == currentJornada.id || (currentJornada.openedAt > 0 && it.date >= currentJornada.openedAt)) &&
+                (it.status == "ACTIVA" || it.status == "ABIERTA" || it.status == "ACTIVADA")
+            }
+            openTandas.forEach { tanda ->
+                val finalQty = if (tanda.actualYield > 0.0) tanda.actualYield else if (tanda.expectedYield > 0.0) tanda.expectedYield else tanda.estimatedYield
+                val rend = if (tanda.baseQuantityUsed > 0.0) finalQty / tanda.baseQuantityUsed else 0.0
+                val prod = state.products.find { it.id == tanda.productId }
+                val salePrice = if (tanda.salePrice > 0.0) tanda.salePrice else (prod?.price ?: 0.0)
+                val rev = finalQty * salePrice
+                val profit = rev - tanda.totalBatchCost
+                val pMargin = if (rev > 0.0) (profit / rev) * 100.0 else 0.0
+                val uCost = if (finalQty > 0.0) tanda.totalBatchCost / finalQty else 0.0
+
+                repository.updateTanda(
+                    tanda.copy(
+                        jornadaId = currentJornada.id,
+                        status = "CERRADA",
+                        actualYield = finalQty,
+                        yieldPercentage = rend,
+                        expectedRevenue = rev,
+                        estimatedProfit = profit,
+                        profitMargin = pMargin,
+                        realUnitCost = uCost
+                    )
+                )
+            }
+
             repository.closeJornada(currentJornada, finalCash, username, notes)
             _uiState.update { it.copy(successMessage = "Jornada cerrada correctamente y cuadre registrado.") }
         }
@@ -1539,9 +1570,42 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val username = _uiState.value.currentUser?.username ?: "dueno"
             val state = _uiState.value
 
+            // 1. CIERRE AUTOMÁTICO DE TANDAS AL CERRAR JORNADA
+            val openTandas = state.tandas.filter {
+                (it.jornadaId == currentJornada.id || (currentJornada.openedAt > 0 && it.date >= currentJornada.openedAt)) &&
+                (it.status == "ACTIVA" || it.status == "ABIERTA" || it.status == "ACTIVADA")
+            }
+            val closedTandasForJornada = openTandas.map { tanda ->
+                val finalQty = if (tanda.actualYield > 0.0) tanda.actualYield else if (tanda.expectedYield > 0.0) tanda.expectedYield else tanda.estimatedYield
+                val rend = if (tanda.baseQuantityUsed > 0.0) finalQty / tanda.baseQuantityUsed else 0.0
+                val prod = state.products.find { it.id == tanda.productId }
+                val salePrice = if (tanda.salePrice > 0.0) tanda.salePrice else (prod?.price ?: 0.0)
+                val rev = finalQty * salePrice
+                val profit = rev - tanda.totalBatchCost
+                val pMargin = if (rev > 0.0) (profit / rev) * 100.0 else 0.0
+                val uCost = if (finalQty > 0.0) tanda.totalBatchCost / finalQty else 0.0
+
+                val closed = tanda.copy(
+                    jornadaId = currentJornada.id,
+                    status = "CERRADA",
+                    actualYield = finalQty,
+                    yieldPercentage = rend,
+                    expectedRevenue = rev,
+                    estimatedProfit = profit,
+                    profitMargin = pMargin,
+                    realUnitCost = uCost
+                )
+                repository.updateTanda(closed)
+                closed
+            }
+
+            val updatedTandasList = state.tandas.map { t ->
+                closedTandasForJornada.find { it.id == t.id } ?: t
+            }
+
             val calcResult = com.example.util.QJornadaExporter.calculateJornadaEconomics(
                 jornada = currentJornada,
-                allTandas = state.tandas,
+                allTandas = updatedTandasList,
                 allMovimientos = state.movimientosMercaderia,
                 allProducts = state.products,
                 allMercaderias = state.mercaderias,

@@ -181,6 +181,44 @@ class AppRepository(private val db: AppDatabase) {
             liquidezFinal = liquidezFinal
         )
         db.jornadaDao().updateJornada(updated)
+
+        // 1. CIERRE AUTOMÁTICO DE TANDAS AL CERRAR JORNADA
+        // Todas las tandas que pertenezcan a esa jornada deben quedar automáticamente cerradas.
+        // NO borrar ninguna tanda. Toda la información debe conservarse.
+        try {
+            val allTandas = db.tandaDao().getAllSync()
+            val tandasToClose = allTandas.filter { tanda ->
+                (tanda.jornadaId == jornada.id || (jornada.openedAt > 0 && tanda.date >= jornada.openedAt)) &&
+                (tanda.status == "ACTIVA" || tanda.status == "ABIERTA" || tanda.status == "ACTIVADA")
+            }
+            val allProducts = db.productDao().getAllProductsSync()
+            tandasToClose.forEach { tanda ->
+                val finalQty = if (tanda.actualYield > 0.0) tanda.actualYield else if (tanda.expectedYield > 0.0) tanda.expectedYield else tanda.estimatedYield
+                val rend = if (tanda.baseQuantityUsed > 0.0) finalQty / tanda.baseQuantityUsed else 0.0
+                val prod = allProducts.find { it.id == tanda.productId }
+                val salePrice = if (tanda.salePrice > 0.0) tanda.salePrice else (prod?.price ?: 0.0)
+                val rev = finalQty * salePrice
+                val profit = rev - tanda.totalBatchCost
+                val pMargin = if (rev > 0.0) (profit / rev) * 100.0 else 0.0
+                val uCost = if (finalQty > 0.0) tanda.totalBatchCost / finalQty else 0.0
+
+                db.tandaDao().update(
+                    tanda.copy(
+                        jornadaId = jornada.id,
+                        status = "CERRADA",
+                        actualYield = finalQty,
+                        yieldPercentage = rend,
+                        expectedRevenue = rev,
+                        estimatedProfit = profit,
+                        profitMargin = pMargin,
+                        realUnitCost = uCost
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
         db.bitacoraDao().insertEntry(
             BitacoraEntry(
                 title = "Cierre de Jornada",
@@ -774,6 +812,7 @@ class AppRepository(private val db: AppDatabase) {
 
     // Tandas
     val allTandas: Flow<List<Tanda>> = db.tandaDao().getAll()
+    suspend fun getAllTandasSync(): List<Tanda> = db.tandaDao().getAllSync()
     suspend fun insertTanda(tanda: Tanda): Long = db.tandaDao().insert(tanda)
     suspend fun updateTanda(tanda: Tanda) = db.tandaDao().update(tanda)
 

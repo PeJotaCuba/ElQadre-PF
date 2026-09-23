@@ -347,7 +347,8 @@ fun ProductionWorkspaceDialog(
                         ProductionTab.TANDAS -> {
                             TandasPane(
                                 uiState = uiState,
-                                viewModel = viewModel
+                                viewModel = viewModel,
+                                onBack = onDismiss
                             )
                         }
                         ProductionTab.COSTOS -> {

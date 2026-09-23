@@ -10,6 +10,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ContentPaste
@@ -35,6 +38,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.example.data.local.model.*
 import com.example.ui.screens.dueno.RegisterTandaDialog
 import com.example.ui.theme.*
@@ -44,476 +49,235 @@ import com.example.ui.viewmodel.UnitConverter
 import com.example.util.CocinaTandasScanResult
 import com.example.util.CostCalculationHelper
 import com.example.util.SmsTandasHelper
+import com.example.util.TandasJornadaPdfExporter
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+data class ProductTandasSummary(
+    val productId: Long,
+    val productName: String,
+    val tandasCount: Int,
+    val expectedYield: Double,
+    val productionUnit: String,
+    val totalCost: Double,
+    val tandas: List<Tanda>
+)
+
 @Composable
 fun TandasPane(
     uiState: MainUiState,
-    viewModel: MainViewModel
+    viewModel: MainViewModel,
+    onBack: (() -> Unit)? = null
 ) {
-    val context = LocalContext.current
     var showAgregarTandaDialog by remember { mutableStateOf(false) }
+    var showingArchivoScreen by remember { mutableStateOf(false) }
+    var selectedProductForDetail by remember { mutableStateOf<ProductTandasSummary?>(null) }
     var selectedTandaForDetail by remember { mutableStateOf<Tanda?>(null) }
     var selectedTandaForEdit by remember { mutableStateOf<Tanda?>(null) }
     var selectedTandaForClose by remember { mutableStateOf<Tanda?>(null) }
-    var importFeedbackMessage by remember { mutableStateOf<String?>(null) }
-    var importFeedbackTitle by remember { mutableStateOf("Importar Tandas") }
 
-    val handleImportarTandasClick: () -> Unit = {
-        val cocinaPhones = mutableListOf<String>()
-        uiState.users.filter { it.role == UserRole.COCINA && it.telefono.isNotBlank() }.forEach { cocinaPhones.add(it.telefono) }
-        uiState.personalContratado.filter { it.role.equals("COCINA", ignoreCase = true) && it.movil.isNotBlank() }.forEach { cocinaPhones.add(it.movil) }
-        val distinctCocinaPhones = cocinaPhones.distinct()
-        val currentNeg = uiState.businessConfig?.codigoNegocio ?: "NEG-000001"
-        val existingUuids = uiState.tandas.map { it.uuid }.toSet()
-
-        val scanResult = SmsTandasHelper.scanInboxForCocinaTandas(
-            context = context,
-            cocinaPhoneNumbers = distinctCocinaPhones,
-            currentCodigoNegocio = currentNeg,
-            existingTandaUuids = existingUuids
+    // 2. ARCHIVO: Pantalla independiente de Tandas (no cuadro superpuesto, no debajo de las tarjetas)
+    if (showingArchivoScreen) {
+        TandasArchivoScreen(
+            uiState = uiState,
+            viewModel = viewModel,
+            onBack = { showingArchivoScreen = false }
         )
+        return
+    }
 
-        when (scanResult) {
-            is CocinaTandasScanResult.Success -> {
-                viewModel.importarTandasDesdeCocina(
-                    tandas = scanResult.newTandas,
-                    onSuccess = { count ->
-                        importFeedbackTitle = "Importación Exitosa"
-                        importFeedbackMessage = "Se importaron exitosamente $count tanda(s) desde Cocina (${scanResult.senderPhone})."
-                    },
-                    onError = { err ->
-                        importFeedbackTitle = "Error de Importación"
-                        importFeedbackMessage = err
-                    }
-                )
+    // Tandas de la jornada actual que estén abiertas (no cerradas)
+    val activeJornada = uiState.activeJornada
+    val openTandas = remember(uiState.tandas, activeJornada) {
+        val activeTandas = uiState.tandas.filter { it.status == "ACTIVA" || it.status == "ACTIVADA" || it.status == "ABIERTA" }
+        if (activeJornada != null) {
+            val jorTandas = activeTandas.filter {
+                it.jornadaId == activeJornada.id || (activeJornada.openedAt > 0 && it.date >= activeJornada.openedAt) || it.jornadaId == 0L
             }
-            is CocinaTandasScanResult.AllAlreadyImported -> {
-                importFeedbackTitle = "Tandas Ya Registradas"
-                importFeedbackMessage = "Las ${scanResult.totalInSms} tanda(s) del SMS de Cocina (${scanResult.senderPhone}) ya se encontraban previamente importadas."
-            }
-            is CocinaTandasScanResult.BusinessMismatch -> {
-                importFeedbackTitle = "Negocio No Coincide"
-                importFeedbackMessage = "El mensaje SMS de Cocina pertenece a otro negocio (${scanResult.actual}) y no al negocio activo ($currentNeg). No se importaron datos."
-            }
-            is CocinaTandasScanResult.InvalidFormat -> {
-                importFeedbackTitle = "Formato de SMS Inválido"
-                importFeedbackMessage = "El mensaje recibido desde Cocina está corrupto o incompleto: ${scanResult.reason}"
-            }
-            is CocinaTandasScanResult.NoSmsFound -> {
-                // Flujo alternativo: si no hay SMS válido, abrir directamente el formulario ACTIVAR NUEVA TANDA
-                showAgregarTandaDialog = true
-            }
+            if (jorTandas.isNotEmpty()) jorTandas else activeTandas
+        } else {
+            activeTandas
         }
     }
 
-    // Categorized Tandas
-    val activeTandas = remember(uiState.tandas) {
-        uiState.tandas.filter { it.status == "ACTIVA" || it.status == "ACTIVADA" || it.status == "ABIERTA" }
-    }
-    val closedTandas = remember(uiState.tandas) {
-        uiState.tandas.filter { it.status == "CERRADA" }
-    }
-    val tandasJornada = remember(uiState.tandas) { uiState.tandas }
-
-    // Consolidated Summary Calculations
-    val totalTandasCount = tandasJornada.size
-    val totalProducidoReal = remember(tandasJornada) { tandasJornada.sumOf { it.actualYield.ifZeroUse(it.estimatedYield) } }
-    val totalCostoProduccion = remember(tandasJornada) { tandasJornada.sumOf { it.totalBatchCost } }
-    val totalIngresoEsperado = remember(tandasJornada, uiState.products) {
+    // Agrupación por producto: exactamente una tarjeta por producto con tandas abiertas
+    val productSummaries = remember(openTandas, uiState.products) {
         val prodMap = uiState.products.associateBy { it.id }
-        tandasJornada.sumOf { tanda ->
-            val catalogPrice = prodMap[tanda.productId]?.price ?: 0.0
-            if (tanda.expectedRevenue > 0.0) tanda.expectedRevenue else catalogPrice * (tanda.actualYield.ifZeroUse(tanda.estimatedYield))
-        }
+        openTandas.groupBy { it.productId }.map { (prodId, tandasList) ->
+            val prod = prodMap[prodId]
+            val pName = prod?.name ?: tandasList.firstOrNull()?.productName ?: "Producto #$prodId"
+            val count = tandasList.size
+            val expYield = tandasList.sumOf { if (it.expectedYield > 0.0) it.expectedYield else it.estimatedYield }
+            val unit = tandasList.firstOrNull()?.productionUnit?.ifBlank { null } ?: "u"
+            val cost = tandasList.sumOf { it.totalBatchCost }
+            ProductTandasSummary(
+                productId = prodId,
+                productName = pName,
+                tandasCount = count,
+                expectedYield = expYield,
+                productionUnit = unit,
+                totalCost = cost,
+                tandas = tandasList
+            )
+        }.sortedBy { it.productName.lowercase() }
     }
-    val totalGanancia = totalIngresoEsperado - totalCostoProduccion
-
-    // Cost Breakdown for Pie Chart
-    val totalMP = remember(tandasJornada) { tandasJornada.sumOf { it.totalDirectIngredientsCost } }
-    val totalMO = remember(tandasJornada) { tandasJornada.sumOf { it.totalLaborCost } }
-    val totalGI = remember(tandasJornada) { tandasJornada.sumOf { it.totalIndirectCostAllocated } }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 80.dp)
+            .padding(horizontal = 14.dp, vertical = 8.dp)
             .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // Top Action Bar & Header
-        Surface(
-            shape = RoundedCornerShape(10.dp),
-            color = Color.White,
-            border = BorderStroke(1.dp, ElQadreBorderLight),
-            modifier = Modifier.fillMaxWidth()
+        // 1. ENCABEZADO: Únicamente flecha ← a la izquierda y botón ARCHIVO a la derecha
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(
-                modifier = Modifier.padding(10.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+            // Flecha ← a la izquierda para regresar (área táctil accesible de 48dp)
+            IconButton(
+                onClick = { onBack?.invoke() },
+                modifier = Modifier
+                    .size(48.dp)
+                    .testTag("tandas_back_button")
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Icon(Icons.Outlined.Factory, contentDescription = null, tint = ElQadreNavy, modifier = Modifier.size(18.dp))
-                            Text(
-                                text = "GESTIÓN DE TANDAS Y PRODUCCIÓN",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = ElQadreNavy
-                            )
-                        }
-                        Text(
-                            text = "Flujo de activación por cantidad base, descuento inmediato y cierre por producción real",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontSize = 10.sp,
-                            color = Slate600
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    Surface(
-                        color = ElQadreNavy,
-                        shape = RoundedCornerShape(6.dp)
-                    ) {
-                        Text(
-                            text = "$totalTandasCount Tandas Registradas",
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 10.sp,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                        )
-                    }
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Button(
-                        onClick = handleImportarTandasClick,
-                        colors = ButtonDefaults.buttonColors(containerColor = ElQadreGoldDark),
-                        shape = RoundedCornerShape(6.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 36.dp)
-                            .testTag("importar_tandas_button")
-                    ) {
-                        Icon(Icons.Outlined.ContentPaste, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("IMPORTAR TANDAS", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    }
-
-                    Button(
-                        onClick = { showAgregarTandaDialog = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
-                        shape = RoundedCornerShape(6.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 36.dp)
-                            .testTag("agregar_tanda_button")
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("AGREGAR TANDA", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
-
-        // ==========================================
-        // 4. SECCIÓN TANDAS ACTIVAS (Altura reducida a ~1/3)
-        // ==========================================
-        Surface(
-            shape = RoundedCornerShape(8.dp),
-            color = Color.White,
-            border = BorderStroke(1.dp, Amber600),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Icon(Icons.Outlined.HourglassTop, contentDescription = null, tint = Amber700, modifier = Modifier.size(16.dp))
-                        Text(
-                            text = "TANDAS ACTIVAS",
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 13.sp,
-                            color = ElQadreNavy
-                        )
-                    }
-
-                    Surface(
-                        color = Amber50,
-                        border = BorderStroke(1.dp, Amber600),
-                        shape = RoundedCornerShape(4.dp)
-                    ) {
-                        Text(
-                            text = "${activeTandas.size} En Proceso",
-                            color = Amber700,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 10.sp,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-                }
-
-                if (activeTandas.isEmpty()) {
-                    Surface(
-                        color = Amber50.copy(alpha = 0.6f),
-                        shape = RoundedCornerShape(6.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = Emerald600, modifier = Modifier.size(16.dp))
-                            Text(
-                                text = "No hay tandas activas actualmente",
-                                fontWeight = FontWeight.Bold,
-                                color = Slate800,
-                                fontSize = 12.sp
-                            )
-                        }
-                    }
-                } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        activeTandas.forEach { tanda ->
-                            ActiveTandaCard(
-                                tanda = tanda,
-                                products = uiState.products,
-                                onEdit = { selectedTandaForEdit = tanda },
-                                onCloseTanda = { selectedTandaForClose = tanda },
-                                onClickDetail = { selectedTandaForDetail = tanda }
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // ==========================================
-        // 7. REGISTRO CONSOLIDADO Y HISTORIAL DE TANDAS
-        // ==========================================
-        Surface(
-            shape = RoundedCornerShape(10.dp),
-            color = Color.White,
-            border = BorderStroke(1.dp, ElQadreBorderLight),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = "REGISTRO CONSOLIDADO DE TANDAS (JORNADA)",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp,
-                    color = ElQadreNavy
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Regresar",
+                    tint = ElQadreNavy,
+                    modifier = Modifier.size(28.dp)
                 )
+            }
 
-                if (tandasJornada.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Slate50),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Outlined.History, contentDescription = null, tint = Slate400, modifier = Modifier.size(24.dp))
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text("No hay tandas registradas en la jornada", fontWeight = FontWeight.Bold, color = Slate600, fontSize = 12.sp)
+            // Botón ARCHIVO a la derecha (estilo visual ElQadre, letras grandes y área cómoda)
+            Button(
+                onClick = { showingArchivoScreen = true },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color.White,
+                    contentColor = ElQadreNavy
+                ),
+                border = BorderStroke(1.5.dp, ElQadreNavy),
+                shape = RoundedCornerShape(10.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                modifier = Modifier
+                    .heightIn(min = 44.dp)
+                    .testTag("tandas_archivo_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.History,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = ElQadreNavy
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "ARCHIVO",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Black,
+                    color = ElQadreNavy,
+                    letterSpacing = 0.5.sp
+                )
+            }
+        }
+
+        // 2 & 3 & 4. INFORMACIÓN PRINCIPAL: Una tarjeta por producto con tandas abiertas
+        if (productSummaries.isEmpty()) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = Color.White,
+                border = BorderStroke(1.dp, Slate200),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.CheckCircle,
+                        contentDescription = null,
+                        tint = Emerald600,
+                        modifier = Modifier.size(36.dp)
+                    )
+                    Text(
+                        text = "No hay tandas abiertas en la jornada",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = ElQadreNavy,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        } else {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                productSummaries.forEach { summary ->
+                    ProductTandasOpenCard(
+                        summary = summary,
+                        onClick = {
+                            selectedProductForDetail = summary
+                        },
+                        onCloseTanda = { tanda ->
+                            selectedTandaForClose = tanda
                         }
-                    }
-                } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        tandasJornada.forEach { tanda ->
-                            TandaTableRowCard(
-                                tanda = tanda,
-                                products = uiState.products,
-                                onClickDetail = { selectedTandaForDetail = tanda },
-                                onCloseTanda = if (tanda.status != "CERRADA") { { selectedTandaForClose = tanda } } else null,
-                                onEditTanda = if (tanda.status != "CERRADA") { { selectedTandaForEdit = tanda } } else null
-                            )
-                        }
-                    }
+                    )
                 }
             }
         }
 
-        // Resumen General y Análisis Gráfico
-        Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = Slate50,
-            border = BorderStroke(1.dp, Slate200),
-            modifier = Modifier.fillMaxWidth()
+        // 5. NUEVA TANDA (Único botón principal, grande, visible y fácil de pulsar)
+        Button(
+            onClick = { showAgregarTandaDialog = true },
+            colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
+            shape = RoundedCornerShape(14.dp),
+            elevation = ButtonDefaults.buttonElevation(defaultElevation = 3.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+                .testTag("nueva_tanda_button")
         ) {
-            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        "RESUMEN GENERAL DE LA JORNADA",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = ElQadreNavy
-                    )
-                    Text(
-                        "$totalTandasCount Tandas Totales",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Slate600
-                    )
-                }
-
-                HorizontalDivider(color = Slate200)
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column {
-                        Text("Total Producción", fontSize = 10.sp, color = Slate500)
-                        Text("${totalProducidoReal.toInt()} Unidades", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = ElQadreNavy)
-                    }
-                    Column {
-                        Text("Costo Total", fontSize = 10.sp, color = Slate500)
-                        Text("$${"%.2f".format(totalCostoProduccion)} CUP", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Rose700)
-                    }
-                    Column {
-                        Text("Ingreso Esperado", fontSize = 10.sp, color = Slate500)
-                        Text("$${"%.2f".format(totalIngresoEsperado)} CUP", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Emerald700)
-                    }
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text("Ganancia", fontSize = 10.sp, color = Slate500)
-                        Text("$${"%.2f".format(totalGanancia)} CUP", fontWeight = FontWeight.ExtraBold, fontSize = 12.sp, color = ElQadreGoldDark)
-                    }
-                }
-
-                // Pie Chart of Cost Composition
-                if (totalCostoProduccion > 0) {
-                    HorizontalDivider(color = Slate200)
-                    Text("COMPOSICIÓN DEL COSTO DE PRODUCCIÓN", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = ElQadreNavy)
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceAround
-                    ) {
-                        Box(
-                            modifier = Modifier.size(120.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Canvas(modifier = Modifier.fillMaxSize()) {
-                                val total = totalCostoProduccion.toFloat()
-                                if (total > 0f) {
-                                    val sweepMP = (totalMP.toFloat() / total) * 360f
-                                    val sweepMO = (totalMO.toFloat() / total) * 360f
-                                    val sweepGI = (totalGI.toFloat() / total) * 360f
-
-                                    var startAngle = -90f
-
-                                    drawArc(
-                                        color = Color(0xFF0284C7),
-                                        startAngle = startAngle,
-                                        sweepAngle = sweepMP,
-                                        useCenter = false,
-                                        style = Stroke(width = 20.dp.toPx())
-                                    )
-                                    startAngle += sweepMP
-
-                                    drawArc(
-                                        color = Color(0xFFD97706),
-                                        startAngle = startAngle,
-                                        sweepAngle = sweepMO,
-                                        useCenter = false,
-                                        style = Stroke(width = 20.dp.toPx())
-                                    )
-                                    startAngle += sweepMO
-
-                                    drawArc(
-                                        color = Color(0xFF4B5563),
-                                        startAngle = startAngle,
-                                        sweepAngle = sweepGI,
-                                        useCenter = false,
-                                        style = Stroke(width = 20.dp.toPx())
-                                    )
-                                }
-                            }
-
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("COSTO", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Slate400)
-                                Text("$${"%.0f".format(totalCostoProduccion)}", fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, color = ElQadreNavy)
-                            }
-                        }
-
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            val pctMP = if (totalCostoProduccion > 0) (totalMP / totalCostoProduccion) * 100 else 0.0
-                            val pctMO = if (totalCostoProduccion > 0) (totalMO / totalCostoProduccion) * 100 else 0.0
-                            val pctGI = if (totalCostoProduccion > 0) (totalGI / totalCostoProduccion) * 100 else 0.0
-
-                            LegendBadge(color = Color(0xFF0284C7), label = "Insumos", amount = totalMP, percentage = pctMP)
-                            LegendBadge(color = Color(0xFFD97706), label = "Mano de Obra", amount = totalMO, percentage = pctMO)
-                            LegendBadge(color = Color(0xFF4B5563), label = "Costos Indirectos", amount = totalGI, percentage = pctGI)
-                        }
-                    }
-                }
-            }
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(24.dp)
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                text = "NUEVA TANDA",
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Black,
+                color = Color.White,
+                letterSpacing = 0.5.sp
+            )
         }
+
+        Spacer(modifier = Modifier.height(24.dp))
     }
 
-    // Modal Dialogs
+    // Modal para registrar nueva tanda (formulario limpio y accesible para adultos mayores)
     if (showAgregarTandaDialog) {
-        RegisterTandaDialog(
+        NuevaTandaDialog(
             uiState = uiState,
             viewModel = viewModel,
             onDismiss = { showAgregarTandaDialog = false }
         )
     }
 
-    importFeedbackMessage?.let { msg ->
-        AlertDialog(
-            onDismissRequest = { importFeedbackMessage = null },
-            title = {
-                Text(
-                    text = importFeedbackTitle,
-                    fontWeight = FontWeight.Bold,
-                    color = ElQadreNavy
-                )
-            },
-            text = {
-                Text(
-                    text = msg,
-                    fontSize = 14.sp,
-                    color = Slate700
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = { importFeedbackMessage = null },
-                    colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy)
-                ) {
-                    Text("Aceptar", fontWeight = FontWeight.Bold)
-                }
-            }
+    // Detalle a pantalla completa de las tandas de un producto
+    selectedProductForDetail?.let { summary ->
+        ProductTandasDetailDialog(
+            summary = summary,
+            uiState = uiState,
+            onDismiss = { selectedProductForDetail = null }
         )
     }
 
@@ -541,6 +305,1174 @@ fun TandasPane(
             uiState = uiState,
             onDismiss = { selectedTandaForDetail = null }
         )
+    }
+}
+
+// =================================================================
+// TARJETA DE PRODUCTO CON TANDAS ABIERTAS (MÁXIMA ACCESIBILIDAD)
+// =================================================================
+@Composable
+fun ProductTandasOpenCard(
+    summary: ProductTandasSummary,
+    onClick: () -> Unit,
+    onCloseTanda: (Tanda) -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = Color.White,
+        border = BorderStroke(1.5.dp, ElQadreNavy.copy(alpha = 0.15f)),
+        shadowElevation = 2.dp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .testTag("tanda_product_card_${summary.productId}")
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // Fila superior: Nombre del producto en letras grandes
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onClick),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = summary.productName.uppercase(),
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Black,
+                    color = ElQadreNavy,
+                    modifier = Modifier.weight(1f)
+                )
+                Surface(
+                    color = Color(0xFF0F766E).copy(alpha = 0.12f),
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, Color(0xFF0F766E))
+                ) {
+                    Text(
+                        text = if (summary.tandasCount == 1) "1 TANDA ABIERTA" else "${summary.tandasCount} TANDAS ABIERTAS",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color(0xFF0F766E),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+
+            // Cada tanda abierta muestra la información esencial:
+            // - cantidad de insumo base;
+            // - cantidad de producto esperada;
+            // - costo.
+            // La tanda debe quedar identificada como ABIERTA.
+            // Al lado debe aparecer un botón grande: CERRAR TANDA
+            summary.tandas.forEach { tanda ->
+                OpenTandaItemCard(
+                    tanda = tanda,
+                    onCloseTanda = { onCloseTanda(tanda) }
+                )
+            }
+        }
+    }
+}
+
+// =================================================================
+// ITEM DE TANDA ABIERTA (INFORMACIÓN ESENCIAL Y BOTÓN CERRAR TANDA)
+// =================================================================
+@Composable
+fun OpenTandaItemCard(
+    tanda: Tanda,
+    onCloseTanda: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = Slate50,
+        border = BorderStroke(1.dp, Slate200),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // Identificada como ABIERTA
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    color = Color(0xFF0F766E),
+                    shape = RoundedCornerShape(6.dp)
+                ) {
+                    Text(
+                        text = "ABIERTA",
+                        color = Color.White,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 13.sp,
+                        letterSpacing = 0.5.sp,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                    )
+                }
+
+                Text(
+                    text = "Tanda #${tanda.tandaNumber}",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Slate500
+                )
+            }
+
+            // Información esencial:
+            // 1. Cantidad de insumo base
+            // 2. Cantidad de producto esperada
+            // 3. Costo
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Bottom
+            ) {
+                // Insumo base
+                Column(modifier = Modifier.weight(1.1f)) {
+                    Text(
+                        text = "Insumo base",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Slate500
+                    )
+                    Text(
+                        text = "${tanda.baseQuantityUsed} ${tanda.baseQuantityUnit}",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Black,
+                        color = ElQadreNavy
+                    )
+                    if (tanda.baseMateriaPrimaName.isNotBlank()) {
+                        Text(
+                            text = tanda.baseMateriaPrimaName,
+                            fontSize = 11.sp,
+                            color = Slate500,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                // Cantidad de producto esperada
+                Column(modifier = Modifier.weight(1.1f)) {
+                    Text(
+                        text = "Esperado",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Slate500
+                    )
+                    val yieldText = if (tanda.expectedYield % 1.0 == 0.0) {
+                        "${tanda.expectedYield.toInt()} ${tanda.productionUnit}"
+                    } else {
+                        "${"%.1f".format(tanda.expectedYield)} ${tanda.productionUnit}"
+                    }
+                    Text(
+                        text = yieldText,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color(0xFF0284C7)
+                    )
+                }
+
+                // Costo
+                Column(modifier = Modifier.weight(1.1f), horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = "Costo",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Slate500
+                    )
+                    Text(
+                        text = "$${"%.2f".format(tanda.totalBatchCost)} CUP",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Rose700
+                    )
+                }
+            }
+
+            // Botón grande: CERRAR TANDA
+            Button(
+                onClick = onCloseTanda,
+                colors = ButtonDefaults.buttonColors(containerColor = Emerald600),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp)
+                    .testTag("btn_cerrar_tanda_${tanda.id}")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "CERRAR TANDA",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color.White
+                )
+            }
+        }
+    }
+}
+
+// =================================================================
+// DETALLE DE LAS TANDAS DE UN PRODUCTO (PANTALLA COMPLETA)
+// =================================================================
+@Composable
+fun ProductTandasDetailDialog(
+    summary: ProductTandasSummary,
+    uiState: MainUiState,
+    onDismiss: () -> Unit
+) {
+    // Tandas de este producto ordenadas secuencialmente (Tanda 01, Tanda 02...)
+    val productTandas = remember(summary.productId, uiState.tandas, uiState.activeJornada) {
+        val allForProduct = uiState.tandas.filter { it.productId == summary.productId }
+        val activeJ = uiState.activeJornada
+        val forJornada = if (activeJ != null) {
+            allForProduct.filter { it.jornadaId == activeJ.id || (activeJ.openedAt > 0 && it.date >= activeJ.openedAt) }
+        } else emptyList()
+
+        val list = when {
+            forJornada.isNotEmpty() -> forJornada
+            summary.tandas.isNotEmpty() -> summary.tandas
+            else -> allForProduct
+        }
+        list.sortedWith(
+            compareBy<Tanda> { it.tandaNumber.toIntOrNull() ?: Int.MAX_VALUE }
+                .thenBy { it.tandaNumber }
+                .thenBy { it.date }
+        )
+    }
+
+    // Obtenemos el producto y su precio de venta establecido en la Ficha de Costo
+    val product = remember(summary.productId, uiState.products) {
+        uiState.products.find { it.id == summary.productId }
+    }
+
+    val salePrice = remember(product, uiState) {
+        if (product != null) {
+            val costSheet = CostCalculationHelper.calculateCostSheet(product, uiState)
+            if (costSheet.precioDefinitivo > 0.0) costSheet.precioDefinitivo else product.price
+        } else 0.0
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            dismissOnBackPress = true,
+            dismissOnClickOutside = false
+        )
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding(),
+            color = Slate50
+        ) {
+            Scaffold(
+                containerColor = Slate50,
+                topBar = {
+                    Surface(
+                        color = Color.White,
+                        shadowElevation = 3.dp,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp, vertical = 14.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "DETALLE DE TANDAS",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Slate500,
+                                    letterSpacing = 1.sp
+                                )
+                                Text(
+                                    text = summary.productName.uppercase(),
+                                    fontSize = 24.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = ElQadreNavy,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            // 7. CIERRE DEL DETALLE: Arriba a la derecha colocar: X para cerrar el detalle
+                            IconButton(
+                                onClick = onDismiss,
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .testTag("btn_close_detail_x")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Cerrar",
+                                    tint = ElQadreNavy,
+                                    modifier = Modifier.size(28.dp)
+                                )
+                            }
+                        }
+                    }
+                },
+                bottomBar = {
+                    // 7. CIERRE DEL DETALLE: Abajo colocar: ACEPTAR (grande, accesible, sin otros botones)
+                    Surface(
+                        color = Color.White,
+                        shadowElevation = 8.dp,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp, vertical = 16.dp)
+                        ) {
+                            Button(
+                                onClick = onDismiss,
+                                colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(60.dp)
+                                    .testTag("btn_aceptar_detail")
+                            ) {
+                                Text(
+                                    text = "ACEPTAR",
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Color.White,
+                                    letterSpacing = 0.5.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            ) { innerPadding ->
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                        .padding(horizontal = 20.dp, vertical = 16.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    if (productTandas.isEmpty()) {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color.White,
+                            border = BorderStroke(1.dp, Slate200),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "No hay tandas registradas para este producto.",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Slate600,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(32.dp)
+                            )
+                        }
+                    } else {
+                        // 2. INFORMACIÓN: Mostrar las tandas de ese producto una debajo de otra, en orden
+                        productTandas.forEach { tanda ->
+                            TandaProductDetailCard(
+                                tanda = tanda,
+                                salePrice = if (salePrice > 0.0) salePrice else tanda.salePrice,
+                                fallbackProductionUnit = summary.productionUnit
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+            }
+        }
+    }
+}
+
+// =================================================================
+// TARJETA DE CADA TANDA CON INFORMACIÓN EXCLUSIVA Y ACCESIBLE
+// =================================================================
+@Composable
+fun TandaProductDetailCard(
+    tanda: Tanda,
+    salePrice: Double,
+    fallbackProductionUnit: String
+) {
+    val prodUnit = tanda.productionUnit.ifBlank { fallbackProductionUnit }.ifBlank { "u" }
+    val baseUnit = tanda.baseQuantityUnit.ifBlank { "lb" }
+
+    // Cantidad de insumo base
+    val baseQtyFormatted = if (tanda.baseQuantityUsed % 1.0 == 0.0) {
+        tanda.baseQuantityUsed.toInt().toString()
+    } else {
+        "%.2f".format(tanda.baseQuantityUsed)
+    }
+
+    // Cantidad final de producto obtenida
+    val finalQuantity = if (tanda.actualYield > 0.0) {
+        tanda.actualYield
+    } else if (tanda.expectedYield > 0.0) {
+        tanda.expectedYield
+    } else {
+        tanda.estimatedYield
+    }
+
+    val finalQtyFormatted = if (finalQuantity % 1.0 == 0.0) {
+        finalQuantity.toInt().toString()
+    } else {
+        "%.1f".format(finalQuantity)
+    }
+
+    // 3. RENDIMIENTO: Rendimiento = cantidad final de producto ÷ cantidad de insumo base
+    // Ejemplo: 80 pizzas ÷ 20 lb = 4
+    val rendimientoVal = if (tanda.baseQuantityUsed > 0.0) finalQuantity / tanda.baseQuantityUsed else 0.0
+    val rendFormatted = if (rendimientoVal % 1.0 == 0.0) {
+        rendimientoVal.toInt().toString()
+    } else {
+        "%.2f".format(rendimientoVal)
+    }
+
+    // 5. INGRESOS POTENCIALES: cantidad de producto obtenida * precio de venta establecido en la Ficha de Costo
+    val potentialRevenue = finalQuantity * salePrice
+
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = Color.White,
+        border = BorderStroke(1.5.dp, Slate200),
+        shadowElevation = 2.dp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("tanda_detail_card_${tanda.id}")
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            // Número de tanda (TÍTULO): TANDA 01
+            Text(
+                text = "TANDA ${tanda.tandaNumber}",
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Black,
+                color = ElQadreNavy
+            )
+
+            HorizontalDivider(color = Slate200, thickness = 1.dp)
+
+            // 1. Cantidad de insumo base
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Cantidad de insumo base",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Slate600
+                )
+                Text(
+                    text = "$baseQtyFormatted $baseUnit",
+                    fontSize = 19.sp,
+                    fontWeight = FontWeight.Black,
+                    color = ElQadreNavy
+                )
+            }
+
+            // 2. Cantidad final de producto
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Cantidad final de producto",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Slate600
+                )
+                Text(
+                    text = "$finalQtyFormatted $prodUnit",
+                    fontSize = 19.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color(0xFF0284C7)
+                )
+            }
+
+            // 3. Rendimiento (Fórmula clara y resultado conservando los datos)
+            // Ejemplo: 80 pizzas ÷ 20 lb = 4
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = "Rendimiento",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Slate600
+                )
+                Surface(
+                    color = Emerald50,
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, Emerald600.copy(alpha = 0.3f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "$finalQtyFormatted $prodUnit ÷ $baseQtyFormatted $baseUnit",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Slate700
+                        )
+                        Text(
+                            text = "= $rendFormatted",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Emerald700
+                        )
+                    }
+                }
+            }
+
+            // 4. Costo
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Costo",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Slate600
+                )
+                Text(
+                    text = "$${"%.2f".format(tanda.totalBatchCost)} CUP",
+                    fontSize = 19.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Rose700
+                )
+            }
+
+            // 5. Ingresos potenciales
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Ingresos potenciales",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Slate600
+                )
+                Text(
+                    text = "$${"%.2f".format(potentialRevenue)} CUP",
+                    fontSize = 19.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color(0xFF0F766E)
+                )
+            }
+        }
+    }
+}
+
+// =================================================================
+// 2. APARTADO / PANTALLA INDEPENDIENTE DE ARCHIVO DE TANDAS
+// =================================================================
+@Composable
+fun TandasArchivoScreen(
+    uiState: MainUiState,
+    viewModel: MainViewModel,
+    onBack: () -> Unit
+) {
+    val context = LocalContext.current
+    var selectedJornadaId by remember { mutableStateOf<Long?>(null) }
+    val dateFormatter = remember { SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()) }
+    val dateOnlyFormatter = remember { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()) }
+
+    val resolveSalePrice: (Product?, Tanda) -> Double = { prod, tanda ->
+        val costSheet = prod?.let { CostCalculationHelper.calculateCostSheet(it, uiState) }
+        if (costSheet != null && costSheet.precioDefinitivo > 0.0) {
+            costSheet.precioDefinitivo
+        } else {
+            prod?.price ?: tanda.salePrice
+        }
+    }
+
+    // 3. ARCHIVO POR JORNADA: Organizar la información jornada por jornada
+    val jornadasConTandas = remember(uiState.allJornadas, uiState.tandas) {
+        val sortedJornadas = uiState.allJornadas.sortedByDescending { it.openedAt }
+        val matchedTandaIds = sortedJornadas.flatMap { j ->
+            uiState.tandas.filter { it.jornadaId == j.id || (j.openedAt > 0 && it.date >= j.openedAt && (j.closedAt == null || it.date <= (j.closedAt + 3600000L))) }.map { it.id }
+        }.toSet()
+        val orphanTandas = uiState.tandas.filter { it.id !in matchedTandaIds }
+
+        val list = mutableListOf<Pair<Jornada, List<Tanda>>>()
+        sortedJornadas.forEach { j ->
+            val jTandas = uiState.tandas.filter { tanda ->
+                tanda.jornadaId == j.id || (j.openedAt > 0 && tanda.date >= j.openedAt && (j.closedAt == null || tanda.date <= (j.closedAt + 3600000L)))
+            }.sortedWith(
+                compareBy<Tanda> { it.tandaNumber.toIntOrNull() ?: Int.MAX_VALUE }
+                    .thenBy { it.tandaNumber }
+                    .thenBy { it.date }
+            )
+            if (jTandas.isNotEmpty()) {
+                list.add(j to jTandas)
+            }
+        }
+
+        // Si existen tandas históricas registradas previamente sin jornada asociada
+        if (orphanTandas.isNotEmpty()) {
+            val virtualJornada = Jornada(
+                id = 0L,
+                openedAt = orphanTandas.minOfOrNull { it.date } ?: System.currentTimeMillis(),
+                closedAt = orphanTandas.maxOfOrNull { it.date },
+                isOpen = false,
+                openedBy = "Sistema",
+                notes = "Tandas registradas sin jornada asignada"
+            )
+            list.add(virtualJornada to orphanTandas.sortedWith(
+                compareBy<Tanda> { it.tandaNumber.toIntOrNull() ?: Int.MAX_VALUE }
+                    .thenBy { it.tandaNumber }
+                    .thenBy { it.date }
+            ))
+        }
+        list
+    }
+
+    val selectedPair = remember(selectedJornadaId, jornadasConTandas) {
+        jornadasConTandas.find { it.first.id == selectedJornadaId }
+    }
+
+    if (selectedPair != null) {
+        // 4. INFORMACIÓN DE CADA JORNADA: Detalle de tandas organizadas por producto
+        val jornada = selectedPair.first
+        val tandasDeJornada = selectedPair.second
+        val productMap = remember(uiState.products) { uiState.products.associateBy { it.id } }
+
+        val productsWithTandas = remember(tandasDeJornada, productMap) {
+            tandasDeJornada.groupBy { it.productId }.map { (prodId, pTandas) ->
+                val prod = productMap[prodId]
+                val pName = prod?.name ?: pTandas.firstOrNull()?.productName ?: "Producto #$prodId"
+                val pUnit = pTandas.firstOrNull()?.productionUnit?.ifBlank { null } ?: "u"
+                val sorted = pTandas.sortedWith(
+                    compareBy<Tanda> { it.tandaNumber.toIntOrNull() ?: Int.MAX_VALUE }
+                        .thenBy { it.tandaNumber }
+                        .thenBy { it.date }
+                )
+                Triple(pName, pUnit, sorted)
+            }.sortedBy { it.first.lowercase() }
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xFFF8FAFC))
+                .padding(horizontal = 14.dp, vertical = 8.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            // Header con flecha de retorno y botón DESCARGAR PDF
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    IconButton(
+                        onClick = { selectedJornadaId = null },
+                        modifier = Modifier
+                            .size(48.dp)
+                            .testTag("btn_back_to_jornadas_list")
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Volver al listado de jornadas",
+                            tint = ElQadreNavy,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = if (jornada.id == 0L) "JORNADA GENERAL" else "JORNADA #${jornada.id}",
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Black,
+                            color = ElQadreNavy
+                        )
+                        Text(
+                            text = if (jornada.openedAt > 0) dateOnlyFormatter.format(Date(jornada.openedAt)) else "",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Slate600
+                        )
+                    }
+                }
+
+                // 5. PDF DE LA JORNADA: Opción DESCARGAR PDF
+                Button(
+                    onClick = {
+                        TandasJornadaPdfExporter.generateAndShareJornadaPdf(
+                            context = context,
+                            jornada = jornada,
+                            products = uiState.products,
+                            tandas = tandasDeJornada,
+                            businessName = uiState.businessName,
+                            resolveSalePrice = resolveSalePrice
+                        )
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Emerald600,
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                    modifier = Modifier
+                        .heightIn(min = 44.dp)
+                        .testTag("btn_descargar_pdf_top")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Download,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "DESCARGAR PDF",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+            }
+
+            // Tarjeta de resumen de la Jornada
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = Color.White,
+                border = BorderStroke(1.dp, Slate200),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "RESUMEN DE LA JORNADA",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Slate500,
+                        letterSpacing = 0.5.sp
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Apertura: ${if (jornada.openedAt > 0) dateFormatter.format(Date(jornada.openedAt)) else "N/A"}",
+                            fontSize = 13.sp,
+                            color = Slate700
+                        )
+                        if (jornada.closedAt != null && jornada.closedAt > 0) {
+                            Text(
+                                text = "Cierre: ${dateFormatter.format(Date(jornada.closedAt))}",
+                                fontSize = 13.sp,
+                                color = Slate700
+                            )
+                        } else {
+                            Text(
+                                text = if (jornada.isOpen) "En curso" else "Cerrada",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (jornada.isOpen) Emerald700 else Slate600
+                            )
+                        }
+                    }
+                    HorizontalDivider(color = Slate100, thickness = 1.dp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Productos elaborados: ${productsWithTandas.size}",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = ElQadreNavy
+                        )
+                        Text(
+                            text = "Total tandas: ${tandasDeJornada.size}",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = ElQadreNavy
+                        )
+                    }
+                }
+            }
+
+            // Mostrar las tandas organizadas por producto
+            productsWithTandas.forEach { (prodName, prodUnit, tandasDelProducto) ->
+                val prod = productMap.values.find { it.name.equals(prodName, ignoreCase = true) }
+
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color.White,
+                    border = BorderStroke(1.5.dp, Slate200),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        // Encabezado del producto
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "PRODUCTO",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Slate500,
+                                    letterSpacing = 1.sp
+                                )
+                                Text(
+                                    text = prodName.uppercase(),
+                                    fontSize = 22.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = ElQadreNavy
+                                )
+                            }
+                            Surface(
+                                color = Slate100,
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text(
+                                    text = "${tandasDelProducto.size} ${if (tandasDelProducto.size == 1) "TANDA" else "TANDAS"}",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = ElQadreNavy,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+
+                        HorizontalDivider(color = Slate200, thickness = 1.dp)
+
+                        // Tandas correspondientes una debajo de otra
+                        tandasDelProducto.forEach { tanda ->
+                            val sPrice = resolveSalePrice(prod, tanda)
+                            TandaProductDetailCard(
+                                tanda = tanda,
+                                salePrice = sPrice,
+                                fallbackProductionUnit = prodUnit
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 5. Botón grande para DESCARGAR PDF de la jornada
+            Button(
+                onClick = {
+                    TandasJornadaPdfExporter.generateAndShareJornadaPdf(
+                        context = context,
+                        jornada = jornada,
+                        products = uiState.products,
+                        tandas = tandasDeJornada,
+                        businessName = uiState.businessName,
+                        resolveSalePrice = resolveSalePrice
+                    )
+                },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Emerald600,
+                    contentColor = Color.White
+                ),
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(58.dp)
+                    .testTag("btn_descargar_pdf_bottom")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Download,
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = "DESCARGAR PDF DE LA JORNADA",
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 0.5.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+    } else {
+        // 3. ARCHIVO POR JORNADA: Listado de jornadas archivadas
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xFFF8FAFC))
+                .padding(horizontal = 14.dp, vertical = 8.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            // Header del Archivo con flecha para regresar
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                IconButton(
+                    onClick = onBack,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .testTag("btn_back_to_tandas_main")
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Regresar a Tandas",
+                        tint = ElQadreNavy,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+                Column {
+                    Text(
+                        text = "ARCHIVO DE TANDAS",
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Black,
+                        color = ElQadreNavy
+                    )
+                    Text(
+                        text = "Historial organizado jornada por jornada",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Slate600
+                    )
+                }
+            }
+
+            if (jornadasConTandas.isEmpty()) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color.White,
+                    border = BorderStroke(1.dp, Slate200),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(32.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.History,
+                            contentDescription = null,
+                            tint = Slate400,
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Text(
+                            text = "No hay jornadas archivadas con tandas todavía.",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Slate600,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            } else {
+                jornadasConTandas.forEach { (jornada, tandasList) ->
+                    val distinctProductsCount = tandasList.map { it.productId }.distinct().size
+                    val totalTandasCount = tandasList.size
+                    val totalCost = tandasList.sumOf { it.totalBatchCost }
+                    val totalRev = tandasList.sumOf {
+                        val prod = uiState.products.find { p -> p.id == it.productId }
+                        val sp = resolveSalePrice(prod, it)
+                        val fQty = if (it.actualYield > 0.0) it.actualYield else if (it.expectedYield > 0.0) it.expectedYield else it.estimatedYield
+                        fQty * sp
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color.White,
+                        border = BorderStroke(1.5.dp, Slate200),
+                        shadowElevation = 2.dp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { selectedJornadaId = jornada.id }
+                            .testTag("jornada_card_${jornada.id}")
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(18.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            // Cabecera de la jornada
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.DateRange,
+                                        contentDescription = null,
+                                        tint = ElQadreNavy,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                    Text(
+                                        text = if (jornada.id == 0L) "JORNADA GENERAL" else "JORNADA #${jornada.id}",
+                                        fontSize = 20.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = ElQadreNavy
+                                    )
+                                }
+
+                                Surface(
+                                    color = if (jornada.isOpen) Color(0xFFDCFCE7) else Slate100,
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text(
+                                        text = if (jornada.isOpen) "EN CURSO" else "CERRADA",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = if (jornada.isOpen) Emerald700 else Slate600,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+
+                            // Fechas
+                            val apText = if (jornada.openedAt > 0) dateFormatter.format(Date(jornada.openedAt)) else "No disponible"
+                            val ciText = if (jornada.closedAt != null && jornada.closedAt > 0) dateFormatter.format(Date(jornada.closedAt)) else null
+
+                            Text(
+                                text = "Apertura: $apText${if (ciText != null) " • Cierre: $ciText" else ""}",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Slate600
+                            )
+
+                            HorizontalDivider(color = Slate100, thickness = 1.dp)
+
+                            // Métricas principales
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column {
+                                    Text("PRODUCTOS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Slate500)
+                                    Text("$distinctProductsCount", fontSize = 18.sp, fontWeight = FontWeight.Black, color = ElQadreNavy)
+                                }
+                                Column {
+                                    Text("TOTAL TANDAS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Slate500)
+                                    Text("$totalTandasCount", fontSize = 18.sp, fontWeight = FontWeight.Black, color = ElQadreNavy)
+                                }
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text("COSTO TOTAL", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Slate500)
+                                    Text("$${"%.2f".format(totalCost)}", fontSize = 18.sp, fontWeight = FontWeight.Black, color = Rose600)
+                                }
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text("ING. POTENCIAL", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Slate500)
+                                    Text("$${"%.2f".format(totalRev)}", fontSize = 18.sp, fontWeight = FontWeight.Black, color = Emerald700)
+                                }
+                            }
+
+                            HorizontalDivider(color = Slate100, thickness = 1.dp)
+
+                            // Botones de acción: DESCARGAR PDF y CONSULTAR TANDAS
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Button(
+                                    onClick = {
+                                        TandasJornadaPdfExporter.generateAndShareJornadaPdf(
+                                            context = context,
+                                            jornada = jornada,
+                                            products = uiState.products,
+                                            tandas = tandasList,
+                                            businessName = uiState.businessName,
+                                            resolveSalePrice = resolveSalePrice
+                                        )
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Emerald600,
+                                        contentColor = Color.White
+                                    ),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(48.dp)
+                                        .testTag("btn_pdf_jornada_${jornada.id}")
+                                ) {
+                                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("DESCARGAR PDF", fontSize = 12.sp, fontWeight = FontWeight.Black)
+                                }
+
+                                Button(
+                                    onClick = { selectedJornadaId = jornada.id },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = ElQadreNavy,
+                                        contentColor = Color.White
+                                    ),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(48.dp)
+                                        .testTag("btn_ver_tandas_jornada_${jornada.id}")
+                                ) {
+                                    Text("CONSULTAR TANDAS", fontSize = 12.sp, fontWeight = FontWeight.Black)
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(18.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+        }
     }
 }
 
@@ -1544,7 +2476,7 @@ fun EditarTandaDialog(
 }
 
 // =================================================================
-// 6. MODAL CERRAR TANDA (INTRODUCIR SOLO PRODUCCIÓN REAL)
+// 6. MODAL CERRAR TANDA (ACCESIBLE ADULTO MAYOR: SOLO RENDIMIENTO FINAL)
 // =================================================================
 @Composable
 fun CerrarTandaDialog(
@@ -1553,28 +2485,29 @@ fun CerrarTandaDialog(
     viewModel: MainViewModel,
     onDismiss: () -> Unit
 ) {
-    val catalogPrice = remember(tanda.productId, uiState.products) {
-        uiState.products.find { it.id == tanda.productId }?.price ?: 0.0
+    var rendimientoFinalText by remember {
+        mutableStateOf(if (tanda.expectedYield > 0.0) tanda.expectedYield.toInt().toString() else "")
     }
 
-    var actualYieldInputText by remember { mutableStateOf(tanda.estimatedYield.toInt().toString()) }
-    var observationText by remember { mutableStateOf(tanda.observation) }
-
-    val actualYieldVal = actualYieldInputText.toDoubleOrNull() ?: 0.0
-    val expectedYieldVal = if (tanda.expectedYield > 0.0) tanda.expectedYield else tanda.estimatedYield
-
-    val yieldPct = if (expectedYieldVal > 0.0) (actualYieldVal / expectedYieldVal) * 100.0 else 100.0
-    val realRevenue = actualYieldVal * catalogPrice
-    val realProfit = realRevenue - tanda.totalBatchCost
-    val realProfitMargin = if (realRevenue > 0.0) (realProfit / realRevenue) * 100.0 else 0.0
-    val realUnitCost = if (actualYieldVal > 0.0) tanda.totalBatchCost / actualYieldVal else 0.0
+    val finalQty = rendimientoFinalText.toDoubleOrNull() ?: 0.0
+    val rendimientoCalculado = if (tanda.baseQuantityUsed > 0.0) finalQty / tanda.baseQuantityUsed else 0.0
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(Icons.Outlined.Lock, contentDescription = null, tint = Emerald600)
-                Text("CERRAR TANDA #${tanda.tandaNumber}", fontWeight = FontWeight.ExtraBold, color = ElQadreNavy, fontSize = 16.sp)
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "CERRAR TANDA",
+                    fontWeight = FontWeight.Black,
+                    color = ElQadreNavy,
+                    fontSize = 22.sp
+                )
+                Text(
+                    text = tanda.productName.uppercase(),
+                    fontWeight = FontWeight.Bold,
+                    color = Slate600,
+                    fontSize = 15.sp
+                )
             }
         },
         text = {
@@ -1582,106 +2515,699 @@ fun CerrarTandaDialog(
                 modifier = Modifier
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // Read-only parameters
-                Surface(color = Slate50, border = BorderStroke(1.dp, Slate200), shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("PARÁMETROS DE LA TANDA", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = ElQadreNavy)
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Producto:", fontSize = 11.sp, color = Slate600)
-                            Text(tanda.productName, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = ElQadreNavy)
-                        }
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Cantidad Base Utilizada:", fontSize = 11.sp, color = Slate600)
-                            Text("${tanda.baseQuantityUsed} ${tanda.baseQuantityUnit} (${tanda.baseMateriaPrimaName})", fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                        }
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Producción Esperada (Calculada):", fontSize = 11.sp, color = Slate600)
-                            Text("${expectedYieldVal.toInt()} ${tanda.productionUnit}", fontWeight = FontWeight.ExtraBold, fontSize = 11.sp, color = Emerald700)
-                        }
+                // Insumo base de referencia
+                Surface(
+                    color = Slate50,
+                    border = BorderStroke(1.dp, Slate200),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "Insumo base utilizado:",
+                            fontSize = 13.sp,
+                            color = Slate600,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = "${tanda.baseQuantityUsed} ${tanda.baseQuantityUnit} (${tanda.baseMateriaPrimaName})",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Black,
+                            color = ElQadreNavy
+                        )
                     }
                 }
 
-                // 6. PRODUCCIÓN REAL (ÚNICO DATO MANUAL REQUERIDO)
-                OutlinedTextField(
-                    value = actualYieldInputText,
-                    onValueChange = { actualYieldInputText = it },
-                    label = { Text("PRODUCCIÓN REAL OBTENIDA (${tanda.productionUnit}) *") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Emerald600, focusedLabelColor = Emerald600),
-                    modifier = Modifier.fillMaxWidth().testTag("actual_yield_input_cerrar")
-                )
+                // ÚNICO DATO REQUERIDO: RENDIMIENTO FINAL
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "RENDIMIENTO FINAL",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Black,
+                        color = ElQadreNavy
+                    )
+                    OutlinedTextField(
+                        value = rendimientoFinalText,
+                        onValueChange = { rendimientoFinalText = it },
+                        placeholder = { Text("Cantidad obtenida (${tanda.productionUnit})", fontSize = 16.sp) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        textStyle = androidx.compose.ui.text.TextStyle(
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Black,
+                            color = ElQadreNavy
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Emerald600,
+                            focusedLabelColor = Emerald600
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(64.dp)
+                            .testTag("input_rendimiento_final")
+                    )
+                }
 
-                OutlinedTextField(
-                    value = observationText,
-                    onValueChange = { observationText = it },
-                    label = { Text("Observaciones / Notas de Cierre") },
-                    placeholder = { Text("Ej. Merma por quemado leve, masa extra...") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                // 7. RESULTADO FINAL CONSOLIDADO PREVIEW
-                Surface(
-                    color = Emerald50,
-                    border = BorderStroke(1.dp, Emerald600),
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("RESULTADO FINAL Y CONSOLIDACIÓN", fontWeight = FontWeight.ExtraBold, fontSize = 11.sp, color = Emerald700)
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Rendimiento Real:", fontSize = 11.sp, color = Slate700)
-                            Text("${"%.1f".format(yieldPct)}%", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = if (yieldPct >= 95.0) Emerald600 else Rose600)
-                        }
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Costo Consolidado:", fontSize = 11.sp, color = Slate700)
-                            Text("$${"%.2f".format(tanda.totalBatchCost)} CUP", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Rose700)
-                        }
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Ingreso Real Consolidado:", fontSize = 11.sp, color = Slate700)
-                            Text("$${"%.2f".format(realRevenue)} CUP", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Emerald700)
-                        }
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Utilidad Real Consolidada:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = ElQadreNavy)
-                            Text("$${"%.2f".format(realProfit)} CUP (${"%.1f".format(realProfitMargin)}%)", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = ElQadreGoldDark)
+                // Cálculo automático del rendimiento
+                if (finalQty > 0.0) {
+                    Surface(
+                        color = Emerald50,
+                        border = BorderStroke(1.dp, Emerald600),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = "Rendimiento calculado:",
+                                fontSize = 13.sp,
+                                color = Emerald700,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "${"%.2f".format(rendimientoCalculado)} ${tanda.productionUnit}/${tanda.baseQuantityUnit}",
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Emerald700
+                            )
+                            Text(
+                                text = "(${if (finalQty % 1.0 == 0.0) finalQty.toInt().toString() else "%.1f".format(finalQty)} ${tanda.productionUnit} ÷ ${tanda.baseQuantityUsed} ${tanda.baseQuantityUnit})",
+                                fontSize = 12.sp,
+                                color = Slate600
+                            )
                         }
                     }
                 }
             }
         },
         confirmButton = {
-            val canConfirm = actualYieldVal > 0.0
-
             Button(
                 onClick = {
+                    if (finalQty <= 0.0) return@Button
+
+                    val catalogPrice = uiState.products.find { it.id == tanda.productId }?.price ?: tanda.salePrice
+                    val realRevenue = finalQty * catalogPrice
+                    val realProfit = realRevenue - tanda.totalBatchCost
+                    val realProfitMargin = if (realRevenue > 0.0) (realProfit / realRevenue) * 100.0 else 0.0
+                    val realUnitCost = if (finalQty > 0.0) tanda.totalBatchCost / finalQty else 0.0
+
                     val updatedTanda = tanda.copy(
-                        actualYield = actualYieldVal,
-                        yieldPercentage = yieldPct,
+                        actualYield = finalQty,
+                        yieldPercentage = rendimientoCalculado,
                         status = "CERRADA",
-                        observation = observationText.trim(),
+                        observation = "Rendimiento: ${"%.2f".format(rendimientoCalculado)} ${tanda.productionUnit}/${tanda.baseQuantityUnit}",
                         expectedRevenue = realRevenue,
                         estimatedProfit = realProfit,
                         profitMargin = realProfitMargin,
                         realUnitCost = realUnitCost,
-                        inventoryDeducted = true // Inventory was deducted at activation, not re-deducted at close
+                        inventoryDeducted = true
                     )
 
                     viewModel.cerrarTanda(updatedTanda)
                     onDismiss()
                 },
-                enabled = canConfirm,
-                colors = ButtonDefaults.buttonColors(containerColor = Emerald600),
-                modifier = Modifier.testTag("confirm_cerrar_tanda")
+                enabled = finalQty > 0.0,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Emerald600,
+                    disabledContainerColor = Slate300
+                ),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp)
+                    .testTag("confirm_cerrar_tanda")
             ) {
-                Text("Confirmar Cierre de Tanda", fontWeight = FontWeight.Bold)
+                Text(
+                    text = "ACEPTAR",
+                    fontWeight = FontWeight.Black,
+                    fontSize = 18.sp,
+                    color = Color.White
+                )
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancelar", color = Slate500) }
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "Cancelar",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Slate500
+                )
+            }
+        },
+        containerColor = Color.White,
+        shape = RoundedCornerShape(20.dp)
+    )
+}
+
+// =================================================================
+// FORMULARIO DE NUEVA TANDA (MÁXIMA ACCESIBILIDAD ADULTO MAYOR)
+// =================================================================
+@Composable
+fun NuevaTandaDialog(
+    uiState: MainUiState,
+    viewModel: MainViewModel,
+    onDismiss: () -> Unit
+) {
+    // 2. SELECCIÓN DEL PRODUCTO
+    // Los productos disponibles deben provenir de los productos de Producción y sus recetas existentes.
+    // No crear productos ni recetas nuevas.
+    val availableProducts = remember(uiState.productosElaborados, uiState.products) {
+        uiState.productosElaborados.filter { pe ->
+            pe.isActive && uiState.products.any { it.id == pe.productId }
+        }.mapNotNull { pe ->
+            uiState.products.find { it.id == pe.productId }?.let { p -> Pair(pe, p) }
+        }.sortedBy { it.second.name.lowercase() }
+    }
+
+    var selectedPair by remember { mutableStateOf<Pair<ProductoElaborado, Product>?>(null) }
+    var productDropdownExpanded by remember { mutableStateOf(false) }
+
+    val pe = selectedPair?.first
+    val prod = selectedPair?.second
+
+    // Base raw material
+    val baseMp = remember(pe, uiState.materiasPrimas) {
+        pe?.let { pElab -> uiState.materiasPrimas.find { it.id == pElab.baseMateriaPrimaId } }
+    }
+
+    // Recipe ingredients
+    val recipeIngredients = remember(pe, uiState.recetaIngredientes) {
+        pe?.let { pElab ->
+            uiState.recetaIngredientes.filter {
+                it.productoElaboradoId == pElab.productId || it.productoElaboradoId == pElab.id
+            }
+        } ?: emptyList()
+    }
+
+    // Determine default unit: LIBRAS (lb) for solid products, or liquid unit for liquids
+    val isLiquid = remember(baseMp) {
+        val u = baseMp?.unit?.lowercase()?.trim() ?: ""
+        u in setOf("l", "lt", "lts", "litro", "litros", "ml", "mililitros")
+    }
+
+    var selectedUnit by remember(selectedPair) {
+        val initialUnit = if (isLiquid) {
+            val u = baseMp?.unit?.lowercase()?.trim() ?: "l"
+            if (u.startsWith("ml")) "ml" else "l"
+        } else {
+            // UNIDAD DE MEDIDA: La unidad predeterminada para introducir la cantidad del insumo base debe ser: LIBRAS (lb)
+            "lb"
         }
+        mutableStateOf(initialUnit)
+    }
+
+    val compatibleUnits = remember(isLiquid, baseMp) {
+        if (isLiquid) {
+            listOf("l", "ml")
+        } else {
+            val u = baseMp?.unit?.lowercase()?.trim() ?: "g"
+            if (u in setOf("u", "un", "unidad", "unidades", "docena")) {
+                listOf("u", "docena")
+            } else {
+                listOf("lb", "kg", "g", "oz")
+            }
+        }
+    }
+
+    var unitDropdownExpanded by remember { mutableStateOf(false) }
+    var baseQuantityInput by remember(selectedPair) { mutableStateOf("") }
+
+    // Proporción y cálculos de ingredientes
+    val baseQtyEntered = baseQuantityInput.toDoubleOrNull() ?: 0.0
+
+    // Recipe base quantity & unit
+    val recipeBaseIng = remember(recipeIngredients, pe) {
+        recipeIngredients.find { it.materiaPrimaId == pe?.baseMateriaPrimaId }
+    }
+    val recipeBaseQty = remember(recipeBaseIng, pe) {
+        if (recipeBaseIng != null && recipeBaseIng.quantity > 0.0) {
+            recipeBaseIng.quantity
+        } else if (pe != null && pe.baseQuantity > 0.0) {
+            pe.baseQuantity
+        } else {
+            1.0
+        }
+    }
+    val recipeBaseUnit = remember(recipeBaseIng, baseMp, selectedUnit) {
+        recipeBaseIng?.unit ?: baseMp?.unit ?: selectedUnit
+    }
+
+    // Convert entered base quantity to recipe unit
+    val baseQtyInRecipeUnit = remember(baseQtyEntered, selectedUnit, recipeBaseUnit) {
+        if (baseQtyEntered > 0.0) {
+            UnitConverter.convert(baseQtyEntered, selectedUnit, recipeBaseUnit) ?: baseQtyEntered
+        } else 0.0
+    }
+
+    // Proporción definida en la receta
+    val proportion = remember(recipeBaseQty, baseQtyInRecipeUnit) {
+        if (recipeBaseQty > 0.0 && baseQtyInRecipeUnit > 0.0) {
+            baseQtyInRecipeUnit / recipeBaseQty
+        } else 0.0
+    }
+
+    // Otros ingredientes de la receta (excluyendo el insumo base si ya está listado)
+    val otherIngredients = remember(recipeIngredients, pe) {
+        recipeIngredients.filter { it.materiaPrimaId != pe?.baseMateriaPrimaId }
+    }
+
+    // Cálculo de cantidad esperada y costos
+    val expectedYield = remember(pe, proportion) {
+        if (pe != null && proportion > 0.0) {
+            (if (pe.baseYield > 0.0) pe.baseYield else 1.0) * proportion
+        } else 0.0
+    }
+
+    val totalDirectCost = remember(recipeIngredients, proportion, pe, baseMp, baseQtyEntered, selectedUnit, uiState.materiasPrimas) {
+        var cost = 0.0
+        val mpMap = uiState.materiasPrimas.associateBy { it.id }
+
+        // Insumo base
+        if (baseMp != null && baseQtyEntered > 0.0) {
+            val convertedBase = UnitConverter.convert(baseQtyEntered, selectedUnit, baseMp.unit) ?: baseQtyEntered
+            cost += convertedBase * baseMp.unitCost
+        }
+
+        // Otros ingredientes
+        otherIngredients.forEach { ing ->
+            val raw = mpMap[ing.materiaPrimaId]
+            if (raw != null) {
+                val reqQty = ing.quantity * proportion
+                val converted = UnitConverter.convert(reqQty, ing.unit, raw.unit) ?: reqQty
+                cost += converted * raw.unitCost
+            }
+        }
+        cost
+    }
+
+    val indirectCost = remember(prod, expectedYield, uiState) {
+        if (prod != null && expectedYield > 0.0) {
+            val costSheet = CostCalculationHelper.calculateCostSheet(product = prod, uiState = uiState)
+            expectedYield * costSheet.gastoIndirectoUnitario
+        } else 0.0
+    }
+
+    val totalBatchCost = totalDirectCost + indirectCost
+    val canAccept = selectedPair != null && baseQtyEntered > 0.0 && proportion > 0.0
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "NUEVA TANDA",
+                    fontWeight = FontWeight.Black,
+                    fontSize = 20.sp,
+                    color = ElQadreNavy
+                )
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Slate500)
+                }
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // 2. SELECCIÓN DEL PRODUCTO
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "PRODUCTO",
+                        fontWeight = FontWeight.Black,
+                        fontSize = 14.sp,
+                        color = Slate700
+                    )
+
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(
+                            onClick = { productDropdownExpanded = true },
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.5.dp, if (selectedPair != null) ElQadreNavy else Slate300),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = if (selectedPair != null) Slate50 else Color.White
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(56.dp)
+                                .testTag("btn_select_product_tanda")
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = prod?.name?.uppercase() ?: "SELECCIONAR PRODUCTO",
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (selectedPair != null) ElQadreNavy else Slate500,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Icon(
+                                    imageVector = Icons.Default.ArrowDropDown,
+                                    contentDescription = null,
+                                    tint = ElQadreNavy
+                                )
+                            }
+                        }
+
+                        DropdownMenu(
+                            expanded = productDropdownExpanded,
+                            onDismissRequest = { productDropdownExpanded = false },
+                            modifier = Modifier.fillMaxWidth(0.85f)
+                        ) {
+                            if (availableProducts.isEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text("No hay productos de producción activos", fontSize = 15.sp) },
+                                    onClick = { productDropdownExpanded = false }
+                                )
+                            } else {
+                                availableProducts.forEach { pair ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                text = pair.second.name.uppercase(),
+                                                fontSize = 16.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = ElQadreNavy
+                                            )
+                                        },
+                                        onClick = {
+                                            selectedPair = pair
+                                            productDropdownExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 3. CANTIDAD DEL INSUMO BASE
+                if (selectedPair != null) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = "CANTIDAD DEL INSUMO BASE",
+                            fontWeight = FontWeight.Black,
+                            fontSize = 14.sp,
+                            color = Slate700
+                        )
+
+                        baseMp?.name?.let { mpName ->
+                            Text(
+                                text = "Insumo: ${mpName.uppercase()}",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF0F766E)
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedTextField(
+                                value = baseQuantityInput,
+                                onValueChange = { baseQuantityInput = it },
+                                placeholder = { Text("Ej. 20", fontSize = 18.sp) },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                textStyle = androidx.compose.ui.text.TextStyle(
+                                    fontSize = 22.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = ElQadreNavy
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = ElQadreNavy,
+                                    focusedLabelColor = ElQadreNavy
+                                ),
+                                modifier = Modifier
+                                    .weight(1.3f)
+                                    .height(64.dp)
+                                    .testTag("input_base_quantity")
+                            )
+
+                            // Selector de Unidad (default "lb" para sólidos)
+                            Box(modifier = Modifier.weight(1f)) {
+                                OutlinedButton(
+                                    onClick = { if (compatibleUnits.size > 1) unitDropdownExpanded = true },
+                                    shape = RoundedCornerShape(12.dp),
+                                    border = BorderStroke(1.5.dp, ElQadreNavy),
+                                    colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(64.dp)
+                                        .testTag("select_unit_btn")
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = selectedUnit,
+                                            fontWeight = FontWeight.Black,
+                                            fontSize = 18.sp,
+                                            color = ElQadreNavy
+                                        )
+                                        if (compatibleUnits.size > 1) {
+                                            Icon(
+                                                imageVector = Icons.Default.ArrowDropDown,
+                                                contentDescription = null,
+                                                tint = ElQadreNavy
+                                            )
+                                        }
+                                    }
+                                }
+
+                                if (compatibleUnits.size > 1) {
+                                    DropdownMenu(
+                                        expanded = unitDropdownExpanded,
+                                        onDismissRequest = { unitDropdownExpanded = false }
+                                    ) {
+                                        compatibleUnits.forEach { u ->
+                                            DropdownMenuItem(
+                                                text = { Text(u, fontSize = 16.sp, fontWeight = FontWeight.Bold) },
+                                                onClick = {
+                                                    selectedUnit = u
+                                                    unitDropdownExpanded = false
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 4. INGREDIENTES DE LA RECETA CALCULADOS AUTOMÁTICAMENTE
+                    if (baseQtyEntered > 0.0 && otherIngredients.isNotEmpty()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                text = "INGREDIENTES CALCULADOS (RECETA)",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 14.sp,
+                                color = Slate700
+                            )
+
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = Slate50,
+                                border = BorderStroke(1.dp, Slate200),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    otherIngredients.forEach { ing ->
+                                        val ingMp = uiState.materiasPrimas.find { it.id == ing.materiaPrimaId }
+                                        val ingName = ingMp?.name ?: "Insumo"
+                                        val calculatedQty = ing.quantity * proportion
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = ingName,
+                                                fontSize = 15.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = ElQadreNavy,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            Text(
+                                                text = "${"%.2f".format(calculatedQty)} ${ing.unit}",
+                                                fontSize = 16.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = Color(0xFF0284C7)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Resumen de producción esperada y costo
+                    if (baseQtyEntered > 0.0) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Emerald50,
+                            border = BorderStroke(1.dp, Emerald600),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text("Producción esperada", fontSize = 12.sp, color = Slate600, fontWeight = FontWeight.Medium)
+                                    val yieldText = if (expectedYield % 1.0 == 0.0) {
+                                        "${expectedYield.toInt()} ${pe?.productionUnit ?: "u"}"
+                                    } else {
+                                        "${"%.1f".format(expectedYield)} ${pe?.productionUnit ?: "u"}"
+                                    }
+                                    Text(yieldText, fontSize = 17.sp, fontWeight = FontWeight.Black, color = Emerald700)
+                                }
+
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text("Costo estimado", fontSize = 12.sp, color = Slate600, fontWeight = FontWeight.Medium)
+                                    Text("$${"%.2f".format(totalBatchCost)} CUP", fontSize = 17.sp, fontWeight = FontWeight.Black, color = Rose700)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            // 5. BOTÓN DE CONFIRMACIÓN: Debajo del listado debe aparecer únicamente: ACEPTAR
+            Button(
+                onClick = {
+                    val pair = selectedPair ?: return@Button
+                    val (productElab, product) = pair
+                    if (baseQtyEntered <= 0.0 || proportion <= 0.0) return@Button
+
+                    val now = System.currentTimeMillis()
+                    val maxNum = uiState.tandas.mapNotNull { it.tandaNumber.toIntOrNull() }.maxOrNull() ?: 0
+                    val tandaNumberStr = "%02d".format(maxNum + 1)
+                    val batchUuid = "TANDA-$tandaNumberStr-$now"
+                    val realUnitCost = if (expectedYield > 0.0) totalBatchCost / expectedYield else 0.0
+                    val expectedRevenue = expectedYield * product.price
+                    val estimatedProfit = expectedRevenue - totalBatchCost
+
+                    val consumosList = mutableListOf<Triple<Long, Double, String>>()
+                    // Consumo insumo base
+                    if (baseMp != null) {
+                        val convertedBase = UnitConverter.convert(baseQtyEntered, selectedUnit, baseMp.unit) ?: baseQtyEntered
+                        consumosList.add(Triple(baseMp.id, convertedBase, "${"%.2f".format(baseQtyEntered)} $selectedUnit"))
+                    }
+                    // Consumo otros ingredientes
+                    otherIngredients.forEach { ing ->
+                        val raw = uiState.materiasPrimas.find { it.id == ing.materiaPrimaId }
+                        val reqQty = ing.quantity * proportion
+                        val converted = if (raw != null) {
+                            UnitConverter.convert(reqQty, ing.unit, raw.unit) ?: reqQty
+                        } else reqQty
+                        consumosList.add(Triple(ing.materiaPrimaId, converted, "${"%.2f".format(reqQty)} ${ing.unit}"))
+                    }
+
+                    val newTanda = Tanda(
+                        uuid = batchUuid,
+                        tandaNumber = tandaNumberStr,
+                        productId = product.id,
+                        productName = product.name,
+                        date = now,
+                        responsibleUser = uiState.currentUser?.username ?: "Dueño",
+                        baseMateriaPrimaId = productElab.baseMateriaPrimaId,
+                        baseMateriaPrimaName = baseMp?.name ?: "Insumo base",
+                        baseQuantityUsed = baseQtyEntered,
+                        baseQuantityUnit = selectedUnit,
+                        productionFactor = proportion,
+                        estimatedYield = expectedYield,
+                        expectedYield = expectedYield,
+                        actualYield = 0.0,
+                        yieldPercentage = 100.0,
+                        productionUnit = productElab.productionUnit,
+                        ingredientsConsumedText = recipeIngredients.joinToString(", ") { ing ->
+                            val rawName = uiState.materiasPrimas.find { it.id == ing.materiaPrimaId }?.name ?: ""
+                            "$rawName: ${"%.2f".format(ing.quantity * proportion)} ${ing.unit}"
+                        },
+                        status = "ABIERTA",
+                        jornada = uiState.activeJornada?.let { "Jornada #${it.id}" } ?: "Jornada Abierta",
+                        jornadaId = uiState.activeJornada?.id ?: 0L,
+                        observation = "",
+                        laborCostType = "NINGUNO",
+                        laborCostValue = 0.0,
+                        totalLaborCost = 0.0,
+                        ownerPayType = "NINGUNO",
+                        ownerPayValue = 0.0,
+                        totalOwnerPay = 0.0,
+                        totalDirectIngredientsCost = totalDirectCost,
+                        totalIndirectCostAllocated = indirectCost,
+                        totalBatchCost = totalBatchCost,
+                        realUnitCost = realUnitCost,
+                        expectedRevenue = expectedRevenue,
+                        estimatedProfit = estimatedProfit,
+                        profitMargin = if (expectedRevenue > 0.0) (estimatedProfit / expectedRevenue) * 100.0 else 0.0,
+                        inventoryDeducted = true,
+                        quantitySold = 0.0,
+                        salePrice = product.price,
+                        realRevenue = 0.0,
+                        deviceId = "DISPOSITIVO-LOCAL"
+                    )
+
+                    viewModel.registrarTanda(newTanda, consumosList)
+                    onDismiss()
+                },
+                enabled = canAccept,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = ElQadreNavy,
+                    disabledContainerColor = Slate300
+                ),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp)
+                    .testTag("aceptar_nueva_tanda_btn")
+            ) {
+                Text(
+                    text = "ACEPTAR",
+                    fontWeight = FontWeight.Black,
+                    fontSize = 18.sp,
+                    color = Color.White
+                )
+            }
+        },
+        containerColor = Color.White,
+        shape = RoundedCornerShape(20.dp)
     )
 }
 
