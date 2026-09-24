@@ -120,7 +120,8 @@ data class Product(
 data class PresentacionEspecial(
     val id: String = "",
     val name: String,
-    val baseEquivalence: Double = 1.0 // Equivalencia en unidades base (ej. Familiar = 1.0 unidad base)
+    val baseEquivalence: Double = 1.0, // Equivalencia en unidades base (ej. Familiar = 1.0 unidad base)
+    val price: Double = 0.0 // Precio fijado / de catálogo para la presentación especial
 )
 
 fun parsePresentacionesEspeciales(jsonStr: String?): List<PresentacionEspecial> {
@@ -137,12 +138,14 @@ fun parsePresentacionesEspeciales(jsonStr: String?): List<PresentacionEspecial> 
             }
             val name = obj.optString("name", "")
             val baseEquivalence = obj.optDouble("baseEquivalence", 1.0)
+            val price = obj.optDouble("price", 0.0)
             if (name.isNotBlank()) {
                 list.add(
                     PresentacionEspecial(
                         id = id,
                         name = name,
-                        baseEquivalence = if (baseEquivalence > 0.0) baseEquivalence else 1.0
+                        baseEquivalence = if (baseEquivalence > 0.0) baseEquivalence else 1.0,
+                        price = price
                     )
                 )
             }
@@ -161,6 +164,7 @@ fun serializePresentacionesEspeciales(list: List<PresentacionEspecial>): String 
         obj.put("id", if (item.id.isNotBlank()) item.id else (index + 1).toString())
         obj.put("name", item.name)
         obj.put("baseEquivalence", item.baseEquivalence)
+        obj.put("price", item.price)
         arr.put(obj)
     }
     return arr.toString()
@@ -308,7 +312,11 @@ data class MateriaPrima(
     val suggestedPrice: Double = 0.0, // Precio sugerido = costo por ración / 0.70
     val salePrice: Double = 0.0, // Precio de venta establecido por el Dueño
     val stockEnVenta: Double = 0.0, // Cantidad física enviada para venta (Salida para venta)
-    val racionesEnVenta: Double = 0.0 // Raciones correspondientes enviadas para venta
+    val racionesEnVenta: Double = 0.0, // Raciones correspondientes enviadas para venta
+    val purchaseMode: String = "POR UNIDAD", // "POR UNIDAD" o "POR LOTE"
+    val purchaseLotUnits: Double = 0.0,
+    val purchaseLotQuantity: Double = 1.0,
+    val purchaseLotPrice: Double = 0.0
 ) {
     val racionesDisponibles: Double get() = if (rationQuantity > 0.0) (stock / rationQuantity).coerceAtLeast(0.0) else 0.0
     val costoPorRacion: Double get() = if (rationQuantity > 0.0) unitCost * rationQuantity else 0.0
@@ -369,7 +377,8 @@ data class Mercaderia(
     val directExpensesDetails: String = "[]",
     val purchaseMode: String = "POR UNIDAD", // "POR UNIDAD" o "POR LOTE"
     val purchasePrice: Double = 0.0,
-    val unitsPerLot: Double = 1.0
+    val unitsPerLot: Double = 1.0,
+    val dailySalesAverage: Double = 1.0
 )
 
 @Entity(tableName = "movimientos_mercaderia")
@@ -465,7 +474,10 @@ data class Tanda(
     val quantitySold: Double = 0.0,
     val salePrice: Double = 0.0,
     val realRevenue: Double = 0.0,
-    val deviceId: String = "DISPOSITIVO-LOCAL"
+    val deviceId: String = "DISPOSITIVO-LOCAL",
+    val specialPresentationName: String = "",
+    val specialPresentationQty: Double = 0.0,
+    val specialPresentationEquivalence: Double = 1.0
 ) {
     val cantidadRestante: Double get() = (actualYield - quantitySold).coerceAtLeast(0.0)
 }

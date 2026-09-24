@@ -77,6 +77,7 @@ data class MainUiState(
     val showComandaAlert: Boolean = false,
     val salonTableCount: Int = 12,
     val tarifasPagoBebidas: com.example.util.TarifasPagoBebidas = com.example.util.TarifasPagoBebidas(),
+    val transferenciasClasificacionMap: Map<Long, Pair<Double, Double>> = emptyMap(),
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
     val successMessage: String? = null,
@@ -891,6 +892,92 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             onComplete()
         }
     }
+
+    fun updateTransferenciaSenderData(
+        transferenciaId: Long,
+        titularName: String,
+        titularCi: String,
+        phoneNumber: String,
+        onSuccess: () -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            val existing = withContext(Dispatchers.IO) {
+                repository.getDatabase().transferenciaDao().getById(transferenciaId)
+            }
+            if (existing != null) {
+                val cleanPhone = phoneNumber.trim()
+                val updated = existing.copy(
+                    titularName = titularName.trim(),
+                    titularCi = titularCi.trim(),
+                    phoneNumber = cleanPhone
+                )
+                repository.updateTransferencia(updated)
+                _uiState.update { it.copy(successMessage = "Datos del remitente actualizados correctamente.") }
+                onSuccess()
+            }
+        }
+    }
+
+    fun saveTransferenciasClasificacion(jornadaId: Long, produccionMonto: Double, mercaderiasMonto: Double) {
+        _uiState.update { state ->
+            val updated = state.transferenciasClasificacionMap + (jornadaId to Pair(produccionMonto, mercaderiasMonto))
+            state.copy(
+                transferenciasClasificacionMap = updated,
+                successMessage = "Clasificación de transferencias guardada correctamente."
+            )
+        }
+    }
+
+    fun registrarNuevasTransferenciasDetectadas(
+        nuevas: List<com.example.util.SearchedPagoXMovilSms>,
+        onComplete: (Int) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            val username = _uiState.value.currentUser?.username ?: "cajero"
+            val activeJornadaId = _uiState.value.activeJornada?.id ?: 0L
+            val dateDisplayFormat = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault())
+            var count = 0
+
+            val seenTxs = mutableSetOf<String>()
+            val existingInDb = withContext(Dispatchers.IO) {
+                repository.getDatabase().transferenciaDao().getAllTransferenciasSync().map { it.transactionNumber }.toSet()
+            }
+
+            for (item in nuevas) {
+                val txNum = item.parsed.transactionNumber.trim()
+                if (txNum.isNotBlank() && !existingInDb.contains(txNum) && seenTxs.add(txNum)) {
+                    val actualTimestamp = if (item.smsDateMillis > 0L) item.smsDateMillis else item.parsed.timestampMillis
+                    val finalTimestamp = if (actualTimestamp > 0L) actualTimestamp else System.currentTimeMillis()
+                    val finalDate = if (item.parsed.dateStr.isNotBlank()) item.parsed.dateStr else dateDisplayFormat.format(java.util.Date(finalTimestamp))
+
+                    val transferencia = com.example.data.local.model.Transferencia(
+                        transactionNumber = txNum,
+                        jornadaId = activeJornadaId,
+                        amount = item.parsed.amount,
+                        currency = item.parsed.currency,
+                        phoneNumber = item.parsed.phoneNumber,
+                        recipientAccount = item.parsed.recipientAccount,
+                        smsDate = finalDate,
+                        receivedAt = finalTimestamp,
+                        cajeroUsername = username,
+                        status = "NO ASOCIADA",
+                        rawSmsBody = item.parsed.rawText,
+                        isManual = false,
+                        source = "AUTO_SMS_JORNADA"
+                    )
+                    repository.insertTransferencia(transferencia)
+                    count++
+                }
+            }
+
+            if (count > 0) {
+                _uiState.update {
+                    it.copy(successMessage = "Se registraron $count transferencias de la jornada actual.")
+                }
+            }
+            onComplete(count)
+        }
+    }
     fun registrarTransferenciaExterna(
         titularName: String,
         titularCi: String,
@@ -1622,6 +1709,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     businessName = state.businessName
                 )
                 com.example.util.CuadreCajaArchiveManager.saveArchive(getApplication(), cuadreArchive)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
+            try {
+                com.example.util.CuadreDraftManager.clearDraft(getApplication(), currentJornada.id)
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -2905,6 +2998,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun setPresentacionEspecialDefinitivePrice(productId: Long, presentationName: String, definitivePrice: Double) {
+        viewModelScope.launch {
+            val product = _uiState.value.products.find { it.id == productId } ?: return@launch
+            val currentList = parsePresentacionesEspeciales(product.presentacionesEspeciales)
+            val updatedList = currentList.map { pres ->
+                if (pres.name.equals(presentationName, ignoreCase = true)) {
+                    pres.copy(price = definitivePrice)
+                } else pres
+            }
+            val updatedJson = serializePresentacionesEspeciales(updatedList)
+            val updatedProduct = product.copy(presentacionesEspeciales = updatedJson)
+            repository.updateProduct(updatedProduct)
+
+            // Si existe un producto en catálogo con el nombre de la presentación especial, sincronizarlo también
+            val matchingCatalogProd = _uiState.value.products.find {
+                it.id != product.id && (
+                    it.name.equals(presentationName, ignoreCase = true) ||
+                    it.name.equals("${product.name} - $presentationName", ignoreCase = true) ||
+                    it.name.equals("${product.name} ($presentationName)", ignoreCase = true)
+                )
+            }
+            if (matchingCatalogProd != null) {
+                repository.updateProduct(matchingCatalogProd.copy(price = definitivePrice))
+            }
+
+            _uiState.update { it.copy(successMessage = "Precio definitivo de '$presentationName' fijado en $${"%.2f".format(definitivePrice)} CUP") }
+        }
+    }
+
     fun setMercaderiaDefinitivePrice(productId: Long, definitivePrice: Double, calculatedRealCost: Double) {
         viewModelScope.launch {
             val product = _uiState.value.products.find { it.id == productId }
@@ -3903,8 +4025,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val tanda = _uiState.value.tandas.find { it.id == tandaId } ?: return@launch
                 val realUnitCost = if (newActualYield > 0.0) tanda.totalBatchCost / newActualYield else 0.0
+                val presEquiv = if (tanda.specialPresentationEquivalence > 0.0) tanda.specialPresentationEquivalence else 1.0
+                val specialUnitsEq = if (tanda.specialPresentationQty > 0.0) tanda.specialPresentationQty * presEquiv else 0.0
+                val totalYieldUnits = newActualYield + specialUnitsEq
                 val expectedVal = if (tanda.expectedYield > 0.0) tanda.expectedYield else tanda.estimatedYield
-                val yieldPct = if (expectedVal > 0.0) (newActualYield / expectedVal) * 100.0 else 100.0
+                val yieldPct = if (expectedVal > 0.0) (totalYieldUnits / expectedVal) * 100.0 else 100.0
                 val updated = tanda.copy(
                     actualYield = newActualYield,
                     realUnitCost = realUnitCost,

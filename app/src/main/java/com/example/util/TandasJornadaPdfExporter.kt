@@ -15,6 +15,7 @@ import androidx.core.content.FileProvider
 import com.example.data.local.model.Jornada
 import com.example.data.local.model.Product
 import com.example.data.local.model.Tanda
+import com.example.data.local.model.parsePresentacionesEspeciales
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
@@ -108,9 +109,22 @@ object TandasJornadaPdfExporter {
                     val finalQty = if (tanda.actualYield > 0.0) tanda.actualYield else if (tanda.expectedYield > 0.0) tanda.expectedYield else tanda.estimatedYield
                     val fQtyFormatted = if (finalQty % 1.0 == 0.0) finalQty.toInt().toString() else "%.1f".format(finalQty)
 
-                    val rendVal = if (tanda.baseQuantityUsed > 0.0) finalQty / tanda.baseQuantityUsed else 0.0
+                    val presEquiv = if (tanda.specialPresentationEquivalence > 0.0) tanda.specialPresentationEquivalence else {
+                        prod?.let { p ->
+                            parsePresentacionesEspeciales(p.presentacionesEspeciales).find { it.name.equals(tanda.specialPresentationName, true) }?.baseEquivalence
+                        } ?: 1.0
+                    }
+                    val specialUnitsEq = if (tanda.specialPresentationQty > 0.0) tanda.specialPresentationQty * presEquiv else 0.0
+                    val totalYieldUnits = finalQty + specialUnitsEq
+
+                    val rendVal = if (tanda.baseQuantityUsed > 0.0) totalYieldUnits / tanda.baseQuantityUsed else 0.0
                     val rendFormatted = if (rendVal % 1.0 == 0.0) rendVal.toInt().toString() else "%.2f".format(rendVal)
-                    val rendFullText = "$fQtyFormatted $pUnit ÷ $bQtyFormatted $baseUnit = $rendFormatted"
+                    val rendFullText = if (specialUnitsEq > 0.0) {
+                        val totEqFormatted = if (totalYieldUnits % 1.0 == 0.0) totalYieldUnits.toInt().toString() else "%.1f".format(totalYieldUnits)
+                        "$totEqFormatted eq. ÷ $bQtyFormatted $baseUnit = $rendFormatted"
+                    } else {
+                        "$fQtyFormatted $pUnit ÷ $bQtyFormatted $baseUnit = $rendFormatted"
+                    }
 
                     val salePrice = resolveSalePrice(prod, tanda)
                     val potRev = finalQty * salePrice

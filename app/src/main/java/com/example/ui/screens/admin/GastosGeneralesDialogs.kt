@@ -428,8 +428,10 @@ fun FichaCostoDialog(
     viewModel: MainViewModel,
     onDismiss: () -> Unit
 ) {
+    val currentProduct = uiState.products.find { it.id == product.id } ?: product
+
     val costSheet = remember(
-        product,
+        currentProduct,
         uiState.products,
         uiState.productosElaborados,
         uiState.recetaIngredientes,
@@ -440,7 +442,7 @@ fun FichaCostoDialog(
         uiState.movimientosMercaderia
     ) {
         CostCalculationHelper.calculateCostSheet(
-            product = product,
+            product = currentProduct,
             products = uiState.products,
             productosElaborados = uiState.productosElaborados,
             recetaIngredientes = uiState.recetaIngredientes,
@@ -484,8 +486,8 @@ fun FichaCostoDialog(
         mutableStateOf(if (costSheet.pagoCajeroUnitario > 0.0) if (costSheet.pagoCajeroUnitario % 1.0 == 0.0) costSheet.pagoCajeroUnitario.toLong().toString() else "%.2f".format(costSheet.pagoCajeroUnitario) else "")
     }
 
-    val presentaciones = remember(product.presentacionesEspeciales) {
-        parsePresentacionesEspeciales(product.presentacionesEspeciales)
+    val presentaciones = remember(currentProduct.presentacionesEspeciales) {
+        parsePresentacionesEspeciales(currentProduct.presentacionesEspeciales)
     }
 
     Dialog(
@@ -1303,7 +1305,7 @@ fun FichaCostoDialog(
                                 }
 
                                 Text(
-                                    "Los costos y pagos de personal se calculan proporcionalmente según la equivalencia configurada para cada presentación:",
+                                    "Materia prima y gastos se calculan según la equivalencia. El pago a personal corresponde al de 1 unidad simple:",
                                     fontSize = 10.5.sp,
                                     color = Slate600
                                 )
@@ -1312,9 +1314,10 @@ fun FichaCostoDialog(
                                     val factor = pres.baseEquivalence
                                     val presMatPrima = costSheet.costoDirectoUnitario * factor
                                     val presGastos = costSheet.gastoIndirectoUnitario * factor
-                                    val presPersonal = costSheet.totalPagoPersonalUnitario * factor
-                                    val presCostoTotal = costSheet.costoRealUnitario * factor
-                                    val presPrecioRef = costSheet.precioReferencia * factor
+                                    val presPersonal = costSheet.totalPagoPersonalUnitario
+                                    val presCostoTotal = presMatPrima + presGastos + presPersonal
+                                    val targetMargin = costSheet.productoElaborado?.targetMarginPct ?: 30.0
+                                    val presPrecioRef = if (presCostoTotal > 0.0) presCostoTotal * (1.0 + targetMargin / 100.0) else 0.0
 
                                     Surface(
                                         shape = RoundedCornerShape(8.dp),
@@ -1475,7 +1478,7 @@ fun FichaCostoDialog(
                             )
 
                             // Status and Reference Price Summary
-                            val precioCatalogo = product.price
+                            val precioCatalogo = currentProduct.price
                             val margenCatalogoPct = if (costSheet.costoTotalUnitario > 0.0 && precioCatalogo > 0.0) {
                                 ((precioCatalogo - costSheet.costoTotalUnitario) / costSheet.costoTotalUnitario) * 100.0
                             } else null
@@ -1506,7 +1509,7 @@ fun FichaCostoDialog(
                                     }
                                     Text(catLabel, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Slate600)
                                     Text(
-                                        "$${"%.2f".format(product.price)} CUP",
+                                        "$${"%.2f".format(currentProduct.price)} CUP",
                                         fontSize = 15.sp,
                                         fontWeight = FontWeight.ExtraBold,
                                         color = if (costSheet.hasPrecioDefinitivo) Emerald700 else Slate600
@@ -1518,7 +1521,7 @@ fun FichaCostoDialog(
                             Button(
                                 onClick = {
                                     viewModel.setProductoDefinitivePrice(
-                                        productId = product.id,
+                                        productId = currentProduct.id,
                                         definitivePrice = costSheet.precioReferencia,
                                         calculatedCost = costSheet.costoRealUnitario
                                     )
@@ -1568,7 +1571,7 @@ fun FichaCostoDialog(
                                         val p = manualPriceText.toDoubleOrNull() ?: 0.0
                                         if (p > 0.0) {
                                             viewModel.setProductoDefinitivePrice(
-                                                productId = product.id,
+                                                productId = currentProduct.id,
                                                 definitivePrice = p,
                                                 calculatedCost = costSheet.costoRealUnitario
                                             )
@@ -1609,6 +1612,24 @@ fun FichaCostoDialog(
                                             color = if (manualMarginPct >= 0) Emerald700 else Color(0xFFDC2626)
                                         )
                                     }
+                                }
+                            }
+
+                            // ==========================================
+                            // PRESENTACIONES ESPECIALES - BLOQUES EQUIVALENTES
+                            // ==========================================
+                            if (presentaciones.isNotEmpty()) {
+                                presentaciones.forEach { pres ->
+                                    HorizontalDivider(
+                                        color = Slate200,
+                                        modifier = Modifier.padding(vertical = 4.dp)
+                                    )
+                                    PresentacionEspecialPrecioBlock(
+                                        pres = pres,
+                                        product = currentProduct,
+                                        costSheet = costSheet,
+                                        viewModel = viewModel
+                                    )
                                 }
                             }
                         }
@@ -2179,6 +2200,220 @@ fun AddEditInversionDialog(
 }
 
 /**
+ * BLOQUE EQUIVALENTE DE PRECIO DE VENTA PARA PRESENTACIÓN ESPECIAL
+ * Muestra precio de referencia, precio en catálogo, campo para establecer precio,
+ * botón fijar definitivo e información de ganancia y % de ganancia.
+ */
+@Composable
+fun PresentacionEspecialPrecioBlock(
+    pres: PresentacionEspecial,
+    product: Product,
+    costSheet: com.example.util.ProductCostSheet,
+    viewModel: MainViewModel
+) {
+    val factor = pres.baseEquivalence
+    val presMatPrima = costSheet.costoDirectoUnitario * factor
+    val presGastos = costSheet.gastoIndirectoUnitario * factor
+    val presPersonal = costSheet.totalPagoPersonalUnitario // El pago a personal no se multiplica por el factor (corresponde a 1 unidad simple)
+    val presCostoTeorico = presMatPrima + presGastos + presPersonal
+
+    // Precio de referencia sugerido (+30% margen de ganancia)
+    val targetMargin = costSheet.productoElaborado?.targetMarginPct ?: 30.0
+    val presPrecioReferencia = if (presCostoTeorico > 0.0) {
+        presCostoTeorico * (1.0 + targetMargin / 100.0)
+    } else 0.0
+
+    // Precio establecido de la unidad simple
+    val precioUnidadSimpleEstablecido = if (product.price > 0.0) {
+        product.price
+    } else if (costSheet.hasPrecioDefinitivo) {
+        costSheet.precioDefinitivo
+    } else {
+        costSheet.precioReferencia
+    }
+
+    // Precio inicial sugerido por equivalencia: precio establecido unidad simple × número de unidades equivalentes
+    val defaultPresPrice = precioUnidadSimpleEstablecido * factor
+
+    // Precio en catálogo
+    val hasPresDefinitivo = pres.price > 0.0
+    val presPrecioCatalogo = if (hasPresDefinitivo) pres.price else defaultPresPrice
+    val margenPresCatPct = if (presCostoTeorico > 0.0 && presPrecioCatalogo > 0.0) {
+        ((presPrecioCatalogo - presCostoTeorico) / presCostoTeorico) * 100.0
+    } else null
+
+    // Campo ESTABLECER OTRO PRECIO (aparece inicialmente precio simple × número de unidades equivalentes, editable)
+    var manualPresPriceText by remember(pres.name, pres.price, precioUnidadSimpleEstablecido, factor) {
+        val initVal = if (pres.price > 0.0) pres.price else defaultPresPrice
+        mutableStateOf(
+            if (initVal % 1.0 == 0.0) initVal.toLong().toString() else "%.2f".format(initVal)
+        )
+    }
+
+    val manualPresPrice = manualPresPriceText.toDoubleOrNull() ?: 0.0
+    val manualPresMarginPct = if (presCostoTeorico > 0.0 && manualPresPrice > 0.0) {
+        ((manualPresPrice - presCostoTeorico) / presCostoTeorico) * 100.0
+    } else null
+    val manualPresGanancia = if (presCostoTeorico > 0.0 && manualPresPrice > 0.0) {
+        manualPresPrice - presCostoTeorico
+    } else null
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "PRESENTACIÓN ESPECIAL: ${pres.name.uppercase()}",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = ElQadreNavy
+            )
+            Surface(
+                shape = RoundedCornerShape(4.dp),
+                color = ElQadreGoldSoft
+            ) {
+                val eqStr = if (factor % 1.0 == 0.0) factor.toLong().toString() else "%.1f".format(factor)
+                Text(
+                    text = "= $eqStr ${costSheet.productionUnit}",
+                    fontSize = 9.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = ElQadreGoldDark,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                )
+            }
+        }
+
+        // PRECIO DE REFERENCIA Y PRECIO EN CATÁLOGO
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(ElQadreGoldSoft, RoundedCornerShape(8.dp))
+                .padding(10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text("PRECIO DE REFERENCIA (+30% MARGEN)", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Slate600)
+                Text(
+                    "$${"%.2f".format(presPrecioReferencia)} CUP",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = ElQadreNavy
+                )
+            }
+
+            Column(horizontalAlignment = Alignment.End) {
+                val catLabel = if (margenPresCatPct != null) {
+                    "PRECIO EN CATÁLOGO (${if (margenPresCatPct >= 0) "+" else ""}${"%.1f".format(margenPresCatPct)}% GANANCIA)"
+                } else {
+                    "PRECIO EN CATÁLOGO"
+                }
+                Text(catLabel, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Slate600)
+                Text(
+                    "$${"%.2f".format(presPrecioCatalogo)} CUP",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = if (hasPresDefinitivo) Emerald700 else Slate600
+                )
+            }
+        }
+
+        // OPCIÓN A: USAR PRECIO DE REFERENCIA
+        Button(
+            onClick = {
+                viewModel.setPresentacionEspecialDefinitivePrice(
+                    productId = product.id,
+                    presentationName = pres.name,
+                    definitivePrice = presPrecioReferencia
+                )
+            },
+            colors = ButtonDefaults.buttonColors(containerColor = ElQadreGoldDark),
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier.fillMaxWidth().testTag("use_pres_reference_price_button_${pres.name}")
+        ) {
+            Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                "Usar Precio de Referencia ($${"%.2f".format(presPrecioReferencia)} CUP)",
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp
+            )
+        }
+
+        // OPCIÓN B: ESTABLECER OTRO PRECIO
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedTextField(
+                value = manualPresPriceText,
+                onValueChange = { manualPresPriceText = it },
+                label = { Text("Establecer otro precio ($ CUP)") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true,
+                modifier = Modifier.weight(1f).testTag("manual_pres_price_input_${pres.name}"),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = ElQadreNavy,
+                    focusedLabelColor = ElQadreNavy
+                )
+            )
+
+            Button(
+                onClick = {
+                    val p = manualPresPriceText.toDoubleOrNull() ?: 0.0
+                    if (p > 0.0) {
+                        viewModel.setPresentacionEspecialDefinitivePrice(
+                            productId = product.id,
+                            presentationName = pres.name,
+                            definitivePrice = p
+                        )
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.height(52.dp).testTag("save_definitive_pres_price_button_${pres.name}")
+            ) {
+                Text("Fijar Definitivo", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            }
+        }
+
+        // INFORMACIÓN DE GANANCIA Y % DE GANANCIA
+        if (manualPresPrice > 0.0 && manualPresMarginPct != null && manualPresGanancia != null) {
+            Surface(
+                color = if (manualPresMarginPct >= 0) Color(0xFFF0FDF4) else Color(0xFFFEF2F2),
+                shape = RoundedCornerShape(6.dp),
+                border = BorderStroke(1.dp, if (manualPresMarginPct >= 0) Color(0xFFBBF7D0) else Color(0xFFFECACA)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Ganancia: $${"%.2f".format(manualPresGanancia)} CUP",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (manualPresMarginPct >= 0) Emerald700 else Color(0xFFDC2626)
+                    )
+                    Text(
+                        text = "% de ganancia: ${if (manualPresMarginPct >= 0) "+" else ""}${"%.1f".format(manualPresMarginPct)}%",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (manualPresMarginPct >= 0) Emerald700 else Color(0xFFDC2626)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
  * DIÁLOGO: FICHA DE COSTO DE MERCADERÍAS (BARRA)
  * Implementa la estructura completa de cálculo:
  * Costo de Adquisición + Gastos Indirectos Prorrateados/Específicos + Depreciación Inversiones = Costo Real
@@ -2394,7 +2629,74 @@ fun FichaCostoMercaderiaDialog(
                     }
 
                     // ==========================================
-                    // SECCIÓN 2: EGRESOS POR RATEO ECONÓMICO
+                    // APARTADO 2: PROMEDIO DE VENTA DIARIO
+                    // ==========================================
+                    var dailySalesAvgInput by remember(mercaderia.dailySalesAverage) {
+                        mutableStateOf(if (mercaderia.dailySalesAverage > 0.0) "%.1f".format(mercaderia.dailySalesAverage) else "1.0")
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Slate50,
+                        border = BorderStroke(1.dp, Slate200)
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text(
+                                "2. PROMEDIO DE VENTA DIARIO",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ElQadreNavy
+                            )
+
+                            Text(
+                                "Introduzca la cantidad promedio de unidades vendidas diariamente para convertir el costo indirecto diario en costo indirecto por unidad.",
+                                fontSize = 11.sp,
+                                color = Slate600
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                OutlinedTextField(
+                                    value = dailySalesAvgInput,
+                                    onValueChange = { clean ->
+                                        dailySalesAvgInput = clean.filter { c -> c.isDigit() || c == '.' }
+                                    },
+                                    label = { Text("Promedio de Venta Diario") },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("mercaderia_daily_sales_avg_input"),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    singleLine = true,
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = ElQadreNavy,
+                                        focusedLabelColor = ElQadreNavy
+                                    )
+                                )
+
+                                Button(
+                                    onClick = {
+                                        val newAvg = dailySalesAvgInput.toDoubleOrNull() ?: 1.0
+                                        if (newAvg > 0.0) {
+                                            viewModel.updateMercaderia(mercaderia.copy(dailySalesAverage = newAvg))
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier
+                                        .height(56.dp)
+                                        .testTag("save_mercaderia_daily_sales_avg_button")
+                                ) {
+                                    Text("Guardar Promedio", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    }
+
+                    // ==========================================
+                    // SECCIÓN 3: EGRESOS POR RATEO ECONÓMICO
                     // ==========================================
                     Surface(
                         shape = RoundedCornerShape(10.dp),
@@ -2403,65 +2705,68 @@ fun FichaCostoMercaderiaDialog(
                     ) {
                         Column(modifier = Modifier.padding(14.dp)) {
                             Text(
-                                "2. EGRESOS POR RATEO ECONÓMICO",
+                                "3. EGRESOS - PRORRATEO ECONÓMICO",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = ElQadreNavy
                             )
 
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(12.dp))
 
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Column {
-                                    Text("Gastos Generales Indirectos", fontSize = 10.sp, color = Slate500)
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("GASTOS INDIRECTOS", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = Slate500)
+                                    Spacer(modifier = Modifier.height(12.dp))
                                     Text("$${"%.2f".format(costSheet.gastosGeneralesDiariosTotales)} / día", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = ElQadreNavy)
                                 }
-                                Column {
-                                    Text("Depreciación Inversiones", fontSize = 10.sp, color = Slate500)
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("DEPRECIACIÓN", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = Slate500)
+                                    Text("INVERSIONES", fontSize = 9.sp, color = Slate500)
                                     Text("$${"%.2f".format(costSheet.depreciacionInversionesDiariaTotales)} / día", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Slate700)
                                 }
-                                Column(horizontalAlignment = Alignment.End) {
-                                    Text("Costos Indirectos Generales", fontSize = 10.sp, color = Slate500)
+                                Column(modifier = Modifier.weight(1.2f), horizontalAlignment = Alignment.End) {
+                                    Text("COSTOS INDIRECTOS DEL DÍA", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = Slate500, textAlign = TextAlign.End)
+                                    Spacer(modifier = Modifier.height(12.dp))
                                     Text("$${"%.2f".format(costSheet.costosIndirectosDiariosTotales)} / día", fontWeight = FontWeight.ExtraBold, fontSize = 11.sp, color = ElQadreNavy)
                                 }
                             }
 
-                            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Slate200)
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = Slate200)
 
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Column {
-                                    Text("Costo Indirecto General por Día", fontSize = 10.sp, color = Slate500)
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("ASIGNACIÓN DIRECTA POR DÍA", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Slate500)
                                     Text(
-                                        "$${"%.2f".format(costSheet.costosIndirectosDiariosTotales)} CUP / día",
+                                        "$${"%.2f".format(costSheet.totalCostosIndirectosAsignados)} CUP / día",
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 12.sp,
                                         color = ElQadreNavy
                                     )
-                                    Text("Participación: ${"%.2f".format(costSheet.porcentajeParticipacion)}%", fontSize = 9.sp, color = Slate500)
+                                    Text("(Costos ind. × ${"%.2f".format(costSheet.porcentajeParticipacion)}% part.)", fontSize = 9.sp, color = Slate500)
                                 }
-                                Column(horizontalAlignment = Alignment.End) {
-                                    Text("GASTO UNITARIO INDIRECTO", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = ElQadreGoldDark)
+                                Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.End) {
+                                    Text("GASTO UNITARIO INDIRECTO", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = ElQadreGoldDark, textAlign = TextAlign.End)
                                     Text(
-                                        "$${"%.4f".format(costSheet.gastoIndirectoUnitario)} CUP / ud",
+                                        "$${"%.2f".format(costSheet.gastoIndirectoUnitario)} CUP / ud",
                                         fontWeight = FontWeight.ExtraBold,
                                         fontSize = 13.sp,
                                         color = ElQadreGoldDark
                                     )
-                                    Text("Costo indirecto/día × % prorrateo", fontSize = 9.sp, color = Slate500)
+                                    Text("(Asignación diaria ÷ prom. venta)", fontSize = 9.sp, color = Slate500, textAlign = TextAlign.End)
                                 }
                             }
                         }
                     }
 
                     // ==========================================
-                    // SECCIÓN 3: ESTRUCTURA DEL COSTO UNITARIO
+                    // SECCIÓN 4: ESTRUCTURA DEL COSTO UNITARIO
                     // ==========================================
                     Surface(
                         shape = RoundedCornerShape(12.dp),
@@ -2470,7 +2775,7 @@ fun FichaCostoMercaderiaDialog(
                     ) {
                         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text(
-                                "3. ESTRUCTURA DEL COSTO UNITARIO",
+                                "4. ESTRUCTURA DEL COSTO UNITARIO",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = ElQadreNavy
@@ -2580,7 +2885,7 @@ fun FichaCostoMercaderiaDialog(
                     }
 
                     // ==========================================
-                    // SECCIÓN 4: PRECIO DE REFERENCIA Y PRECIO DEFINITIVO
+                    // SECCIÓN 5: PRECIO DE REFERENCIA Y PRECIO DEFINITIVO
                     // ==========================================
                     Surface(
                         shape = RoundedCornerShape(10.dp),
@@ -2589,7 +2894,7 @@ fun FichaCostoMercaderiaDialog(
                     ) {
                         Column(modifier = Modifier.padding(14.dp)) {
                             Text(
-                                "4. PRECIO DE REFERENCIA Y PRECIO DEFINITIVO",
+                                "5. PRECIO DE REFERENCIA Y PRECIO DEFINITIVO",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = ElQadreNavy

@@ -78,15 +78,21 @@ object SmsSearchHelper {
                     val dateMillis = it.getLong(dateIdx)
                     val dateSentMillis = if (dateSentIdx >= 0) it.getLong(dateSentIdx) else 0L
 
-                    val isPagoXMovil = address.contains("PAGOxMOVIL", ignoreCase = true) ||
+                    val isPagoXMovilOrEnzona = address.contains("PAGOxMOVIL", ignoreCase = true) ||
+                            address.contains("ENZONA", ignoreCase = true) ||
                             body.contains("PAGOxMOVIL", ignoreCase = true) ||
+                            body.contains("ENZONA", ignoreCase = true) ||
                             SmsTransferParser.isValidTransferSms(body)
 
-                    if (isPagoXMovil) {
-                        val parsed = SmsTransferParser.parseTransferSms(body)
+                    if (isPagoXMovilOrEnzona) {
+                        val effectiveSmsMillis = when {
+                            dateMillis > 0L -> dateMillis
+                            dateSentMillis > 0L -> dateSentMillis
+                            else -> startMillis
+                        }
+                        val parsed = SmsTransferParser.parseTransferSms(body, effectiveSmsMillis)
                         if (parsed != null) {
-                            // Exact arrival or sent timestamp on the phone
-                            val effectiveSmsMillis = when {
+                            val finalEffectiveMillis = when {
                                 dateMillis > 0L -> dateMillis
                                 dateSentMillis > 0L -> dateSentMillis
                                 parsed.timestampMillis > 0L -> parsed.timestampMillis
@@ -96,7 +102,8 @@ object SmsSearchHelper {
                             // Check date match
                             val matchesEpoch = (dateMillis in startMillis..endMillis) ||
                                     (dateSentMillis in startMillis..endMillis) ||
-                                    (parsed.timestampMillis in startMillis..endMillis)
+                                    (parsed.timestampMillis in startMillis..endMillis) ||
+                                    (finalEffectiveMillis in startMillis..endMillis)
                             val matchesTextDate = isDateMatchingText(parsed.dateStr, targetDay, targetMonth, targetYear)
 
                             if (matchesEpoch || matchesTextDate) {
@@ -104,16 +111,16 @@ object SmsSearchHelper {
                                 val finalDateStr = if (parsed.dateStr.isNotBlank()) {
                                     parsed.dateStr
                                 } else {
-                                    SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(effectiveSmsMillis))
+                                    SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(finalEffectiveMillis))
                                 }
 
                                 results.add(
                                     SearchedPagoXMovilSms(
                                         parsed = parsed.copy(
                                             dateStr = finalDateStr,
-                                            timestampMillis = effectiveSmsMillis
+                                            timestampMillis = finalEffectiveMillis
                                         ),
-                                        smsDateMillis = effectiveSmsMillis,
+                                        smsDateMillis = finalEffectiveMillis,
                                         isAlreadyRegistered = isRegistered
                                     )
                                 )

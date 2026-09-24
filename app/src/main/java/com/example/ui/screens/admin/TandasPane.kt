@@ -3020,7 +3020,16 @@ fun TandaTableRowCard(
     val expectedYieldVal = if (tanda.expectedYield > 0.0) tanda.expectedYield else tanda.estimatedYield
     val actualYieldVal = if (isClosed) tanda.actualYield else expectedYieldVal
 
-    val rendimientoPct = if (expectedYieldVal > 0.0) (actualYieldVal / expectedYieldVal) * 100.0 else 100.0
+    // Rendimiento con Presentación Especial: UNIDADES TOTALES PARA RENDIMIENTO = UNIDADES GENERALES + EQUIVALENTES DE LAS PRESENTACIONES ESPECIALES
+    val presEquiv = if (tanda.specialPresentationEquivalence > 0.0) tanda.specialPresentationEquivalence else {
+        products.find { it.id == tanda.productId }?.let { p ->
+            parsePresentacionesEspeciales(p.presentacionesEspeciales).find { it.name.equals(tanda.specialPresentationName, true) }?.baseEquivalence
+        } ?: 1.0
+    }
+    val specialUnitsEq = if (isClosed && tanda.specialPresentationQty > 0.0) tanda.specialPresentationQty * presEquiv else 0.0
+    val totalYieldUnits = actualYieldVal + specialUnitsEq
+
+    val rendimientoPct = if (expectedYieldVal > 0.0) (totalYieldUnits / expectedYieldVal) * 100.0 else 100.0
     val ingresoEsperadoVal = if (tanda.expectedRevenue > 0.0) tanda.expectedRevenue else (actualYieldVal * catalogPrice)
     val gananciaVal = if (tanda.estimatedProfit != 0.0) tanda.estimatedProfit else (ingresoEsperadoVal - tanda.totalBatchCost)
 
@@ -3110,8 +3119,13 @@ fun TandaTableRowCard(
                 Column {
                     Text(if (isClosed) "Esperado → Real" else "Esperado", fontSize = 9.sp, color = Slate500)
                     Text(
-                        if (isClosed) "${expectedYieldVal.toInt()} → ${actualYieldVal.toInt()} ${tanda.productionUnit}"
-                        else "${expectedYieldVal.toInt()} ${tanda.productionUnit}",
+                        if (isClosed) {
+                            if (specialUnitsEq > 0.0) {
+                                "${expectedYieldVal.toInt()} → ${totalYieldUnits.toInt()} eq."
+                            } else {
+                                "${expectedYieldVal.toInt()} → ${actualYieldVal.toInt()} ${tanda.productionUnit}"
+                            }
+                        } else "${expectedYieldVal.toInt()} ${tanda.productionUnit}",
                         fontWeight = FontWeight.Bold,
                         fontSize = 11.sp,
                         color = Slate800
@@ -3156,6 +3170,27 @@ fun TandaTableRowCard(
                         fontSize = 11.sp,
                         color = ElQadreGoldDark
                     )
+                }
+            }
+
+            if (isClosed && tanda.specialPresentationQty > 0.0) {
+                Surface(
+                    color = Color(0xFFF0FDF4),
+                    shape = RoundedCornerShape(6.dp),
+                    border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Presentación especial:", fontSize = 10.sp, color = Color(0xFF166534), fontWeight = FontWeight.Bold)
+                        val presQtyStr = if (tanda.specialPresentationQty % 1.0 == 0.0) tanda.specialPresentationQty.toInt().toString() else "%.1f".format(tanda.specialPresentationQty)
+                        Text("$presQtyStr ${tanda.specialPresentationName}", fontSize = 10.sp, fontWeight = FontWeight.Black, color = Color(0xFF166534))
+                    }
                 }
             }
 
@@ -3919,7 +3954,12 @@ fun CerrarTandaDialog(
         product?.let { parsePresentacionesEspeciales(it.presentacionesEspeciales) } ?: emptyList()
     }
 
-    var selectedPresentacion by remember { mutableStateOf<PresentacionEspecial?>(null) }
+    val initialPres = remember(presentaciones, tanda.specialPresentationName) {
+        if (tanda.specialPresentationName.isNotBlank()) {
+            presentaciones.find { it.name.equals(tanda.specialPresentationName, ignoreCase = true) }
+        } else null
+    }
+    var selectedPresentacion by remember { mutableStateOf<PresentacionEspecial?>(initialPres) }
     var cantidadRealProducidaText by remember {
         mutableStateOf(
             if (tanda.actualYield > 0.0) {
@@ -3929,10 +3969,27 @@ fun CerrarTandaDialog(
             } else ""
         )
     }
-    var cantidadPresentacionText by remember { mutableStateOf("") }
+    var cantidadPresentacionText by remember {
+        mutableStateOf(
+            if (tanda.specialPresentationQty > 0.0) {
+                if (tanda.specialPresentationQty % 1.0 == 0.0) tanda.specialPresentationQty.toInt().toString() else "%.1f".format(tanda.specialPresentationQty)
+            } else ""
+        )
+    }
 
     val finalQty = cantidadRealProducidaText.toDoubleOrNull() ?: 0.0
-    val rendimientoCalculado = if (tanda.baseQuantityUsed > 0.0) finalQty / tanda.baseQuantityUsed else 0.0
+    val presQty = cantidadPresentacionText.toDoubleOrNull() ?: 0.0
+
+    // Rendimiento con Presentación Especial: UNIDADES TOTALES PARA RENDIMIENTO = UNIDADES GENERALES + EQUIVALENTES DE LAS PRESENTACIONES ESPECIALES
+    val presEquiv = selectedPresentacion?.baseEquivalence
+        ?: presentaciones.find { it.name.equals(tanda.specialPresentationName, ignoreCase = true) }?.baseEquivalence
+        ?: (if (tanda.specialPresentationEquivalence > 0.0) tanda.specialPresentationEquivalence else 1.0)
+    val unidadesEquivalentesPres = if (selectedPresentacion != null && presQty > 0.0) presQty * presEquiv else 0.0
+    val unidadesTotalesRendimiento = finalQty + unidadesEquivalentesPres
+
+    val rendimientoCalculado = if (tanda.baseQuantityUsed > 0.0) unidadesTotalesRendimiento / tanda.baseQuantityUsed else 0.0
+    val expectedYieldVal = if (tanda.expectedYield > 0.0) tanda.expectedYield else tanda.estimatedYield
+    val yieldPercentageCalculado = if (expectedYieldVal > 0.0) (unidadesTotalesRendimiento / expectedYieldVal) * 100.0 else 100.0
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -4069,10 +4126,6 @@ fun CerrarTandaDialog(
                                     selected = selectedPresentacion == pres,
                                     onClick = {
                                         selectedPresentacion = pres
-                                        if (pres.baseEquivalence > 0.0 && finalQty > 0.0) {
-                                            val presQty = finalQty / pres.baseEquivalence
-                                            cantidadPresentacionText = if (presQty % 1.0 == 0.0) presQty.toInt().toString() else "%.1f".format(presQty)
-                                        }
                                     },
                                     label = {
                                         Text(
@@ -4106,13 +4159,9 @@ fun CerrarTandaDialog(
                                         value = cantidadPresentacionText,
                                         onValueChange = {
                                             cantidadPresentacionText = it
-                                            val pQty = it.toDoubleOrNull() ?: 0.0
-                                            if (pQty > 0.0 && pres.baseEquivalence > 0.0) {
-                                                val eqBase = pQty * pres.baseEquivalence
-                                                cantidadRealProducidaText = if (eqBase % 1.0 == 0.0) eqBase.toInt().toString() else "%.1f".format(eqBase)
-                                            }
                                         },
                                         label = { Text("Cantidad en ${pres.name}") },
+                                        placeholder = { Text("Ej. 3", color = Slate400) },
                                         singleLine = true,
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                         modifier = Modifier
@@ -4125,8 +4174,68 @@ fun CerrarTandaDialog(
                     }
                 }
 
+                // 3. VISUALIZACIÓN SEPARADA: PRODUCCIÓN GENERAL Y PRESENTACIÓN ESPECIAL
+                if (selectedPresentacion != null && presQty > 0.0) {
+                    val unitStr = tanda.productionUnit.ifBlank { "unidades" }
+                    val prodRealStr = if (finalQty % 1.0 == 0.0) finalQty.toInt().toString() else "%.1f".format(finalQty)
+                    val presRealStr = if (presQty % 1.0 == 0.0) presQty.toInt().toString() else "%.1f".format(presQty)
+
+                    Surface(
+                        color = Color(0xFFF0FDF4),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.5.dp, Color(0xFF86EFAC)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text(
+                                text = "DETALLE DE PRODUCCIÓN DE LA TANDA",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFF166534)
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "UNIDADES PRODUCIDAS",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Slate600
+                                    )
+                                    Text(
+                                        text = "$prodRealStr $unitStr",
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = ElQadreNavy
+                                    )
+                                }
+                                Column(horizontalAlignment = Alignment.End, modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "UNIDADES DE PRESENTACIÓN ESPECIAL",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF15803D)
+                                    )
+                                    Text(
+                                        text = "$presRealStr ${selectedPresentacion?.name}",
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = Color(0xFF15803D)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Cálculo automático del rendimiento
-                if (finalQty > 0.0) {
+                if (finalQty > 0.0 || unidadesTotalesRendimiento > 0.0) {
                     Surface(
                         color = Emerald50,
                         border = BorderStroke(1.dp, Emerald600),
@@ -4143,17 +4252,46 @@ fun CerrarTandaDialog(
                                 color = Emerald700,
                                 fontWeight = FontWeight.Bold
                             )
-                            Text(
-                                text = "${"%.2f".format(rendimientoCalculado)} ${tanda.productionUnit}/${tanda.baseQuantityUnit}",
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Black,
-                                color = Emerald700
-                            )
-                            Text(
-                                text = "(${if (finalQty % 1.0 == 0.0) finalQty.toInt().toString() else "%.1f".format(finalQty)} ${tanda.productionUnit} ÷ ${tanda.baseQuantityUsed} ${tanda.baseQuantityUnit})",
-                                fontSize = 12.sp,
-                                color = Slate600
-                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "${"%.2f".format(rendimientoCalculado)} ${tanda.productionUnit}/${tanda.baseQuantityUnit}",
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Emerald700
+                                )
+                                if (expectedYieldVal > 0.0) {
+                                    Text(
+                                        text = "${"%.1f".format(yieldPercentageCalculado)}%",
+                                        fontSize = 18.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = if (yieldPercentageCalculado >= 95.0) Emerald700 else Amber700
+                                    )
+                                }
+                            }
+                            val finalQtyStr = if (finalQty % 1.0 == 0.0) finalQty.toInt().toString() else "%.1f".format(finalQty)
+                            val totalEqStr = if (unidadesTotalesRendimiento % 1.0 == 0.0) unidadesTotalesRendimiento.toInt().toString() else "%.1f".format(unidadesTotalesRendimiento)
+                            val presQtyStr = if (presQty % 1.0 == 0.0) presQty.toInt().toString() else "%.1f".format(presQty)
+                            val presEquivStr = if (presEquiv % 1.0 == 0.0) presEquiv.toInt().toString() else "%.1f".format(presEquiv)
+                            val presEqUnitsStr = if (unidadesEquivalentesPres % 1.0 == 0.0) unidadesEquivalentesPres.toInt().toString() else "%.1f".format(unidadesEquivalentesPres)
+
+                            if (unidadesEquivalentesPres > 0.0) {
+                                Text(
+                                    text = "Total para rendimiento: $totalEqStr eq. ($finalQtyStr ${tanda.productionUnit} + $presEqUnitsStr eq. por $presQtyStr ${selectedPresentacion?.name} [×$presEquivStr]) ÷ ${tanda.baseQuantityUsed} ${tanda.baseQuantityUnit}",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = Slate700
+                                )
+                            } else {
+                                Text(
+                                    text = "($finalQtyStr ${tanda.productionUnit} ÷ ${tanda.baseQuantityUsed} ${tanda.baseQuantityUnit})",
+                                    fontSize = 12.sp,
+                                    color = Slate600
+                                )
+                            }
                         }
                     }
                 }
@@ -4174,30 +4312,32 @@ fun CerrarTandaDialog(
                         tanda.observation.split("|").filter { it.contains("[") }.joinToString(" | ") { it.trim() }
                     } else ""
 
+                    val hasSpecialPres = selectedPresentacion != null && presQty > 0.0
+
                     val obsText = buildString {
                         if (existingPrefix.isNotBlank()) {
                             append(existingPrefix).append(" | ")
                         }
-                        if (selectedPresentacion != null) {
-                            append("Presentación: ${selectedPresentacion?.name}")
-                            if (cantidadPresentacionText.isNotBlank()) {
-                                append(" ($cantidadPresentacionText u)")
-                            }
-                            append(" | ")
+                        if (hasSpecialPres) {
+                            val presQtyDisplay = if (presQty % 1.0 == 0.0) presQty.toInt().toString() else "%.1f".format(presQty)
+                            append("Pres. Especial: $presQtyDisplay ${selectedPresentacion?.name} | ")
                         }
                         append("Rendimiento: ${"%.2f".format(rendimientoCalculado)} ${tanda.productionUnit}/${tanda.baseQuantityUnit}")
                     }
 
                     val updatedTanda = tanda.copy(
                         actualYield = finalQty,
-                        yieldPercentage = rendimientoCalculado,
+                        yieldPercentage = yieldPercentageCalculado,
                         status = "CERRADA",
                         observation = obsText,
                         expectedRevenue = realRevenue,
                         estimatedProfit = realProfit,
                         profitMargin = realProfitMargin,
                         realUnitCost = realUnitCost,
-                        inventoryDeducted = true
+                        inventoryDeducted = true,
+                        specialPresentationName = if (hasSpecialPres) selectedPresentacion!!.name else "",
+                        specialPresentationQty = if (hasSpecialPres) presQty else 0.0,
+                        specialPresentationEquivalence = if (hasSpecialPres) presEquiv else 1.0
                     )
 
                     viewModel.cerrarTanda(updatedTanda)
@@ -5541,10 +5681,41 @@ fun TandaDetailDialog(
                             Text("Producción Real:", fontSize = 11.sp, color = Slate600)
                             Text(if (isClosed) "${tanda.actualYield.toInt()} ${tanda.productionUnit}" else "Pendiente de cierre", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = ElQadreNavy)
                         }
+                        if (isClosed && tanda.specialPresentationQty > 0.0) {
+                            val presEquiv = if (tanda.specialPresentationEquivalence > 0.0) tanda.specialPresentationEquivalence else {
+                                product?.let { p ->
+                                    parsePresentacionesEspeciales(p.presentacionesEspeciales).find { it.name.equals(tanda.specialPresentationName, true) }?.baseEquivalence
+                                } ?: 1.0
+                            }
+                            val specialUnitsEq = tanda.specialPresentationQty * presEquiv
+                            val totalYieldUnits = tanda.actualYield + specialUnitsEq
+                            val presQtyStr = if (tanda.specialPresentationQty % 1.0 == 0.0) tanda.specialPresentationQty.toInt().toString() else "%.1f".format(tanda.specialPresentationQty)
+                            val specialUnitsEqStr = if (specialUnitsEq % 1.0 == 0.0) specialUnitsEq.toInt().toString() else "%.1f".format(specialUnitsEq)
+                            val totalYieldUnitsStr = if (totalYieldUnits % 1.0 == 0.0) totalYieldUnits.toInt().toString() else "%.1f".format(totalYieldUnits)
+
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Presentación Especial:", fontSize = 11.sp, color = Color(0xFF15803D), fontWeight = FontWeight.Bold)
+                                Text("$presQtyStr ${tanda.specialPresentationName}", fontWeight = FontWeight.Black, fontSize = 11.sp, color = Color(0xFF15803D))
+                            }
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Total para Rendimiento:", fontSize = 11.sp, color = Color(0xFF15803D), fontWeight = FontWeight.Bold)
+                                Text("$totalYieldUnitsStr eq. (${tanda.actualYield.toInt()} + $specialUnitsEqStr)", fontWeight = FontWeight.Black, fontSize = 11.sp, color = Color(0xFF15803D))
+                            }
+                        }
                         if (isClosed) {
+                            val presEquiv = if (tanda.specialPresentationEquivalence > 0.0) tanda.specialPresentationEquivalence else {
+                                product?.let { p ->
+                                    parsePresentacionesEspeciales(p.presentacionesEspeciales).find { it.name.equals(tanda.specialPresentationName, true) }?.baseEquivalence
+                                } ?: 1.0
+                            }
+                            val specialUnitsEq = if (tanda.specialPresentationQty > 0.0) tanda.specialPresentationQty * presEquiv else 0.0
+                            val totalYieldUnits = tanda.actualYield + specialUnitsEq
+                            val expectedVal = if (tanda.expectedYield > 0.0) tanda.expectedYield else tanda.estimatedYield
+                            val displayYieldPct = if (expectedVal > 0.0 && specialUnitsEq > 0.0) (totalYieldUnits / expectedVal) * 100.0 else tanda.yieldPercentage
+
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("Rendimiento del Lote:", fontSize = 11.sp, color = Slate600)
-                                Text("${"%.1f".format(tanda.yieldPercentage)}%", fontWeight = FontWeight.ExtraBold, fontSize = 12.sp, color = if (tanda.yieldPercentage >= 95.0) Emerald600 else Rose600)
+                                Text("${"%.1f".format(displayYieldPct)}%", fontWeight = FontWeight.ExtraBold, fontSize = 12.sp, color = if (displayYieldPct >= 95.0) Emerald600 else Rose600)
                             }
                         }
                         HorizontalDivider(color = Slate200)

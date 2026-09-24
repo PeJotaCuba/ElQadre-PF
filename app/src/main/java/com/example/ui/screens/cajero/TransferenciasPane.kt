@@ -9,7 +9,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AccountBalance
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Description
@@ -43,15 +46,64 @@ import java.util.Locale
 fun TransferenciasPane(
     uiState: MainUiState,
     viewModel: MainViewModel,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    triggerScanSignal: Int = 0
 ) {
     val context = LocalContext.current
     var selectedTransferDateFilter by remember { mutableStateOf("TODAS") } // "TODAS" or "dd/MM/yyyy"
     var showInformeDialog by remember { mutableStateOf(false) }
     var showAgregarExternaDialog by remember { mutableStateOf(false) }
     var showConfirmBorrarTodoDialog by remember { mutableStateOf(false) }
+    var pendingNewTransfersToConfirm by remember { mutableStateOf<List<com.example.util.SearchedPagoXMovilSms>>(emptyList()) }
+    var selectedTransferForDetail by remember { mutableStateOf<Transferencia?>(null) }
 
     val dateOnlyFormatter = remember { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()) }
+
+    fun autoSearchJornadaTransfers(showNoNewToast: Boolean = false) {
+        val cal = Calendar.getInstance()
+        if (uiState.activeJornada != null && uiState.activeJornada.openedAt > 0) {
+            cal.timeInMillis = uiState.activeJornada.openedAt
+        }
+        val existingTxs = uiState.allTransferencias.map { it.transactionNumber.trim() }.toSet()
+        val list = com.example.util.SmsSearchHelper.searchPagoXMovilByDate(context, cal, existingTxs)
+        val seenTxs = mutableSetOf<String>()
+        val newOnly = list.filter { !it.isAlreadyRegistered && it.parsed.transactionNumber.isNotBlank() && seenTxs.add(it.parsed.transactionNumber) }
+        if (newOnly.isNotEmpty()) {
+            pendingNewTransfersToConfirm = newOnly
+        } else if (showNoNewToast) {
+            android.widget.Toast.makeText(
+                context,
+                "Escaneo completado. No se encontraron nuevas transferencias.",
+                android.widget.Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    val smsPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            autoSearchJornadaTransfers(showNoNewToast = triggerScanSignal > 0)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_SMS) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            autoSearchJornadaTransfers()
+        } else {
+            smsPermissionLauncher.launch(android.Manifest.permission.READ_SMS)
+        }
+    }
+
+    LaunchedEffect(triggerScanSignal) {
+        if (triggerScanSignal > 0) {
+            if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_SMS) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                autoSearchJornadaTransfers(showNoNewToast = true)
+            } else {
+                smsPermissionLauncher.launch(android.Manifest.permission.READ_SMS)
+            }
+        }
+    }
 
     val calendar = remember { Calendar.getInstance() }
     val datePickerDialog = remember {
@@ -92,92 +144,57 @@ fun TransferenciasPane(
     Column(
         modifier = modifier
             .fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        // Summary Band & Top Actions
-        Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = Color(0xFFF0F9FF),
-            border = BorderStroke(1.dp, Color(0xFFBAE6FD)),
-            modifier = Modifier.fillMaxWidth()
+        // Botones de acción principales (AGREGAR | INFORME | BORRAR TODO)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
+            Button(
+                onClick = { showAgregarExternaDialog = true },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                shape = RoundedCornerShape(10.dp),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                    .weight(1f)
+                    .height(46.dp)
+                    .testTag("btn_agregar_transferencia_externa")
             ) {
-                // Title and Total together in the same band
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    val labelFecha = if (selectedTransferDateFilter == "TODAS") "TODAS" else selectedTransferDateFilter
-                    Text(
-                        text = "TRANSFERENCIAS RECIBIDAS — $labelFecha",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF0369A1),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = "$${"%.2f".format(totalTransferAmount)} CUP",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Black,
-                        color = Color(0xFF0284C7)
-                    )
-                }
+                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("AGREGAR", fontSize = 12.5.sp, fontWeight = FontWeight.Black)
+            }
 
-                // Action Buttons
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Button(
-                        onClick = { showAgregarExternaDialog = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                        modifier = Modifier
-                            .height(34.dp)
-                            .testTag("btn_agregar_transferencia_externa")
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("AGREGAR", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    }
+            Button(
+                onClick = { showInformeDialog = true },
+                colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
+                shape = RoundedCornerShape(10.dp),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(46.dp)
+                    .testTag("btn_generar_informe_transferencias")
+            ) {
+                Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("INFORME", fontSize = 12.5.sp, fontWeight = FontWeight.Black)
+            }
 
-                    Button(
-                        onClick = { showInformeDialog = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                        modifier = Modifier
-                            .height(34.dp)
-                            .testTag("btn_generar_informe_transferencias")
-                    ) {
-                        Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("INFORME", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    }
-
-                    Button(
-                        onClick = { showConfirmBorrarTodoDialog = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                        modifier = Modifier
-                            .height(34.dp)
-                            .testTag("btn_borrar_todas_transferencias")
-                    ) {
-                        Icon(Icons.Default.DeleteSweep, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("BORRAR TODO", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
+            Button(
+                onClick = { showConfirmBorrarTodoDialog = true },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                shape = RoundedCornerShape(10.dp),
+                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp),
+                modifier = Modifier
+                    .weight(1.18f)
+                    .height(46.dp)
+                    .testTag("btn_borrar_todas_transferencias")
+            ) {
+                Icon(Icons.Default.DeleteSweep, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("BORRAR TODO", fontSize = 11.5.sp, fontWeight = FontWeight.Black, maxLines = 1)
             }
         }
 
@@ -191,16 +208,16 @@ fun TransferenciasPane(
             FilterChip(
                 selected = selectedTransferDateFilter == "TODAS",
                 onClick = { selectedTransferDateFilter = "TODAS" },
-                label = { Text("Todas las Fechas", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
-                modifier = Modifier.testTag("chip_fecha_todas")
+                label = { Text("Todas las Fechas", fontSize = 11.5.sp, fontWeight = FontWeight.Bold) },
+                modifier = Modifier.height(38.dp).testTag("chip_fecha_todas")
             )
 
             // Option "HOY"
             FilterChip(
                 selected = selectedTransferDateFilter == todayDateStr,
                 onClick = { selectedTransferDateFilter = todayDateStr },
-                label = { Text("Hoy", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
-                modifier = Modifier.testTag("chip_fecha_hoy")
+                label = { Text("Hoy", fontSize = 11.5.sp, fontWeight = FontWeight.Bold) },
+                modifier = Modifier.height(38.dp).testTag("chip_fecha_hoy")
             )
 
             // Specific Date Selector Button
@@ -210,7 +227,7 @@ fun TransferenciasPane(
                 border = BorderStroke(1.dp, if (selectedTransferDateFilter != "TODAS" && selectedTransferDateFilter != todayDateStr) ElQadreGold else Slate300),
                 modifier = Modifier
                     .weight(1f)
-                    .height(36.dp)
+                    .height(38.dp)
                     .clickable { datePickerDialog.show() }
                     .testTag("btn_selector_fecha_transferencias")
             ) {
@@ -222,10 +239,10 @@ fun TransferenciasPane(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Icon(Icons.Outlined.CalendarToday, contentDescription = null, modifier = Modifier.size(14.dp), tint = ElQadreNavy)
+                        Icon(Icons.Outlined.CalendarToday, contentDescription = null, modifier = Modifier.size(15.dp), tint = ElQadreNavy)
                         Text(
                             text = if (selectedTransferDateFilter == "TODAS") "Elegir Fecha..." else selectedTransferDateFilter,
-                            fontSize = 11.sp,
+                            fontSize = 11.5.sp,
                             fontWeight = FontWeight.Bold,
                             color = ElQadreNavy
                         )
@@ -233,9 +250,9 @@ fun TransferenciasPane(
                     if (selectedTransferDateFilter != "TODAS") {
                         IconButton(
                             onClick = { selectedTransferDateFilter = "TODAS" },
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(24.dp)
                         ) {
-                            Icon(Icons.Default.Close, contentDescription = "Limpiar fecha", modifier = Modifier.size(12.dp), tint = Slate500)
+                            Icon(Icons.Default.Close, contentDescription = "Limpiar fecha", modifier = Modifier.size(14.dp), tint = Slate500)
                         }
                     }
                 }
@@ -264,7 +281,7 @@ fun TransferenciasPane(
                     start = 0.dp,
                     top = 4.dp,
                     end = 0.dp,
-                    bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 96.dp
+                    bottom = 16.dp
                 ),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -273,21 +290,23 @@ fun TransferenciasPane(
                         shape = RoundedCornerShape(12.dp),
                         color = Color.White,
                         border = BorderStroke(1.dp, Slate200),
+                        shadowElevation = 1.dp,
                         modifier = Modifier
                             .fillMaxWidth()
+                            .clickable { selectedTransferForDetail = tx }
                             .testTag("card_transferencia_${tx.id}")
                     ) {
-                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Text(
                                         text = tx.transactionNumber,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 13.5.sp,
                                         color = ElQadreNavy
                                     )
 
@@ -298,10 +317,10 @@ fun TransferenciasPane(
                                         ) {
                                             Text(
                                                 text = "MANUAL",
-                                                fontSize = 8.sp,
+                                                fontSize = 8.5.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = Color(0xFF7E22CE),
-                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                             )
                                         }
                                     } else {
@@ -311,10 +330,10 @@ fun TransferenciasPane(
                                         ) {
                                             Text(
                                                 text = "SMS",
-                                                fontSize = 8.sp,
+                                                fontSize = 8.5.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = Color(0xFF0369A1),
-                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                             )
                                         }
                                     }
@@ -323,7 +342,7 @@ fun TransferenciasPane(
                                 Text(
                                     text = "$${"%.2f".format(tx.amount)} ${tx.currency}",
                                     fontWeight = FontWeight.Black,
-                                    fontSize = 14.sp,
+                                    fontSize = 15.sp,
                                     color = Color(0xFF0284C7)
                                 )
                             }
@@ -337,13 +356,13 @@ fun TransferenciasPane(
 
                             Text(
                                 text = "Titular: $titularDisplay$ciDisplay",
-                                fontSize = 11.sp,
+                                fontSize = 11.5.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = Slate700
                             )
                             Text(
-                                text = "Teléfono: $phoneDisplay | Cuenta: ${tx.recipientAccount}",
-                                fontSize = 10.sp,
+                                text = "Teléfono: $phoneDisplay | Cuenta: ${tx.recipientAccount.ifBlank { "No especificada" }}",
+                                fontSize = 10.5.sp,
                                 color = Slate500
                             )
 
@@ -355,9 +374,16 @@ fun TransferenciasPane(
                                 val dateStr = if (tx.smsDate.isNotBlank()) tx.smsDate else dateOnlyFormatter.format(Date(tx.receivedAt))
                                 val timeStr = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(tx.receivedAt))
                                 Text(
-                                    text = "Fecha: $dateStr | Hora: $timeStr | Cajero: @${tx.cajeroUsername}",
-                                    fontSize = 10.sp,
-                                    color = Slate400
+                                    text = "Fecha: $dateStr | Hora: $timeStr",
+                                    fontSize = 10.5.sp,
+                                    color = Slate500,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                    contentDescription = "Ver detalle",
+                                    tint = Slate400,
+                                    modifier = Modifier.size(16.dp)
                                 )
                             }
                         }
@@ -445,6 +471,170 @@ fun TransferenciasPane(
                     Text("Cancelar", color = Slate600, fontWeight = FontWeight.SemiBold)
                 }
             }
+        )
+    }
+
+    if (pendingNewTransfersToConfirm.isNotEmpty()) {
+        val totalNewAmount = remember(pendingNewTransfersToConfirm) {
+            pendingNewTransfersToConfirm.sumOf { it.parsed.amount }
+        }
+
+        AlertDialog(
+            onDismissRequest = { pendingNewTransfersToConfirm = emptyList() },
+            icon = {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFFDCFCE7),
+                    border = BorderStroke(1.dp, Color(0xFF86EFAC))
+                ) {
+                    Icon(
+                        Icons.Default.AccountBalance,
+                        contentDescription = null,
+                        tint = Color(0xFF15803D),
+                        modifier = Modifier.padding(10.dp).size(28.dp)
+                    )
+                }
+            },
+            title = {
+                Text(
+                    text = "SE ENCONTRARON ${pendingNewTransfersToConfirm.size} TRANSFERENCIAS NUEVAS",
+                    fontWeight = FontWeight.Black,
+                    fontSize = 15.sp,
+                    color = ElQadreNavy,
+                    textAlign = TextAlign.Center
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFFF0FDF4),
+                        border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = "MONTO TOTAL DETECTADO",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF166534)
+                            )
+                            Text(
+                                text = "$${"%.2f".format(totalNewAmount)} CUP",
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Emerald600
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = "Transferencias de la jornada actual detectadas en mensajes SMS no registradas previamente. ¿Desea registrarlas?",
+                        fontSize = 12.sp,
+                        color = Slate600,
+                        textAlign = TextAlign.Center
+                    )
+
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 140.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        items(pendingNewTransfersToConfirm) { item ->
+                            val tx = item.parsed
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = Color.White,
+                                border = BorderStroke(1.dp, Slate200),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text(
+                                            text = tx.transactionNumber,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.5.sp,
+                                            color = ElQadreNavy
+                                        )
+                                        Text(
+                                            text = if (tx.phoneNumber.isNotBlank()) "Tel: ${tx.phoneNumber}" else tx.dateStr,
+                                            fontSize = 9.5.sp,
+                                            color = Slate500
+                                        )
+                                    }
+                                    Text(
+                                        text = "$${"%.2f".format(tx.amount)} ${tx.currency}",
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 12.sp,
+                                        color = Emerald600
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val toRegister = pendingNewTransfersToConfirm
+                        pendingNewTransfersToConfirm = emptyList()
+                        viewModel.registrarNuevasTransferenciasDetectadas(toRegister)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Emerald600),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                ) {
+                    Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "REGISTRAR (${pendingNewTransfersToConfirm.size})",
+                        fontWeight = FontWeight.Black,
+                        fontSize = 13.5.sp
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { pendingNewTransfersToConfirm = emptyList() },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Cancelar / Más tarde", color = Slate600, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                }
+            }
+        )
+    }
+
+    if (selectedTransferForDetail != null) {
+        DetalleTransferenciaDialog(
+            transferencia = selectedTransferForDetail!!,
+            onSave = { name, ci, phone ->
+                val id = selectedTransferForDetail!!.id
+                viewModel.updateTransferenciaSenderData(
+                    transferenciaId = id,
+                    titularName = name,
+                    titularCi = ci,
+                    phoneNumber = phone,
+                    onSuccess = {
+                        selectedTransferForDetail = null
+                    }
+                )
+            },
+            onDismiss = { selectedTransferForDetail = null }
         )
     }
 }

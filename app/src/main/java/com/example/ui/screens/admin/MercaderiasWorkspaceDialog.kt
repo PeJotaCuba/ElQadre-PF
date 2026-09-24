@@ -590,8 +590,9 @@ fun MercaderiasWorkspaceDialog(
     }
 
     if (selectedMercaderiaForFichaCosto != null) {
+        val latestMerc = uiState.mercaderias.find { it.id == selectedMercaderiaForFichaCosto!!.id } ?: selectedMercaderiaForFichaCosto!!
         FichaCostoMercaderiaDialog(
-            mercaderia = selectedMercaderiaForFichaCosto!!,
+            mercaderia = latestMerc,
             uiState = uiState,
             viewModel = viewModel,
             onDismiss = {

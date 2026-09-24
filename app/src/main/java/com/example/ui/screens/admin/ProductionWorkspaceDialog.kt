@@ -1213,8 +1213,13 @@ fun MateriasPrimasPane(
                                             fontWeight = FontWeight.SemiBold,
                                             color = Slate500
                                         )
+                                        val displayPurchasePrice = if (m.purchaseMode == "POR LOTE") {
+                                            if (m.purchaseLotPrice > 0.0) m.purchaseLotPrice else m.purchasePrice
+                                        } else {
+                                            m.purchasePrice
+                                        }
                                         Text(
-                                            text = "$${"%.2f".format(m.purchasePrice)} CUP / ${m.purchaseUnit}",
+                                            text = "$${"%.2f".format(displayPurchasePrice)} CUP / ${m.purchaseUnit}",
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = ElQadreGoldDark
@@ -1571,39 +1576,49 @@ fun AddEditMateriaPrimaDialog(
         )
     }
     
-    var purchaseQtyText by remember {
+    // Purchase Mode: strictly "POR UNIDAD" or "POR LOTE", mutually exclusive
+    val initialMode = if (materia != null && materia.purchaseMode == "POR LOTE") "POR LOTE" else "POR UNIDAD"
+    var purchaseMode by remember { mutableStateOf(initialMode) }
+    
+    // Dedicated state variables per mode to ensure strict exclusivity and no data leakage
+    var unidadPurchaseQtyText by remember {
         mutableStateOf(
-            if (materia != null && materia.purchaseQuantity > 0.0) materia.purchaseQuantity.toString() else ""
+            if (materia != null && initialMode == "POR UNIDAD" && materia.purchaseQuantity > 0.0) materia.purchaseQuantity.toString() else ""
         )
     }
-    
-    var numPackagesText by remember { mutableStateOf("1") }
-    
-    // Purchase Mode & Expenses (Gastos Compartidos) & Linked Product
-    var purchaseMode by remember { mutableStateOf("POR UNIDAD") } // "POR UNIDAD", "POR LOTE"
-    
-    // Dedicated state variables per mode to ensure clear separation and immediate reactive updates
     var unidadQtyText by remember {
         mutableStateOf(
-            if (materia != null && materia.purchaseQuantity > 0.0) materia.purchaseQuantity.toString() else ""
+            if (materia != null && initialMode == "POR UNIDAD" && materia.purchaseQuantity > 0.0) materia.purchaseQuantity.toString() else ""
         )
     }
     var unidadPriceText by remember {
         mutableStateOf(
-            if (materia != null && materia.purchasePrice > 0.0) materia.purchasePrice.toString() else ""
+            if (materia != null && initialMode == "POR UNIDAD" && materia.purchasePrice > 0.0) materia.purchasePrice.toString() else ""
+        )
+    }
+
+    var lotePurchaseQtyText by remember {
+        mutableStateOf(
+            if (materia != null && initialMode == "POR LOTE" && materia.purchaseQuantity > 0.0) materia.purchaseQuantity.toString() else ""
         )
     }
     var loteUnitsText by remember {
         mutableStateOf(
-            if (materia != null && materia.purchaseQuantity > 0.0) materia.purchaseQuantity.toString() else ""
+            if (materia != null && initialMode == "POR LOTE" && materia.purchaseLotUnits > 0.0) materia.purchaseLotUnits.toString() else ""
+        )
+    }
+    var numLotesText by remember {
+        mutableStateOf(
+            if (materia != null && initialMode == "POR LOTE" && materia.purchaseLotQuantity > 0.0) {
+                if (materia.purchaseLotQuantity % 1.0 == 0.0) materia.purchaseLotQuantity.toInt().toString() else materia.purchaseLotQuantity.toString()
+            } else ""
         )
     }
     var lotePriceText by remember {
         mutableStateOf(
-            if (materia != null && materia.purchasePrice > 0.0) materia.purchasePrice.toString() else ""
+            if (materia != null && initialMode == "POR LOTE" && materia.purchaseLotPrice > 0.0) materia.purchaseLotPrice.toString() else ""
         )
     }
-    var numLotesText by remember { mutableStateOf("1") }
 
     var purchaseExpensesStr by remember { mutableStateOf("") }
     var sharedDivisorStr by remember { mutableStateOf("1") }
@@ -1639,12 +1654,14 @@ fun AddEditMateriaPrimaDialog(
     
     // Purchase Mode calculations accessible to entire dialog
     val isPorUnidad = purchaseMode == "POR UNIDAD"
+    val unidadPurchaseQtyVal = unidadPurchaseQtyText.trim().toDoubleOrNull() ?: 0.0
     val unidadQtyVal = unidadQtyText.trim().toDoubleOrNull() ?: 0.0
     val unidadPriceVal = unidadPriceText.trim().toDoubleOrNull() ?: 0.0
 
+    val lotePurchaseQtyVal = lotePurchaseQtyText.trim().toDoubleOrNull() ?: 0.0
     val loteUnitsVal = loteUnitsText.trim().toDoubleOrNull() ?: 0.0
     val lotePriceVal = lotePriceText.trim().toDoubleOrNull() ?: 0.0
-    val numLotesVal = numLotesText.trim().toDoubleOrNull() ?: 1.0
+    val numLotesVal = (numLotesText.trim().toDoubleOrNull() ?: 1.0).coerceAtLeast(1.0)
 
     val totalPurchaseExpenses = purchaseExpensesStr.trim().toDoubleOrNull() ?: 0.0
     val sharedDivisor = (sharedDivisorStr.toIntOrNull() ?: 1).coerceIn(1, 5)
@@ -2125,7 +2142,22 @@ fun AddEditMateriaPrimaDialog(
                                 "POR LOTE" to "POR LOTE"
                             ).forEach { (mode, label) ->
                                 Surface(
-                                    onClick = { purchaseMode = mode },
+                                    onClick = { 
+                                        if (purchaseMode != mode) {
+                                            purchaseMode = mode
+                                            if (mode == "POR UNIDAD") {
+                                                lotePurchaseQtyText = ""
+                                                loteUnitsText = ""
+                                                numLotesText = ""
+                                                lotePriceText = ""
+                                            } else {
+                                                unidadPurchaseQtyText = ""
+                                                unidadQtyText = ""
+                                                unidadPriceText = ""
+                                            }
+                                            showError = false
+                                        }
+                                    },
                                     shape = RoundedCornerShape(12.dp),
                                     color = if (purchaseMode == mode) ElQadreNavy else Color.White,
                                     border = BorderStroke(1.5.dp, if (purchaseMode == mode) ElQadreNavy else Slate300),
@@ -2157,21 +2189,23 @@ fun AddEditMateriaPrimaDialog(
                         )
 
                         if (isPorUnidad) {
-                            // POR UNIDAD: CANTIDAD DE UNIDADES, UNIDAD DE MEDIDA, PRECIO POR UNIDAD
+                            // 1. COMPRA POR UNIDAD
+                            // Fila 1: Cantidad | Unidad de medida
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 OutlinedTextField(
-                                    value = unidadQtyText,
+                                    value = unidadPurchaseQtyText,
                                     onValueChange = { 
-                                        unidadQtyText = it
+                                        unidadPurchaseQtyText = it
                                         showError = false
                                     },
-                                    label = { Text("Cantidad Unidades (*)", fontSize = 12.sp, fontWeight = FontWeight.Bold) },
-                                    placeholder = { Text("Ej. 10", color = Slate400) },
+                                    label = { Text("Cantidad", fontSize = 12.sp, fontWeight = FontWeight.Bold) },
+                                    placeholder = { Text("Ej. 1", color = Slate400) },
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    singleLine = true,
                                     shape = RoundedCornerShape(14.dp),
                                     colors = OutlinedTextFieldDefaults.colors(
                                         focusedBorderColor = Color(0xFF0F766E),
@@ -2180,10 +2214,10 @@ fun AddEditMateriaPrimaDialog(
                                     modifier = Modifier
                                         .weight(1.2f)
                                         .height(64.dp)
-                                        .testTag("purchase_qty_input")
+                                        .testTag("purchase_qty_val_input")
                                 )
 
-                                // Dropdown Unidad de Compra
+                                // Selector de Unidad de medida
                                 var expandedUnit by remember { mutableStateOf(false) }
                                 Box(modifier = Modifier.weight(1f)) {
                                     OutlinedButton(
@@ -2195,9 +2229,31 @@ fun AddEditMateriaPrimaDialog(
                                         shape = RoundedCornerShape(14.dp),
                                         border = BorderStroke(1.5.dp, Color(0xFF0F766E))
                                     ) {
-                                        Text(purchaseUnit, color = Color(0xFF0F766E), fontWeight = FontWeight.Black, fontSize = 16.sp)
-                                        Spacer(modifier = Modifier.width(2.dp))
-                                        Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = Color(0xFF0F766E), modifier = Modifier.size(22.dp))
+                                        Column(
+                                            horizontalAlignment = Alignment.Start,
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text(
+                                                "Unidad de medida",
+                                                fontSize = 10.sp,
+                                                color = Slate500,
+                                                fontWeight = FontWeight.Bold,
+                                                maxLines = 1
+                                            )
+                                            Text(
+                                                purchaseUnit,
+                                                color = Color(0xFF0F766E),
+                                                fontWeight = FontWeight.Black,
+                                                fontSize = 15.sp,
+                                                maxLines = 1
+                                            )
+                                        }
+                                        Icon(
+                                            Icons.Default.ArrowDropDown,
+                                            contentDescription = null,
+                                            tint = Color(0xFF0F766E),
+                                            modifier = Modifier.size(22.dp)
+                                        )
                                     }
                                     DropdownMenu(
                                         expanded = expandedUnit,
@@ -2216,50 +2272,81 @@ fun AddEditMateriaPrimaDialog(
                                 }
                             }
 
-                            OutlinedTextField(
-                                value = unidadPriceText,
-                                onValueChange = { 
-                                    unidadPriceText = it
-                                    showError = false
-                                },
-                                label = { Text("Precio por Unidad ($) (*)", fontSize = 12.sp, fontWeight = FontWeight.Bold) },
-                                placeholder = { Text("Ej. 250.00", color = Slate400) },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                shape = RoundedCornerShape(14.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = Color(0xFF0F766E),
-                                    focusedLabelColor = Color(0xFF0F766E)
-                                ),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(64.dp)
-                                    .testTag("purchase_price_input")
-                            )
-                        } else {
-                            // POR LOTE: CANTIDAD DE UNIDADES EN LOTE, UNIDAD DE MEDIDA, PRECIO TOTAL LOTE, CANTIDAD DE LOTES
+                            // Fila 2: Cantidad de unidades | Precio por unidad
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 OutlinedTextField(
-                                    value = loteUnitsText,
+                                    value = unidadQtyText,
                                     onValueChange = { 
-                                        loteUnitsText = it
+                                        unidadQtyText = it
                                         showError = false
                                     },
-                                    label = { Text("Unidades del Lote (*)", fontSize = 12.sp, fontWeight = FontWeight.Bold) },
-                                    placeholder = { Text("Ej. 25", color = Slate400) },
+                                    label = { Text("Cantidad de unidades", fontSize = 12.sp, fontWeight = FontWeight.Bold) },
+                                    placeholder = { Text("Ej. 10", color = Slate400) },
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(14.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = Color(0xFF0F766E),
+                                        focusedLabelColor = Color(0xFF0F766E)
+                                    ),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(64.dp)
+                                        .testTag("purchase_qty_input")
+                                )
+
+                                OutlinedTextField(
+                                    value = unidadPriceText,
+                                    onValueChange = { 
+                                        unidadPriceText = it
+                                        showError = false
+                                    },
+                                    label = { Text("Precio por unidad", fontSize = 12.sp, fontWeight = FontWeight.Bold) },
+                                    placeholder = { Text("Ej. 250.00", color = Slate400) },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(14.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = Color(0xFF0F766E),
+                                        focusedLabelColor = Color(0xFF0F766E)
+                                    ),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(64.dp)
+                                        .testTag("purchase_price_input")
+                                )
+                            }
+                        } else {
+                            // 2. COMPRA POR LOTE
+                            // Fila 1: Cantidad | UM
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                OutlinedTextField(
+                                    value = lotePurchaseQtyText,
+                                    onValueChange = { 
+                                        lotePurchaseQtyText = it
+                                        showError = false
+                                    },
+                                    label = { Text("Cantidad", fontSize = 12.sp, fontWeight = FontWeight.Bold) },
+                                    placeholder = { Text("Ej. 1", color = Slate400) },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    singleLine = true,
                                     shape = RoundedCornerShape(14.dp),
                                     colors = OutlinedTextFieldDefaults.colors(
                                         focusedBorderColor = Color(0xFF1E3A8A),
                                         focusedLabelColor = Color(0xFF1E3A8A)
                                     ),
                                     modifier = Modifier
-                                        .weight(1.3f)
+                                        .weight(1.2f)
                                         .height(64.dp)
-                                        .testTag("purchase_qty_input")
+                                        .testTag("purchase_lot_qty_val_input")
                                 )
 
                                 var expandedUnit by remember { mutableStateOf(false) }
@@ -2273,9 +2360,31 @@ fun AddEditMateriaPrimaDialog(
                                         shape = RoundedCornerShape(14.dp),
                                         border = BorderStroke(1.5.dp, Color(0xFF1E3A8A))
                                     ) {
-                                        Text(purchaseUnit, color = Color(0xFF1E3A8A), fontWeight = FontWeight.Black, fontSize = 16.sp)
-                                        Spacer(modifier = Modifier.width(2.dp))
-                                        Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = Color(0xFF1E3A8A), modifier = Modifier.size(22.dp))
+                                        Column(
+                                            horizontalAlignment = Alignment.Start,
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text(
+                                                "UM",
+                                                fontSize = 10.sp,
+                                                color = Slate500,
+                                                fontWeight = FontWeight.Bold,
+                                                maxLines = 1
+                                            )
+                                            Text(
+                                                purchaseUnit,
+                                                color = Color(0xFF1E3A8A),
+                                                fontWeight = FontWeight.Black,
+                                                fontSize = 15.sp,
+                                                maxLines = 1
+                                            )
+                                        }
+                                        Icon(
+                                            Icons.Default.ArrowDropDown,
+                                            contentDescription = null,
+                                            tint = Color(0xFF1E3A8A),
+                                            modifier = Modifier.size(22.dp)
+                                        )
                                     }
                                     DropdownMenu(
                                         expanded = expandedUnit,
@@ -2294,29 +2403,31 @@ fun AddEditMateriaPrimaDialog(
                                 }
                             }
 
+                            // Fila 2: Unidades | Lotes | Precio
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 OutlinedTextField(
-                                    value = lotePriceText,
+                                    value = loteUnitsText,
                                     onValueChange = { 
-                                        lotePriceText = it
+                                        loteUnitsText = it
                                         showError = false
                                     },
-                                    label = { Text("Precio Total del Lote ($) (*)", fontSize = 12.sp, fontWeight = FontWeight.Bold) },
-                                    placeholder = { Text("Ej. 5000.00", color = Slate400) },
+                                    label = { Text("Unidades", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                                    placeholder = { Text("Ej. 25", color = Slate400) },
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    singleLine = true,
                                     shape = RoundedCornerShape(14.dp),
                                     colors = OutlinedTextFieldDefaults.colors(
                                         focusedBorderColor = Color(0xFF1E3A8A),
                                         focusedLabelColor = Color(0xFF1E3A8A)
                                     ),
                                     modifier = Modifier
-                                        .weight(1.3f)
+                                        .weight(1f)
                                         .height(64.dp)
-                                        .testTag("purchase_price_input")
+                                        .testTag("purchase_qty_input")
                                 )
 
                                 OutlinedTextField(
@@ -2325,9 +2436,10 @@ fun AddEditMateriaPrimaDialog(
                                         numLotesText = it
                                         showError = false
                                     },
-                                    label = { Text("Cant. Lotes", fontSize = 12.sp, fontWeight = FontWeight.Bold) },
+                                    label = { Text("Lotes", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                                     placeholder = { Text("1", color = Slate400) },
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    singleLine = true,
                                     shape = RoundedCornerShape(14.dp),
                                     colors = OutlinedTextFieldDefaults.colors(
                                         focusedBorderColor = Color(0xFF1E3A8A),
@@ -2337,6 +2449,27 @@ fun AddEditMateriaPrimaDialog(
                                         .weight(0.9f)
                                         .height(64.dp)
                                         .testTag("num_packages_input")
+                                )
+
+                                OutlinedTextField(
+                                    value = lotePriceText,
+                                    onValueChange = { 
+                                        lotePriceText = it
+                                        showError = false
+                                    },
+                                    label = { Text("Precio", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                                    placeholder = { Text("Ej. 5000", color = Slate400) },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(14.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = Color(0xFF1E3A8A),
+                                        focusedLabelColor = Color(0xFF1E3A8A)
+                                    ),
+                                    modifier = Modifier
+                                        .weight(1.2f)
+                                        .height(64.dp)
+                                        .testTag("purchase_price_input")
                                 )
                             }
                         }
@@ -2789,9 +2922,9 @@ fun AddEditMateriaPrimaDialog(
                                     isActive = isActive,
                                     stock = finalStock,
                                     initialStock = finalInitialStock,
-                                    purchasePrice = priceToUse,
+                                    purchasePrice = if (isUnit) priceToUse else 0.0,
                                     purchaseUnit = purchaseUnit,
-                                    purchaseQuantity = if (qtyToUse > 0.0) qtyToUse else (materia?.purchaseQuantity ?: 1.0),
+                                    purchaseQuantity = if (isUnit) (if (qtyToUse > 0.0) qtyToUse else (if (unidadPurchaseQtyVal > 0.0) unidadPurchaseQtyVal else 1.0)) else (if (lotePurchaseQtyVal > 0.0) lotePurchaseQtyVal else 0.0),
                                     productId = linkedProductId,
                                     isAgregado = isAgregado,
                                     rationQuantity = rationQtyVal,
@@ -2799,7 +2932,11 @@ fun AddEditMateriaPrimaDialog(
                                     suggestedPrice = sugeridoCalc,
                                     salePrice = manualSalePriceVal,
                                     stockEnVenta = materia?.stockEnVenta ?: 0.0,
-                                    racionesEnVenta = materia?.racionesEnVenta ?: 0.0
+                                    racionesEnVenta = materia?.racionesEnVenta ?: 0.0,
+                                    purchaseMode = purchaseMode,
+                                    purchaseLotUnits = if (!isUnit) qtyToUse else 0.0,
+                                    purchaseLotQuantity = if (!isUnit) cantidadLotes else 0.0,
+                                    purchaseLotPrice = if (!isUnit) priceToUse else 0.0
                                 )
 
                                 onConfirm(
@@ -4931,7 +5068,7 @@ fun AddRecipeIngredientDialog(
 
                 // Actions
                 Row(
-                    modifier = Modifier.fillMaxWidth().navigationBarsPadding(),
+                    modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 60.dp),
                     horizontalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     OutlinedButton(

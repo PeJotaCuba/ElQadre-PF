@@ -1,6 +1,7 @@
 package com.example.ui.screens.dueno
 
 import android.widget.Toast
+import java.util.Calendar
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -39,6 +40,11 @@ import com.example.data.local.model.Jornada
 import com.example.data.local.model.Mercaderia
 import com.example.data.local.model.Product
 import com.example.data.local.model.Tanda
+import com.example.ui.screens.cajero.ClasificacionTransferenciasDialog
+import com.example.ui.screens.cajero.ConfirmarScanDialog
+import com.example.ui.screens.cajero.MercaderiaProductOption
+import com.example.ui.screens.cajero.NoNuevasTransferenciasDialog
+import com.example.ui.screens.cajero.NuevasTransferenciasEncontradasDialog
 import com.example.ui.screens.cajero.TransferenciasPane
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.MainUiState
@@ -124,7 +130,10 @@ class ProduccionItemState(
     val pagoDependienteUnitario: Double = 0.0,
     val pagoCajeroUnitario: Double = 0.0,
     val presentaciones: List<com.example.data.local.model.PresentacionEspecial> = emptyList(),
-    val hasTanda00: Boolean = false
+    val hasTanda00: Boolean = false,
+    val isSpecialPresentation: Boolean = false,
+    val specialPresentationName: String = "",
+    val parentProductId: Long = productId
 ) {
     var defectuosoStr by mutableStateOf(defectuosoStr)
     var consumoStr by mutableStateOf(consumoStr)
@@ -284,13 +293,77 @@ fun CuadreCajaScreen(
 
     var selectedTab by rememberSaveable { mutableStateOf(CuadreTab.PRODUCCION) }
     var showAvisoPagosDialog by rememberSaveable { mutableStateOf(false) }
+    var showConfirmScanDialog by remember { mutableStateOf(false) }
+    var showClasificacionDialog by remember { mutableStateOf(false) }
+    var triggerScanCount by remember { mutableStateOf(0) }
+
+    var showNoNewScanDialog by remember { mutableStateOf(false) }
+    var foundNewTransfersList by remember { mutableStateOf<List<com.example.util.SearchedPagoXMovilSms>>(emptyList()) }
+    var showFoundNewScanDialog by remember { mutableStateOf(false) }
 
     val activeJornada = uiState.activeJornada
     val isJornadaOpen = activeJornada != null && activeJornada.isOpen
     val initialCash = activeJornada?.initialCash ?: 0.0
     val activeJornadaId = activeJornada?.id ?: 1L
+
+    fun executeConfirmScanAction() {
+        val cal = Calendar.getInstance()
+        if (activeJornada != null && activeJornada.openedAt > 0) {
+            cal.timeInMillis = activeJornada.openedAt
+        }
+        val existingTxs = uiState.allTransferencias.map { it.transactionNumber.trim() }.toSet()
+        val list = com.example.util.SmsSearchHelper.searchPagoXMovilByDate(context, cal, existingTxs)
+        val seenTxs = mutableSetOf<String>()
+        val newOnly = list.filter { !it.isAlreadyRegistered && it.parsed.transactionNumber.isNotBlank() && seenTxs.add(it.parsed.transactionNumber) }
+        
+        if (newOnly.isEmpty()) {
+            showNoNewScanDialog = true
+        } else {
+            foundNewTransfersList = newOnly
+            showFoundNewScanDialog = true
+        }
+    }
+
+    val confirmScanSmsPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            executeConfirmScanAction()
+        } else {
+            showNoNewScanDialog = true
+        }
+    }
+
+    fun onUserClickedScanInConfirmDialog() {
+        showConfirmScanDialog = false
+        if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_SMS) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            executeConfirmScanAction()
+        } else {
+            confirmScanSmsPermissionLauncher.launch(android.Manifest.permission.READ_SMS)
+        }
+    }
+
+    val availableMercaderiasOptions = remember(uiState.mercaderias, uiState.products) {
+        uiState.mercaderias.filter { it.isActive }.mapNotNull { merc ->
+            val prod = uiState.products.find { p -> p.id == merc.productId }
+            if (prod != null) {
+                MercaderiaProductOption(
+                    mercaderiaId = merc.id,
+                    productId = prod.id,
+                    productName = prod.name,
+                    precioVenta = prod.price,
+                    unitOfMeasure = merc.unitOfMeasure.ifBlank { prod.unitOfMeasure }
+                )
+            } else null
+        }
+    }
+
     val savedPagos = remember(activeJornadaId) {
         CuadrePagosManager.getPagosJornada(context, activeJornadaId)
+    }
+
+    val savedDraft = remember(activeJornadaId) {
+        com.example.util.CuadreDraftManager.getDraft(context, activeJornadaId)
     }
 
     // Filter tandas of active jornada / current day
@@ -308,27 +381,60 @@ fun CuadreCajaScreen(
         }
     }
 
-    // Build Produccion item states from registered tandas
+    // Build Produccion item states from registered tandas (Separación: Producto Normal vs Presentaciones Especiales)
     val produccionStates = remember(
         jornadaTandas, uiState.products, uiState.productosElaborados, uiState.recetaIngredientes,
-        uiState.materiasPrimas, uiState.gastosGenerales, uiState.inversiones
+        uiState.materiasPrimas, uiState.gastosGenerales, uiState.inversiones, savedDraft
     ) {
         val grouped = jornadaTandas.groupBy { it.productId }
-        grouped.map { (prodId, tandas) ->
+        val resultList = mutableListOf<ProduccionItemState>()
+
+        // Helper para extraer unidades pendientes desglosadas por producto base y presentaciones especiales
+        fun parseObsPendientes(obs: String): Pair<Double, Map<String, Double>> {
+            if (obs.isBlank()) return Pair(0.0, emptyMap())
+            val key = when {
+                obs.contains("Pendientes:") -> "Pendientes:"
+                obs.contains("Pendientes_Convertidos:") -> "Pendientes_Convertidos:"
+                else -> return Pair(0.0, emptyMap())
+            }
+            val rawObs = obs.substringAfter(key).substringBefore("[").trim()
+            val parts = rawObs.split("|").map { it.trim() }.filter { it.isNotBlank() }
+            var baseQty = 0.0
+            val presMap = mutableMapOf<String, Double>()
+
+            for (p in parts) {
+                val subParts = p.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                for (sp in subParts) {
+                    if (sp.contains(":")) {
+                        val pNamePart = sp.substringBefore(":").trim()
+                        val pValPart = sp.substringAfter(":").trim()
+                        val qty = """([\d.,]+)""".toRegex().find(pValPart)?.value?.replace(',', '.')?.toDoubleOrNull() ?: 0.0
+                        if (pNamePart.isNotBlank() && qty > 0.0) {
+                            presMap[pNamePart.lowercase()] = qty
+                        }
+                    } else {
+                        val qty = """^([\d.,]+)""".toRegex().find(sp)?.value?.replace(',', '.')?.toDoubleOrNull() ?: 0.0
+                        if (qty > 0.0 && baseQty == 0.0) {
+                            baseQty = qty
+                        }
+                    }
+                }
+            }
+            return Pair(baseQty, presMap)
+        }
+
+        grouped.forEach { (prodId, tandas) ->
             val product = uiState.products.find { it.id == prodId }
             val prodElab = uiState.productosElaborados.find { it.productId == prodId }
-            val prodName = product?.name ?: tandas.firstOrNull()?.productName ?: "Producto #$prodId"
+            val presList = product?.let { com.example.data.local.model.parsePresentacionesEspeciales(it.presentacionesEspeciales) } ?: emptyList()
 
-            val price = if (prodElab?.hasPrecioDefinitivo == true && prodElab.precioDefinitivo > 0.0) {
+            val normalPrice = if (prodElab?.hasPrecioDefinitivo == true && prodElab.precioDefinitivo > 0.0) {
                 prodElab.precioDefinitivo
             } else {
                 product?.price ?: tandas.firstOrNull()?.salePrice ?: 0.0
             }
 
-            val unit = prodElab?.productionUnit?.ifBlank { product?.unitOfMeasure } ?: tandas.firstOrNull()?.productionUnit ?: "U"
-            val totalQty = tandas.sumOf { if (it.actualYield > 0) it.actualYield else it.estimatedYield }
-            val count = tandas.size
-            val perTanda = if (count > 0) totalQty / count else 0.0
+            val normalUnit = prodElab?.productionUnit?.ifBlank { product?.unitOfMeasure } ?: tandas.firstOrNull()?.productionUnit ?: "U"
 
             val costSheet = if (product != null) {
                 com.example.util.CostCalculationHelper.calculateCostSheet(
@@ -337,46 +443,172 @@ fun CuadreCajaScreen(
                 )
             } else null
 
-            val costoUnitario = costSheet?.costoRealUnitario ?: product?.cost ?: 0.0
+            val normalCostoUnitario = costSheet?.costoRealUnitario ?: product?.cost ?: 0.0
             val pagoCocinaUnit = costSheet?.pagoCocinaUnitario ?: prodElab?.pagoCocinaUnitario ?: 0.0
             val fichaCocineros = costSheet?.cantidadCocineros?.takeIf { it > 0 } ?: prodElab?.cantidadCocineros?.takeIf { it > 0 } ?: 1
             val cantCocineros = savedPagos?.cantidadCocineros ?: fichaCocineros
             val pagoDepUnit = costSheet?.totalPagoDependienteUnitario ?: prodElab?.totalPagoDependienteUnitario ?: 0.0
             val pagoCajUnit = costSheet?.totalPagoCajeroUnitario ?: prodElab?.totalPagoCajeroUnitario ?: 0.0
-            val presList = product?.let { com.example.data.local.model.parsePresentacionesEspeciales(it.presentacionesEspeciales) } ?: emptyList()
 
-            // Pre-llenar unidades pendientes si las tandas ya contienen la anotación de pendientes
-            val pendingFromTandas = tandas.map { com.example.util.QJornadaExporter.extractUnidadesPendientesFromObservation(it.observation) }.maxOrNull() ?: 0.0
-            val pendingStr = if (pendingFromTandas > 0.0) {
-                if (pendingFromTandas % 1.0 == 0.0) pendingFromTandas.toInt().toString() else "%.1f".format(pendingFromTandas)
-            } else "0"
-            val containsTanda00 = tandas.any { it.tandaNumber == "00" }
+            // 1. PRESENTACIONES ESPECIALES CON PRODUCCIÓN REGISTRADA EN TANDAS
+            val processedPresNames = mutableSetOf<String>()
+            presList.forEach { pres ->
+                fun getPresQtyInTanda(t: com.example.data.local.model.Tanda): Double {
+                    return if (t.specialPresentationName.isNotBlank() && t.specialPresentationName.equals(pres.name, ignoreCase = true) && t.specialPresentationQty > 0.0) {
+                        t.specialPresentationQty
+                    } else if (t.tandaNumber == "00" && (t.specialPresentationName.equals(pres.name, ignoreCase = true) || t.observation.contains("Presentación: ${pres.name}", ignoreCase = true) || t.observation.contains("PRES_${pres.name}", ignoreCase = true) || t.productName.contains("(${pres.name})", ignoreCase = true))) {
+                        if (t.specialPresentationQty > 0.0) t.specialPresentationQty else (if (t.actualYield > 0.0) t.actualYield else t.estimatedYield)
+                    } else {
+                        0.0
+                    }
+                }
 
-            ProduccionItemState(
-                productId = prodId,
-                productName = prodName,
-                unit = unit,
-                price = price,
-                tandasCount = count,
-                totalProduced = totalQty,
-                qtyPerTanda = perTanda,
-                pendientesStr = pendingStr,
-                costoUnitarioTeorico = costoUnitario,
-                pagoCocinaUnitario = pagoCocinaUnit,
-                cantidadCocineros = cantCocineros,
-                pagoDependienteUnitario = pagoDepUnit,
-                pagoCajeroUnitario = pagoCajUnit,
-                presentaciones = presList,
-                hasTanda00 = containsTanda00
-            )
-        }.toMutableStateList()
+                val presTandas = tandas.filter { getPresQtyInTanda(it) > 0.0 }
+                val presTotalProduced = presTandas.sumOf { getPresQtyInTanda(it) }
+
+                if (presTotalProduced > 0.0) {
+                    processedPresNames.add(pres.name.lowercase())
+                    val presTandasCount = presTandas.size
+                    val presPerTanda = if (presTandasCount > 0) presTotalProduced / presTandasCount else 0.0
+
+                    // Precio Ficha de Costo -> Apartado 9
+                    val factor = if (pres.baseEquivalence > 0.0) pres.baseEquivalence else 1.0
+                    val presPrice = if (pres.price > 0.0) pres.price else (normalPrice * factor)
+
+                    // Costo Ficha de Costo -> Apartado 7:
+                    val presMatPrima = (costSheet?.costoDirectoUnitario ?: (product?.cost ?: 0.0)) * factor
+                    val presGastos = (costSheet?.gastoIndirectoUnitario ?: 0.0) * factor
+                    val presPersonal = costSheet?.totalPagoPersonalUnitario ?: 0.0
+                    val presCostoUnitario = if (costSheet != null) {
+                        presMatPrima + presGastos + presPersonal
+                    } else {
+                        (product?.cost ?: 0.0) * factor
+                    }
+
+                    // Pendientes de esta presentación especial
+                    val presPendingFromTandas = tandas.map { t ->
+                        val (_, presMap) = parseObsPendientes(t.observation)
+                        presMap[pres.name.lowercase()]
+                            ?: presMap.entries.find { it.key.contains(pres.name.lowercase()) || pres.name.lowercase().contains(it.key) }?.value
+                            ?: 0.0
+                    }.maxOrNull() ?: 0.0
+
+                    val presPendingStr = if (presPendingFromTandas > 0.0) {
+                        if (presPendingFromTandas % 1.0 == 0.0) presPendingFromTandas.toInt().toString() else "%.1f".format(presPendingFromTandas)
+                    } else "0"
+
+                    val presContainsTanda00 = presTandas.any { it.tandaNumber == "00" }
+
+                    val baseName = product?.name ?: tandas.firstOrNull()?.productName ?: "Producto #$prodId"
+                    val presDisplayName = if (pres.name.contains(baseName, ignoreCase = true)) {
+                        "${pres.name} — Presentación Especial"
+                    } else if (baseName.contains(pres.name, ignoreCase = true)) {
+                        "$baseName — Presentación Especial"
+                    } else {
+                        "$baseName — ${pres.name} — Presentación Especial"
+                    }
+
+                    val draftItem = savedDraft?.produccionDrafts?.find {
+                        it.productId == prodId && it.isSpecialPresentation && it.specialPresentationName.equals(pres.name, ignoreCase = true)
+                    }
+
+                    resultList.add(
+                        ProduccionItemState(
+                            productId = prodId,
+                            productName = presDisplayName,
+                            unit = normalUnit,
+                            price = presPrice,
+                            tandasCount = presTandasCount,
+                            totalProduced = presTotalProduced,
+                            qtyPerTanda = presPerTanda,
+                            defectuosoStr = draftItem?.defectuosoStr ?: "0",
+                            consumoStr = draftItem?.consumoStr ?: "0",
+                            regaliaStr = draftItem?.regaliaStr ?: "0",
+                            pendientesStr = draftItem?.pendientesStr ?: presPendingStr,
+                            costoUnitarioTeorico = presCostoUnitario,
+                            pagoCocinaUnitario = pagoCocinaUnit,
+                            cantidadCocineros = cantCocineros,
+                            pagoDependienteUnitario = pagoDepUnit,
+                            pagoCajeroUnitario = pagoCajUnit,
+                            presentaciones = presList,
+                            hasTanda00 = presContainsTanda00,
+                            isSpecialPresentation = true,
+                            specialPresentationName = pres.name,
+                            parentProductId = prodId
+                        )
+                    )
+                }
+            }
+
+            // 2. PRODUCTO NORMAL (UNIDAD SIMPLE)
+            fun isTandaPureSpecialPresTanda00(t: com.example.data.local.model.Tanda): Boolean {
+                if (t.tandaNumber != "00") return false
+                val isPresTanda00 = t.specialPresentationName.isNotBlank() ||
+                        t.observation.contains("PRES_", ignoreCase = true) ||
+                        t.observation.contains("Presentación:", ignoreCase = true) ||
+                        t.productName.contains("(")
+                return isPresTanda00 && (t.specialPresentationQty > 0.0 || t.actualYield > 0.0 || t.estimatedYield > 0.0)
+            }
+
+            val normalTandas = tandas.filter { !isTandaPureSpecialPresTanda00(it) }
+            val normalTotalQty = normalTandas.sumOf { if (it.actualYield > 0) it.actualYield else it.estimatedYield }
+            val normalCount = normalTandas.size
+
+            if (normalTotalQty > 0.0 || (processedPresNames.isEmpty() && tandas.isNotEmpty())) {
+                val normalPerTanda = if (normalCount > 0) normalTotalQty / normalCount else 0.0
+
+                val basePendingFromTandas = tandas.map { t ->
+                    val (basePending, _) = parseObsPendientes(t.observation)
+                    basePending
+                }.maxOrNull() ?: 0.0
+
+                val normalPendingStr = if (basePendingFromTandas > 0.0) {
+                    if (basePendingFromTandas % 1.0 == 0.0) basePendingFromTandas.toInt().toString() else "%.1f".format(basePendingFromTandas)
+                } else "0"
+
+                val normalContainsTanda00 = normalTandas.any { it.tandaNumber == "00" }
+                val prodName = product?.name ?: tandas.firstOrNull()?.productName ?: "Producto #$prodId"
+
+                val draftItem = savedDraft?.produccionDrafts?.find {
+                    it.productId == prodId && !it.isSpecialPresentation
+                }
+
+                resultList.add(
+                    ProduccionItemState(
+                        productId = prodId,
+                        productName = prodName,
+                        unit = normalUnit,
+                        price = normalPrice,
+                        tandasCount = normalCount,
+                        totalProduced = normalTotalQty,
+                        qtyPerTanda = normalPerTanda,
+                        defectuosoStr = draftItem?.defectuosoStr ?: "0",
+                        consumoStr = draftItem?.consumoStr ?: "0",
+                        regaliaStr = draftItem?.regaliaStr ?: "0",
+                        pendientesStr = draftItem?.pendientesStr ?: normalPendingStr,
+                        costoUnitarioTeorico = normalCostoUnitario,
+                        pagoCocinaUnitario = pagoCocinaUnit,
+                        cantidadCocineros = cantCocineros,
+                        pagoDependienteUnitario = pagoDepUnit,
+                        pagoCajeroUnitario = pagoCajUnit,
+                        presentaciones = presList,
+                        hasTanda00 = normalContainsTanda00,
+                        isSpecialPresentation = false,
+                        specialPresentationName = "",
+                        parentProductId = prodId
+                    )
+                )
+            }
+        }
+
+        resultList.toMutableStateList()
     }
 
     // Build Mercaderias item states from active mercaderias
     val mercaderiasStates = remember(
         uiState.mercaderias, uiState.products, uiState.movimientosMercaderia,
         uiState.tarifasPagoBebidas, uiState.gastosGenerales, uiState.inversiones, activeJornada,
-        uiState.productosElaborados, uiState.recetaIngredientes, uiState.materiasPrimas
+        uiState.productosElaborados, uiState.recetaIngredientes, uiState.materiasPrimas, savedDraft
     ) {
         val activeMercs = uiState.mercaderias.filter { it.isActive }
         val list = mutableListOf<MercaderiaItemState>()
@@ -412,6 +644,15 @@ fun CuadreCajaScreen(
             } else null
 
             val costoUnitario = mercCostSheet?.costoRealUnitario ?: merc.acquisitionCost
+            val draftItem = savedDraft?.mercaderiaDrafts?.find { it.mercaderiaId == merc.id }
+
+            val initStr = draftItem?.existenciaInicialStr ?: (if (merc.initialStock > 0.0) "%.1f".format(merc.initialStock).replace(',', '.') else "0")
+            val entStr = draftItem?.entradasStr ?: (if (entradasJornada > 0.0) "%.1f".format(entradasJornada).replace(',', '.') else "0")
+            val finStr = draftItem?.existenciaFinalStr ?: ""
+            val defStr = draftItem?.defectuosoStr ?: "0"
+            val consStr = draftItem?.consumoStr ?: "0"
+            val regStr = draftItem?.regaliaStr ?: "0"
+            val custPriceStr = draftItem?.customPriceStr ?: ""
 
             list.add(
                 MercaderiaItemState(
@@ -421,20 +662,27 @@ fun CuadreCajaScreen(
                     unit = unit,
                     price = price,
                     isConfitura = isConfitura,
-                    existenciaInicialStr = if (merc.initialStock > 0.0) "%.1f".format(merc.initialStock).replace(',', '.') else "0",
-                    entradasStr = if (entradasJornada > 0.0) "%.1f".format(entradasJornada).replace(',', '.') else "0",
-                    existenciaFinalStr = "",
+                    existenciaInicialStr = initStr,
+                    entradasStr = entStr,
+                    existenciaFinalStr = finStr,
+                    defectuosoStr = defStr,
+                    consumoStr = consStr,
+                    regaliaStr = regStr,
                     costoUnitarioTeorico = costoUnitario,
                     pagoDependienteUnitario = if (isConfitura) 0.0 else (mercCostSheet?.pagoDependienteUnitario ?: uiState.tarifasPagoBebidas.calcularPagoDependiente(price)),
                     pagoCajeroUnitario = if (isConfitura) 0.0 else (mercCostSheet?.pagoCajeroUnitario ?: uiState.tarifasPagoBebidas.calcularPagoCajero(price))
-                )
+                ).apply {
+                    if (custPriceStr.isNotBlank()) {
+                        customPriceStr = custPriceStr
+                    }
+                }
             )
         }
         list.toMutableStateList()
     }
 
     // Build Agregados item states from active materias primas configured as agregados
-    val agregadosStates = remember(uiState.materiasPrimas) {
+    val agregadosStates = remember(uiState.materiasPrimas, savedDraft) {
         uiState.materiasPrimas.filter { it.isAgregado && it.isActive }.map { mp ->
             val enviadasRaciones = if (mp.racionesEnVenta > 0.0) {
                 mp.racionesEnVenta
@@ -449,6 +697,13 @@ fun CuadreCajaScreen(
                 if (enviadasRaciones % 1.0 == 0.0) enviadasRaciones.toLong().toString() else "%.1f".format(enviadasRaciones).replace(',', '.')
             } else "0"
 
+            val draftItem = savedDraft?.agregadoDrafts?.find { it.materiaPrimaId == mp.id }
+
+            val initStr = draftItem?.existenciaInicialStr ?: initialStr
+            val entStr = draftItem?.entradasStr ?: "0"
+            val finStr = draftItem?.existenciaFinalStr ?: ""
+            val mermStr = draftItem?.mermaStr ?: "0"
+
             AgregadoCuadreItemState(
                 materiaPrimaId = mp.id,
                 name = mp.name,
@@ -457,10 +712,10 @@ fun CuadreCajaScreen(
                 rationUnit = mp.rationUnit.ifBlank { mp.unit },
                 precioVenta = mp.precioEfectivoVenta,
                 costoPorRacion = mp.costoPorRacion,
-                existenciaInicialStr = initialStr,
-                entradasStr = "0",
-                existenciaFinalStr = "",
-                mermaStr = "0"
+                existenciaInicialStr = initStr,
+                entradasStr = entStr,
+                existenciaFinalStr = finStr,
+                mermaStr = mermStr
             )
         }.toMutableStateList()
     }
@@ -504,16 +759,84 @@ fun CuadreCajaScreen(
 
     // Extracciones & Cash & Notes State
     val extraccionesList = remember(activeJornadaId) {
-        mutableStateListOf<ExtraccionItem>().apply {
-            if (activeJornada?.extracciones ?: 0.0 > 0.0) {
-                add(ExtraccionItem(montoStr = (activeJornada?.extracciones ?: 0.0).toString(), descripcion = "Extracción registrada"))
-            } else {
-                add(ExtraccionItem())
+        val draftExt = savedDraft?.extracciones?.map {
+            ExtraccionItem(montoStr = it.montoStr, descripcion = it.descripcion)
+        } ?: emptyList()
+        if (draftExt.isNotEmpty()) {
+            draftExt.toMutableStateList()
+        } else {
+            mutableStateListOf<ExtraccionItem>().apply {
+                if (activeJornada?.extracciones ?: 0.0 > 0.0) {
+                    add(ExtraccionItem(montoStr = (activeJornada?.extracciones ?: 0.0).toString(), descripcion = "Extracción registrada"))
+                } else {
+                    add(ExtraccionItem())
+                }
             }
         }
     }
-    var efectivoRealStr by rememberSaveable { mutableStateOf("") }
-    var notasCuadre by rememberSaveable { mutableStateOf(activeJornada?.notes ?: "") }
+    var efectivoRealStr by rememberSaveable(activeJornadaId) {
+        mutableStateOf(savedDraft?.efectivoRealStr ?: "")
+    }
+    var notasCuadre by rememberSaveable(activeJornadaId) {
+        mutableStateOf(savedDraft?.notasCuadre ?: activeJornada?.notes ?: "")
+    }
+
+    // Persistir automáticamente cualquier cambio del borrador de Cuadre de Caja
+    androidx.compose.runtime.LaunchedEffect(activeJornadaId) {
+        androidx.compose.runtime.snapshotFlow {
+            val prodDrafts = produccionStates.map { p ->
+                com.example.util.ProduccionDraftItem(
+                    productId = p.productId,
+                    isSpecialPresentation = p.isSpecialPresentation,
+                    specialPresentationName = p.specialPresentationName,
+                    defectuosoStr = p.defectuosoStr,
+                    consumoStr = p.consumoStr,
+                    regaliaStr = p.regaliaStr,
+                    pendientesStr = p.pendientesStr
+                )
+            }
+            val mercDrafts = mercaderiasStates.map { m ->
+                com.example.util.MercaderiaDraftItem(
+                    mercaderiaId = m.mercaderiaId,
+                    existenciaInicialStr = m.existenciaInicialStr,
+                    entradasStr = m.entradasStr,
+                    existenciaFinalStr = m.existenciaFinalStr,
+                    defectuosoStr = m.defectuosoStr,
+                    consumoStr = m.consumoStr,
+                    regaliaStr = m.regaliaStr,
+                    customPriceStr = m.customPriceStr
+                )
+            }
+            val agDrafts = agregadosStates.map { a ->
+                com.example.util.AgregadoDraftItem(
+                    materiaPrimaId = a.materiaPrimaId,
+                    existenciaInicialStr = a.existenciaInicialStr,
+                    entradasStr = a.entradasStr,
+                    existenciaFinalStr = a.existenciaFinalStr,
+                    mermaStr = a.mermaStr
+                )
+            }
+            val extDrafts = extraccionesList.map { e ->
+                com.example.util.ExtraccionDraftItem(
+                    montoStr = e.montoStr,
+                    descripcion = e.descripcion
+                )
+            }
+            com.example.util.CuadreDraftData(
+                jornadaId = activeJornadaId,
+                produccionDrafts = prodDrafts,
+                mercaderiaDrafts = mercDrafts,
+                agregadoDrafts = agDrafts,
+                efectivoRealStr = efectivoRealStr,
+                notasCuadre = notasCuadre,
+                extracciones = extDrafts
+            )
+        }.collect { draft ->
+            if (activeJornadaId > 0) {
+                com.example.util.CuadreDraftManager.saveDraft(context, draft)
+            }
+        }
+    }
 
     var isCuadrado by rememberSaveable { mutableStateOf(false) }
     var lastGeneratedPdfFile by remember { mutableStateOf<File?>(null) }
@@ -791,6 +1114,7 @@ fun CuadreCajaScreen(
                 }
             )
             CuadreCajaArchiveManager.saveArchive(context, archiveToSave)
+            com.example.util.CuadreDraftManager.clearDraft(context, jId)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -1141,7 +1465,10 @@ fun CuadreCajaScreen(
                             TransferenciasPane(
                                 uiState = uiState,
                                 viewModel = viewModel,
-                                modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 4.dp)
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(start = 8.dp, end = 8.dp, top = 2.dp, bottom = 0.dp),
+                                triggerScanSignal = triggerScanCount
                             )
                         }
                         Surface(
@@ -1151,20 +1478,84 @@ fun CuadreCajaScreen(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Button(
-                                onClick = { selectedTab = CuadreTab.GENERALES },
+                                onClick = { showConfirmScanDialog = true },
                                 colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
-                                shape = RoundedCornerShape(10.dp),
+                                shape = RoundedCornerShape(12.dp),
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 10.dp)
-                                    .height(48.dp)
+                                    .padding(horizontal = 14.dp, vertical = 8.dp)
+                                    .height(52.dp)
                                     .testTag("btn_confirmar_transferencias")
                             ) {
-                                Text("CONFIRMAR TRANSFERENCIAS", fontWeight = FontWeight.Black, fontSize = 13.sp, color = Color.White)
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(16.dp), tint = ElQadreGold)
+                                Text("CONFIRMAR TRANSFERENCIAS", fontWeight = FontWeight.Black, fontSize = 14.sp, color = Color.White)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(18.dp), tint = ElQadreGold)
                             }
                         }
+                    }
+
+                    if (showConfirmScanDialog) {
+                        ConfirmarScanDialog(
+                            onScan = {
+                                onUserClickedScanInConfirmDialog()
+                            },
+                            onContinue = {
+                                showConfirmScanDialog = false
+                                showClasificacionDialog = true
+                            },
+                            onDismiss = {
+                                showConfirmScanDialog = false
+                            }
+                        )
+                    }
+
+                    if (showNoNewScanDialog) {
+                        NoNuevasTransferenciasDialog(
+                            onAceptar = {
+                                showNoNewScanDialog = false
+                                showClasificacionDialog = true
+                            },
+                            onDismiss = {
+                                showNoNewScanDialog = false
+                            }
+                        )
+                    }
+
+                    if (showFoundNewScanDialog) {
+                        NuevasTransferenciasEncontradasDialog(
+                            nuevasCount = foundNewTransfersList.size,
+                            totalMontoNuevas = foundNewTransfersList.sumOf { it.parsed.amount },
+                            onAceptar = {
+                                val listToRegister = foundNewTransfersList
+                                showFoundNewScanDialog = false
+                                foundNewTransfersList = emptyList()
+                                viewModel.registrarNuevasTransferenciasDetectadas(listToRegister)
+                                showClasificacionDialog = true
+                            },
+                            onDismiss = {
+                                showFoundNewScanDialog = false
+                            }
+                        )
+                    }
+
+                    if (showClasificacionDialog) {
+                        val savedClasif = uiState.transferenciasClasificacionMap[activeJornadaId]
+                        ClasificacionTransferenciasDialog(
+                            totalTransferenciasConfirmadas = transferenciasTotalMonto,
+                            availableMercaderias = availableMercaderiasOptions,
+                            initialProduccionMonto = savedClasif?.first ?: transferenciasTotalMonto,
+                            initialMercaderiasMonto = savedClasif?.second ?: 0.0,
+                            onAceptar = { produccionMonto, mercaderiasMonto ->
+                                showClasificacionDialog = false
+                                if (activeJornadaId > 0) {
+                                    viewModel.saveTransferenciasClasificacion(activeJornadaId, produccionMonto, mercaderiasMonto)
+                                }
+                                selectedTab = CuadreTab.GENERALES
+                            },
+                            onDismiss = {
+                                showClasificacionDialog = false
+                            }
+                        )
                     }
                 }
 
@@ -1439,6 +1830,14 @@ fun CuadreGeneralesTab(
 
     val totalIngresosGenerales = ingresosProduccion + ingresosMercaderias
     val extraccionesVal = extraccionesList.sumOf { it.montoStr.toDoubleOrNull() ?: 0.0 }
+
+    val activeJornadaId = activeJornada?.id ?: 1L
+    val clasificacionTransf = uiState.transferenciasClasificacionMap[activeJornadaId]
+    val transfProduccion = clasificacionTransf?.first ?: transferenciasMonto
+    val transfMercaderias = clasificacionTransf?.second ?: 0.0
+
+    val efectivoProduccion = (ingresosProduccion - transfProduccion).coerceAtLeast(0.0)
+    val efectivoMercaderias = (ingresosMercaderias - transfMercaderias).coerceAtLeast(0.0)
 
     val difEfectivoColor = when {
         diferencia > 0.01 -> Color(0xFF047857)
@@ -1748,6 +2147,64 @@ fun CuadreGeneralesTab(
                         )
                     }
                 }
+
+                // EFECTIVO POR CATEGORÍA
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFFF8FAFC),
+                    border = BorderStroke(1.dp, Slate200),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = "DESGLOSE DE EFECTIVO POR CATEGORÍA:",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Slate600
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "EFECTIVO DE PRODUCCIÓN:",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF15803D)
+                            )
+                            Text(
+                                text = "$${"%.2f".format(efectivoProduccion)} CUP",
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFF15803D)
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "EFECTIVO DE MERCADERÍAS:",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF0369A1)
+                            )
+                            Text(
+                                text = "$${"%.2f".format(efectivoMercaderias)} CUP",
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFF0369A1)
+                            )
+                        }
+                    }
+                }
             }
         }
 
@@ -1795,39 +2252,84 @@ fun CuadreGeneralesTab(
 
                 HorizontalDivider(color = Slate100)
 
-                // TRANSFERENCIAS REGISTRADAS
+                // CLASIFICACIÓN DE TRANSFERENCIAS
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = Color(0xFFF0F9FF),
                     border = BorderStroke(1.dp, Color(0xFFBAE6FD)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 14.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Text(
-                                text = "TRANSFERENCIAS REGISTRADAS",
-                                fontSize = 11.sp,
+                                text = "TRANSFERENCIAS DE PRODUCCIÓN:",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF15803D)
+                            )
+                            Text(
+                                text = "$${"%.2f".format(transfProduccion)} CUP",
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFF15803D)
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "TRANSFERENCIAS DE MERCADERÍAS:",
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF0369A1)
                             )
                             Text(
-                                text = if (transferenciasRegistradasCount == 1) "1 operación registrada" else "$transferenciasRegistradasCount operaciones registradas",
-                                fontSize = 11.sp,
-                                color = Slate500
+                                text = "$${"%.2f".format(transfMercaderias)} CUP",
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFF0369A1)
                             )
                         }
-                        Text(
-                            text = "$${"%.2f".format(transferenciasRegistradasMonto)} CUP",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Black,
-                            color = Color(0xFF0284C7)
-                        )
+
+                        HorizontalDivider(color = Color(0xFFBAE6FD))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "TOTAL DE TRANSFERENCIAS",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = ElQadreNavy
+                                )
+                                Text(
+                                    text = if (transferenciasCount == 1) "1 operación" else "$transferenciasCount operaciones",
+                                    fontSize = 11.sp,
+                                    color = Slate500
+                                )
+                            }
+                            Text(
+                                text = "$${"%.2f".format(transferenciasMonto)} CUP",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFF0284C7)
+                            )
+                        }
                     }
                 }
 
@@ -3407,6 +3909,19 @@ fun ProduccionCuadreCard(
 ) {
     var showEditModal by remember { mutableStateOf(false) }
 
+    // Direct state reads so Compose tracks snapshot changes for consumoStr, regaliaStr, defectuosoStr, pendientesStr, customPriceStr
+    val consumo = item.consumo
+    val regalia = item.regalia
+    val defectuoso = item.defectuoso
+    val pendientes = item.pendientes
+    val totalProduced = item.effectiveTotalProduced
+    val vendible = item.vendible
+    val price = item.effectivePrice
+    val ingreso = item.ingresoEstimado
+    val mermaTotal = item.mermaTotal
+
+    val cardTag = if (item.isSpecialPresentation) "card_produccion_${item.productId}_${item.specialPresentationName.replace(" ", "_")}" else "card_produccion_${item.productId}"
+
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -3415,7 +3930,7 @@ fun ProduccionCuadreCard(
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .clickable { showEditModal = true }
-            .testTag("card_produccion_${item.productId}")
+            .testTag(cardTag)
     ) {
         Column(
             modifier = Modifier
@@ -3429,13 +3944,32 @@ fun ProduccionCuadreCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = item.productName,
-                    fontWeight = FontWeight.Black,
-                    fontSize = 18.sp,
-                    color = ElQadreNavy,
-                    modifier = Modifier.weight(1f)
-                )
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    if (item.isSpecialPresentation) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = Color(0xFFFEF3C7),
+                            border = BorderStroke(1.dp, Color(0xFFFDE68A))
+                        ) {
+                            Text(
+                                text = "PRESENTACIÓN ESPECIAL",
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFFB45309),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                    Text(
+                        text = item.productName,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 18.sp,
+                        color = ElQadreNavy
+                    )
+                }
                 Icon(
                     imageVector = Icons.Default.ChevronRight,
                     contentDescription = "Ver detalle",
@@ -3452,21 +3986,28 @@ fun ProduccionCuadreCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // CANTIDAD
+                // CANTIDAD (muestra la cantidad vendible/resultante si hay consumo/regalías/mermas, o el total producido)
                 Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(
-                        text = "CANTIDAD",
+                        text = if (mermaTotal > 0 || pendientes > 0) "CANT. VENDIBLE" else "CANTIDAD",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         color = Slate500,
                         letterSpacing = 0.5.sp
                     )
                     Text(
-                        text = "${"%.1f".format(item.effectiveTotalProduced)} ${item.unit}",
+                        text = "${"%.1f".format(vendible)} ${item.unit}",
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Black,
                         color = ElQadreNavy
                     )
+                    if (mermaTotal > 0 || pendientes > 0) {
+                        Text(
+                            text = "Prod: ${"%.1f".format(totalProduced)} ${item.unit}",
+                            fontSize = 11.sp,
+                            color = Slate400
+                        )
+                    }
                 }
 
                 // PRECIO ACTUAL
@@ -3479,7 +4020,7 @@ fun ProduccionCuadreCard(
                         letterSpacing = 0.5.sp
                     )
                     Text(
-                        text = "$${"%.2f".format(item.effectivePrice)} CUP",
+                        text = "$${"%.2f".format(price)} CUP",
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Black,
                         color = ElQadreNavy
@@ -3499,11 +4040,82 @@ fun ProduccionCuadreCard(
                         letterSpacing = 0.5.sp
                     )
                     Text(
-                        text = "$${"%.2f".format(item.ingresoEstimado)} CUP",
+                        text = "$${"%.2f".format(ingreso)} CUP",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Black,
                         color = Color(0xFF15803D)
                     )
+                }
+            }
+
+            // Desglose visual de Consumo / Regalías / Defectuoso / Pendientes en la tarjeta
+            if (consumo > 0 || regalia > 0 || defectuoso > 0 || pendientes > 0) {
+                HorizontalDivider(color = Slate100, thickness = 1.dp)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (consumo > 0) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFFFEF3C7),
+                            border = BorderStroke(1.dp, Color(0xFFFDE68A))
+                        ) {
+                            Text(
+                                text = "Consumo: ${"%.1f".format(consumo)} ${item.unit}",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFB45309),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+                    if (regalia > 0) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFFEFF6FF),
+                            border = BorderStroke(1.dp, Color(0xFFBFDBFE))
+                        ) {
+                            Text(
+                                text = "Regalía: ${"%.1f".format(regalia)} ${item.unit}",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF1D4ED8),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+                    if (defectuoso > 0) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFFFEE2E2),
+                            border = BorderStroke(1.dp, Color(0xFFFCA5A5))
+                        ) {
+                            Text(
+                                text = "Merma: ${"%.1f".format(defectuoso)} ${item.unit}",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFB91C1C),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+                    if (pendientes > 0) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFFCCFBF1),
+                            border = BorderStroke(1.dp, Color(0xFF99F6E4))
+                        ) {
+                            Text(
+                                text = "Pend: ${"%.1f".format(pendientes)} ${item.unit}",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF0F766E),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -3538,6 +4150,8 @@ fun ProduccionEditModal(
     val vendibleCalc = (item.effectiveTotalProduced - mermaTotalCalc - pendientesVal).coerceAtLeast(0.0)
     val ingresoCalc = vendibleCalc * priceVal
 
+    val modalTag = if (item.isSpecialPresentation) "modal_edit_produccion_${item.productId}_${item.specialPresentationName.replace(" ", "_")}" else "modal_edit_produccion_${item.productId}"
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -3548,7 +4162,7 @@ fun ProduccionEditModal(
             modifier = Modifier
                 .fillMaxWidth(0.94f)
                 .padding(vertical = 16.dp)
-                .testTag("modal_edit_produccion_${item.productId}")
+                .testTag(modalTag)
         ) {
             LazyColumn(
                 modifier = Modifier
@@ -3564,6 +4178,22 @@ fun ProduccionEditModal(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
+                            if (item.isSpecialPresentation) {
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = Color(0xFFFEF3C7),
+                                    border = BorderStroke(1.dp, Color(0xFFFDE68A)),
+                                    modifier = Modifier.padding(bottom = 4.dp)
+                                ) {
+                                    Text(
+                                        text = "PRESENTACIÓN ESPECIAL",
+                                        fontSize = 9.5.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = Color(0xFFB45309),
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
                             Text(
                                 text = item.productName,
                                 fontSize = 20.sp,

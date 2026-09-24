@@ -1033,16 +1033,32 @@ object CostCalculationHelper {
         val porcentajeParticipacion = prorrateoItem?.porcentajeParticipacion ?: (if (prorrateoResult.baseTotal > 0.0) ((effectiveStock * costoDirectoUnitario) / prorrateoResult.baseTotal) * 100.0 else 0.0)
         
         // Participación aplicada = porcentaje / 100 (ej. 26 % -> 0.26)
-        val participacionAplicada = if (porcentajeParticipacion > 1.0) porcentajeParticipacion / 100.0 else porcentajeParticipacion
+        val participacionAplicada = porcentajeParticipacion / 100.0
 
-        // Gasto unitario indirecto = Costo indirecto general por día × 0.26 (participación aplicada en proporción)
-        val gastoUnitarioIndirecto = costosIndirectosDiariosTotales * participacionAplicada
+        // Gasto unitario indirecto = (Costo indirecto general por día × % de participación) ÷ promedio de venta diario
+        val promedioVentaDiario = if (mercaderia.dailySalesAverage > 0.0) mercaderia.dailySalesAverage else 1.0
+        val asignacionIndirectaDiaria = if (mercaderia.isActive && promedioVentaDiario > 0.0) {
+            costosIndirectosDiariosTotales * participacionAplicada
+        } else {
+            0.0
+        }
+        val gastoUnitarioIndirecto = if (promedioVentaDiario > 0.0) asignacionIndirectaDiaria / promedioVentaDiario else 0.0
 
-        val totalCostosIndirectosAsignados = totalGastosAsignados + totalDepreciacionAsignada
+        val totalCostosIndirectosAsignados = asignacionIndirectaDiaria
 
         // 4. COSTO DIRECTO, PAGOS DE PERSONAL Y COSTO TOTAL UNITARIO
-        val gastoGeneralUnitarioProrrateo = prorrateoItem?.gastoGeneralUnitario ?: 0.0
-        val depreciacionInversionesUnitario = prorrateoItem?.depreciacionUnitaria ?: 0.0
+        val gastoGeneralAsignado = if (mercaderia.isActive && promedioVentaDiario > 0.0) {
+            gastosGeneralesDiariosTotales * participacionAplicada
+        } else {
+            0.0
+        }
+        val depreciacionAsignada = if (mercaderia.isActive && promedioVentaDiario > 0.0) {
+            depreciacionInversionesDiariaTotales * participacionAplicada
+        } else {
+            0.0
+        }
+        val gastoGeneralUnitarioProrrateo = if (promedioVentaDiario > 0.0) gastoGeneralAsignado / promedioVentaDiario else 0.0
+        val depreciacionInversionesUnitario = if (promedioVentaDiario > 0.0) depreciacionAsignada / promedioVentaDiario else 0.0
 
         val isBebida = MercaderiaCategoryHelper.isBebida(product) || (!MercaderiaCategoryHelper.isConfitura(product) && product.category.equals("Bebidas", ignoreCase = true))
         val sellingPrice = product?.price ?: 0.0

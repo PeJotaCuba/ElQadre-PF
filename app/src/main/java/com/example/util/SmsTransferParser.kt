@@ -1,6 +1,7 @@
 package com.example.util
 
 import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 
 data class ParsedTransferSms(
@@ -12,7 +13,8 @@ data class ParsedTransferSms(
     val dateStr: String = "",
     val rawText: String = "",
     val hasPhone: Boolean = phoneNumber.isNotBlank(),
-    val timestampMillis: Long = 0L
+    val timestampMillis: Long = 0L,
+    val gateway: String = "PAGOxMOVIL" // "PAGOxMOVIL" or "ENZONA"
 )
 
 object SmsTransferParser {
@@ -52,16 +54,26 @@ object SmsTransferParser {
         RegexOption.IGNORE_CASE
     )
 
+    // Regex for ENZONA formats:
+    // Format 1: ENZONA transferencia recibida Importe: 3325.00 CUP No.: Qrr6FuhO4Yiu
+    // Format 2: ENZONA pago recibido, Importe: 1550.00 CUP No.: lwoTTFnYIwvn
+    private val ENZONA_UNIFIED_REGEX = Regex(
+        """ENZONA\s+(?:transferencia\s+recibida|pago\s+recibido\s*,?)\s*Importe\s*:\s*([\d]+(?:[.,]\d{1,2})?)\s*(CUP|USD|EUR|MLC)?\s*No\.\s*:\s*([A-Za-z0-9]+)""",
+        RegexOption.IGNORE_CASE
+    )
+
     /**
-     * Checks if the given text matches the structural pattern of a bank transfer SMS.
-     * Validates existence of fundamental elements:
-     * - transferencia
-     * - cuenta
-     * - importe & moneda
-     * - Nro. Transaccion
-     * - Fecha
+     * Checks if the message is a valid ENZONA transfer/payment SMS matching the specified formats.
      */
-    fun isValidTransferSms(text: String): Boolean {
+    fun isEnzonaTransferSms(text: String): Boolean {
+        if (text.isBlank()) return false
+        return ENZONA_UNIFIED_REGEX.containsMatchIn(text.trim())
+    }
+
+    /**
+     * Checks if the given text matches the structural pattern of a Transfermóvil bank transfer SMS.
+     */
+    fun isTransfermovilTransferSms(text: String): Boolean {
         if (text.isBlank()) return false
         val containsTransfer = text.contains("transferencia", ignoreCase = true) || text.contains("transfer", ignoreCase = true)
         val containsCuenta = text.contains("cuenta", ignoreCase = true)
@@ -80,16 +92,48 @@ object SmsTransferParser {
     }
 
     /**
-     * Parses the SMS text extracting:
-     * - phoneNumber (10 digits if format A with titular phone, empty if format B)
-     * - recipientAccount (e.g. 9224069993889860)
-     * - amount (e.g. 5000.00)
-     * - currency (e.g. "CUP")
-     * - transactionNumber (e.g. "KW601MRAWO999")
-     * - dateStr (e.g. "27/8/2026")
+     * Checks if the given text matches the structural pattern of any valid bank transfer SMS (Transfermóvil or ENZONA).
      */
-    fun parseTransferSms(text: String): ParsedTransferSms? {
-        if (!isValidTransferSms(text)) return null
+    fun isValidTransferSms(text: String): Boolean {
+        return isEnzonaTransferSms(text) || isTransfermovilTransferSms(text)
+    }
+
+    /**
+     * Parses the SMS text extracting transfer details.
+     * Supports both Transfermóvil (PAGOxMOVIL) and ENZONA formats.
+     */
+    fun parseTransferSms(text: String, fallbackTimestampMillis: Long = 0L): ParsedTransferSms? {
+        if (text.isBlank()) return null
+
+        // 1. Check ENZONA formats
+        val enzonaMatch = ENZONA_UNIFIED_REGEX.find(text.trim())
+        if (enzonaMatch != null) {
+            val amountStr = enzonaMatch.groupValues[1].replace(',', '.')
+            val currencyStr = enzonaMatch.groupValues[2].ifBlank { "CUP" }.uppercase()
+            val txNumber = enzonaMatch.groupValues[3].trim()
+            val amount = amountStr.toDoubleOrNull() ?: 0.0
+
+            if (txNumber.isNotBlank() && amount > 0.0) {
+                val effectiveMillis = if (fallbackTimestampMillis > 0L) fallbackTimestampMillis else System.currentTimeMillis()
+                val dateFormatted = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(effectiveMillis))
+                return ParsedTransferSms(
+                    transactionNumber = txNumber,
+                    amount = amount,
+                    currency = currencyStr,
+                    recipientAccount = "",
+                    phoneNumber = "",
+                    dateStr = dateFormatted,
+                    rawText = text.trim(),
+                    hasPhone = false,
+                    timestampMillis = effectiveMillis,
+                    gateway = "ENZONA"
+                )
+            }
+            return null
+        }
+
+        // 2. Check Transfermóvil format
+        if (!isTransfermovilTransferSms(text)) return null
 
         val phoneMatch = PHONE_REGEX.find(text)
         val phoneNumber = phoneMatch?.groupValues?.get(1)?.trim() ?: ""
@@ -119,7 +163,14 @@ object SmsTransferParser {
             return null
         }
 
-        val calculatedMillis = tryParseDateTimeMillis(dateStr, timeStr)
+        val parsedMillis = tryParseDateTimeMillis(dateStr, timeStr)
+        val effectiveMillis = when {
+            fallbackTimestampMillis > 0L -> fallbackTimestampMillis
+            parsedMillis > 0L -> parsedMillis
+            else -> System.currentTimeMillis()
+        }
+
+        val finalDateStr = if (dateStr.isNotBlank()) dateStr else SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(effectiveMillis))
 
         return ParsedTransferSms(
             transactionNumber = transactionNumber,
@@ -127,10 +178,11 @@ object SmsTransferParser {
             currency = currencyStr,
             recipientAccount = recipientAccount,
             phoneNumber = phoneNumber,
-            dateStr = dateStr,
+            dateStr = finalDateStr,
             rawText = text.trim(),
             hasPhone = phoneNumber.isNotBlank(),
-            timestampMillis = calculatedMillis
+            timestampMillis = effectiveMillis,
+            gateway = "PAGOxMOVIL"
         )
     }
 
