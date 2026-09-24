@@ -440,6 +440,18 @@ fun CuadreCajaScreen(
     val transferenciasTotalMonto = remember(transferenciasForJornada) {
         transferenciasForJornada.sumOf { it.amount }
     }
+    val transferenciasRegistradasList = remember(transferenciasForJornada) {
+        transferenciasForJornada.filter { !it.isManual && it.source != "MANUAL_EXTERNA" }
+    }
+    val transferenciasRegistradasMonto = remember(transferenciasRegistradasList) {
+        transferenciasRegistradasList.sumOf { it.amount }
+    }
+    val otrasTransferenciasList = remember(transferenciasForJornada) {
+        transferenciasForJornada.filter { it.isManual || it.source == "MANUAL_EXTERNA" }
+    }
+    val otrasTransferenciasMonto = remember(otrasTransferenciasList) {
+        otrasTransferenciasList.sumOf { it.amount }
+    }
 
     var pagosConfirmados by rememberSaveable(activeJornadaId) {
         mutableStateOf(savedPagos?.isConfirmed ?: false)
@@ -1088,6 +1100,10 @@ fun CuadreCajaScreen(
                         totalMermasUnidades = totalMermasUnidades,
                         transferenciasMonto = transferenciasTotalMonto,
                         transferenciasCount = transferenciasForJornada.size,
+                        transferenciasRegistradasMonto = transferenciasRegistradasMonto,
+                        transferenciasRegistradasCount = transferenciasRegistradasList.size,
+                        otrasTransferenciasMonto = otrasTransferenciasMonto,
+                        otrasTransferenciasCount = otrasTransferenciasList.size,
                         extraccionesList = extraccionesList,
                         efectivoEsperado = efectivoEsperado,
                         efectivoRealStr = efectivoRealStr,
@@ -1292,6 +1308,10 @@ fun CuadreGeneralesTab(
     totalMermasUnidades: Double,
     transferenciasMonto: Double,
     transferenciasCount: Int,
+    transferenciasRegistradasMonto: Double = transferenciasMonto,
+    transferenciasRegistradasCount: Int = transferenciasCount,
+    otrasTransferenciasMonto: Double = 0.0,
+    otrasTransferenciasCount: Int = 0,
     extraccionesList: androidx.compose.runtime.snapshots.SnapshotStateList<ExtraccionItem>,
     efectivoEsperado: Double,
     efectivoRealStr: String,
@@ -1311,12 +1331,6 @@ fun CuadreGeneralesTab(
 
     val totalIngresosGenerales = ingresosProduccion + ingresosMercaderias
     val extraccionesVal = extraccionesList.sumOf { it.montoStr.toDoubleOrNull() ?: 0.0 }
-
-    val ingresosEsperadosPotencial = produccionStates.sumOf { it.totalProduced * it.price } +
-            mercaderiasStates.sumOf { it.existenciaDisponible * it.price } +
-            agregadosStates.sumOf { it.racionesEnviadas * it.precioVenta }
-
-    val ingresosEsperadosDisplay = if (ingresosEsperadosPotencial > 0.0) ingresosEsperadosPotencial else totalIngresosGenerales
 
     val difEfectivoColor = when {
         diferencia > 0.01 -> Color(0xFF047857)
@@ -1673,70 +1687,77 @@ fun CuadreGeneralesTab(
 
                 HorizontalDivider(color = Slate100)
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "TRANSFERENCIAS ESPERADAS",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Slate500
-                        )
-                        Text(
-                            text = "$${"%.2f".format(transferenciasMonto)} CUP",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Slate800
-                        )
-                    }
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "TRANSFERENCIAS REGISTRADAS",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF0284C7)
-                        )
-                        Text(
-                            text = "$${"%.2f".format(transferenciasMonto)} CUP",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Black,
-                            color = Color(0xFF0284C7)
-                        )
-                        Text(
-                            text = "$transferenciasCount operaciones",
-                            fontSize = 10.sp,
-                            color = Slate400
-                        )
-                    }
-                }
-
+                // TRANSFERENCIAS REGISTRADAS
                 Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = Color(0xFFF1F5F9),
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFFF0F9FF),
+                    border = BorderStroke(1.dp, Color(0xFFBAE6FD)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                text = "TRANSFERENCIAS REGISTRADAS",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF0369A1)
+                            )
+                            Text(
+                                text = if (transferenciasRegistradasCount == 1) "1 operación registrada" else "$transferenciasRegistradasCount operaciones registradas",
+                                fontSize = 11.sp,
+                                color = Slate500
+                            )
+                        }
                         Text(
-                            text = "DIFERENCIA TRANSFERENCIAS:",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Slate600
-                        )
-                        Text(
-                            text = "$0.00 CUP",
-                            fontSize = 12.sp,
+                            text = "$${"%.2f".format(transferenciasRegistradasMonto)} CUP",
+                            fontSize = 18.sp,
                             fontWeight = FontWeight.Black,
-                            color = Color(0xFF15803D)
+                            color = Color(0xFF0284C7)
                         )
+                    }
+                }
+
+                // OTRAS TRANSFERENCIAS (solo cuando existan)
+                if (otrasTransferenciasCount > 0) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFFFAF5FF),
+                        border = BorderStroke(1.dp, Color(0xFFE9D5FF)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(
+                                    text = "OTRAS TRANSFERENCIAS",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF7E22CE)
+                                )
+                                Text(
+                                    text = if (otrasTransferenciasCount == 1) "1 operación manual" else "$otrasTransferenciasCount operaciones manuales",
+                                    fontSize = 11.sp,
+                                    color = Slate500
+                                )
+                            }
+                            Text(
+                                text = "$${"%.2f".format(otrasTransferenciasMonto)} CUP",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFF7E22CE)
+                            )
+                        }
                     }
                 }
             }
@@ -1786,84 +1807,99 @@ fun CuadreGeneralesTab(
 
                 HorizontalDivider(color = Slate100)
 
+                // Parte superior: Desglose de ingresos reales
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "INGRESOS ESPERADOS",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Slate500
-                        )
-                        Text(
-                            text = "$${"%.2f".format(ingresosEsperadosDisplay)} CUP",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Slate700
-                        )
-                        Text(
-                            text = "Potencial ventas teórico",
-                            fontSize = 9.sp,
-                            color = Slate400
-                        )
+                    // INGRESOS POR MERCADERÍAS
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Slate50,
+                        border = BorderStroke(1.dp, Slate200),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = "INGRESOS POR MERCADERÍAS",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Slate600
+                            )
+                            Text(
+                                text = "$${"%.2f".format(ingresosMercaderias)} CUP",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Slate800
+                            )
+                        }
                     }
 
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "INGRESOS REALES",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF15803D)
-                        )
-                        Text(
-                            text = "$${"%.2f".format(totalIngresosGenerales)} CUP",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Black,
-                            color = Color(0xFF15803D)
-                        )
-                        Text(
-                            text = "Ventas reales ejecutadas",
-                            fontSize = 9.sp,
-                            color = Color(0xFF15803D)
-                        )
+                    // INGRESOS POR PRODUCCIÓN
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Slate50,
+                        border = BorderStroke(1.dp, Slate200),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = "INGRESOS POR PRODUCCIÓN",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Slate600
+                            )
+                            Text(
+                                text = "$${"%.2f".format(ingresosProduccion)} CUP",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Slate800
+                            )
+                        }
                     }
                 }
 
+                // Parte inferior: INGRESOS TOTALES
                 Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = Color(0xFFDCFCE7),
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFFF0FDF4),
+                    border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = "INGRESOS TOTALES",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFF166534)
+                            )
+                            Text(
+                                text = "Ventas reales de la jornada",
+                                fontSize = 10.sp,
+                                color = Color(0xFF15803D)
+                            )
+                        }
                         Text(
-                            text = "DIFERENCIA INGRESOS:",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF166534)
-                        )
-                        val difIng = totalIngresosGenerales - ingresosEsperadosDisplay
-                        Text(
-                            text = "${if (difIng >= 0) "+" else ""}$${"%.2f".format(difIng)} CUP",
-                            fontSize = 12.sp,
+                            text = "$${"%.2f".format(totalIngresosGenerales)} CUP",
+                            fontSize = 20.sp,
                             fontWeight = FontWeight.Black,
-                            color = Color(0xFF166534)
+                            color = Color(0xFF15803D)
                         )
                     }
                 }
-
-                Text(
-                    text = "Los ingresos reales corresponden exclusivamente a ventas reales.",
-                    fontSize = 10.sp,
-                    color = Slate500
-                )
             }
         }
 
