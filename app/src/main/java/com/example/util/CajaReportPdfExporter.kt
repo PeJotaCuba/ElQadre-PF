@@ -278,10 +278,9 @@ object CajaReportPdfExporter {
                     paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
                     paint.textSize = 8.5f
                     paint.color = Color.parseColor("#64748B")
-                    val comandaStr = if (tx.comandaNumber != null && tx.comandaNumber > 0) "Comanda #${tx.comandaNumber}" else "Sin asociar"
                     val dateInfo = if (tx.smsDate.isNotBlank()) "Fecha: ${tx.smsDate} | " else "Fecha: ${SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(tx.receivedAt))} | "
                     val timeInfo = "Hora: ${SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(tx.receivedAt))} | "
-                    canvas.drawText("  $dateInfo$timeInfo Estado: ${tx.status} | Asoc: $comandaStr | Cajero: @${tx.cajeroUsername}", 40f, currentY, paint)
+                    canvas.drawText("  $dateInfo$timeInfo Cajero: @${tx.cajeroUsername}", 40f, currentY, paint)
 
                     currentY += 16f
                     canvas.drawLine(40f, currentY, 555f, currentY, linePaint)

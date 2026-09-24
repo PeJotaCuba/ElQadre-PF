@@ -79,23 +79,16 @@ object TransferenciasPdfExporter {
                     // Summary Box
                     val totalAmount = transferencias.sumOf { it.amount }
                     val countTotal = transferencias.size
-                    val countAsoc = transferencias.count { it.status == "ASOCIADA" }
-                    val amountAsoc = transferencias.filter { it.status == "ASOCIADA" }.sumOf { it.amount }
-                    val countNoAsoc = transferencias.count { it.status == "NO ASOCIADA" }
-                    val amountNoAsoc = transferencias.filter { it.status == "NO ASOCIADA" }.sumOf { it.amount }
-                    val countParcial = transferencias.count { it.status == "PARCIAL" }
-                    val amountParcial = transferencias.filter { it.status == "PARCIAL" }.sumOf { it.amount }
-
                     val countSms = transferencias.count { !it.isManual }
                     val countManual = transferencias.count { it.isManual }
 
                     // Summary Background
                     paint.color = Color.parseColor("#F8FAFC")
-                    currentCanvas.drawRoundRect(36f, y, 559f, y + 80f, 8f, 8f, paint)
+                    currentCanvas.drawRoundRect(36f, y, 559f, y + 60f, 8f, 8f, paint)
                     paint.color = Color.parseColor("#E2E8F0")
                     paint.style = Paint.Style.STROKE
                     paint.strokeWidth = 1f
-                    currentCanvas.drawRoundRect(36f, y, 559f, y + 80f, 8f, 8f, paint)
+                    currentCanvas.drawRoundRect(36f, y, 559f, y + 60f, 8f, 8f, paint)
                     paint.style = Paint.Style.FILL
 
                     // Summary Content
@@ -109,50 +102,20 @@ object TransferenciasPdfExporter {
                     paint.color = Color.parseColor("#475569")
 
                     // Column 1
-                    currentCanvas.drawText("Total Recibido:", 48f, y + 36f, paint)
+                    currentCanvas.drawText("Total Recibido:", 48f, y + 38f, paint)
                     paint.color = Color.parseColor("#0369A1")
                     paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                    currentCanvas.drawText("$${"%.2f".format(totalAmount)} CUP ($countTotal transferencias)", 130f, y + 36f, paint)
-
-                    paint.color = Color.parseColor("#475569")
-                    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-                    currentCanvas.drawText("Asociadas a Comanda:", 48f, y + 52f, paint)
-                    paint.color = Color.parseColor("#059669")
-                    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                    currentCanvas.drawText("$${"%.2f".format(amountAsoc)} CUP ($countAsoc)", 160f, y + 52f, paint)
-
-                    paint.color = Color.parseColor("#475569")
-                    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-                    currentCanvas.drawText("Sin Asociar:", 48f, y + 68f, paint)
-                    paint.color = Color.parseColor("#D97706")
-                    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                    currentCanvas.drawText("$${"%.2f".format(amountNoAsoc)} CUP ($countNoAsoc)", 120f, y + 68f, paint)
+                    currentCanvas.drawText("$${"%.2f".format(totalAmount)} CUP ($countTotal transferencias)", 130f, y + 38f, paint)
 
                     // Column 2
-                    if (countParcial > 0) {
-                        paint.color = Color.parseColor("#475569")
-                        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-                        currentCanvas.drawText("Parciales:", 330f, y + 36f, paint)
-                        paint.color = Color.parseColor("#0284C7")
-                        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                        currentCanvas.drawText("$${"%.2f".format(amountParcial)} CUP ($countParcial)", 390f, y + 36f, paint)
-                    }
-
                     paint.color = Color.parseColor("#475569")
                     paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-                    currentCanvas.drawText("Detección Automática SMS:", 330f, y + 52f, paint)
+                    currentCanvas.drawText("Detección SMS / Manual:", 330f, y + 38f, paint)
                     paint.color = Color.parseColor("#0F172A")
                     paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                    currentCanvas.drawText("$countSms", 470f, y + 52f, paint)
+                    currentCanvas.drawText("$countSms SMS / $countManual Manual", 445f, y + 38f, paint)
 
-                    paint.color = Color.parseColor("#475569")
-                    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-                    currentCanvas.drawText("Registros Manuales/Ext.:", 330f, y + 68f, paint)
-                    paint.color = Color.parseColor("#0F172A")
-                    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                    currentCanvas.drawText("$countManual", 470f, y + 68f, paint)
-
-                    y += 98f
+                    y += 75f
                 }
 
                 // Table Header Bar
@@ -164,10 +127,9 @@ object TransferenciasPdfExporter {
                 paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
 
                 currentCanvas.drawText("NRO. TRANSACCIÓN", 42f, y + 13f, paint)
-                currentCanvas.drawText("FECHA/HORA", 155f, y + 13f, paint)
-                currentCanvas.drawText("ORIGEN", 230f, y + 13f, paint)
-                currentCanvas.drawText("TITULAR / TELÉFONO", 285f, y + 13f, paint)
-                currentCanvas.drawText("COMANDA", 420f, y + 13f, paint)
+                currentCanvas.drawText("FECHA/HORA", 160f, y + 13f, paint)
+                currentCanvas.drawText("ORIGEN", 250f, y + 13f, paint)
+                currentCanvas.drawText("TITULAR / TELÉFONO", 310f, y + 13f, paint)
                 paint.textAlign = Paint.Align.RIGHT
                 currentCanvas.drawText("IMPORTE", 552f, y + 13f, paint)
                 paint.textAlign = Paint.Align.LEFT
@@ -223,13 +185,13 @@ object TransferenciasPdfExporter {
                     paint.color = Color.parseColor("#475569")
                     paint.textSize = 8f
                     paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-                    canvas.drawText("$dateFormatted $timeFormatted", 155f, currentY + 2f, paint)
+                    canvas.drawText("$dateFormatted $timeFormatted", 160f, currentY + 2f, paint)
 
                     // Origin
                     val originLabel = if (tx.isManual || tx.source == "MANUAL_EXTERNA") "MANUAL" else "SMS"
                     paint.color = if (tx.isManual) Color.parseColor("#7C3AED") else Color.parseColor("#0284C7")
                     paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                    canvas.drawText(originLabel, 230f, currentY + 2f, paint)
+                    canvas.drawText(originLabel, 250f, currentY + 2f, paint)
 
                     // Titular / Phone
                     val titularDisplay = when {
@@ -238,21 +200,10 @@ object TransferenciasPdfExporter {
                         tx.recipientAccount.isNotBlank() -> "Cta: ...${tx.recipientAccount.takeLast(6)}"
                         else -> "N/D"
                     }
-                    val safeTitular = if (titularDisplay.length > 24) titularDisplay.take(22) + "..." else titularDisplay
+                    val safeTitular = if (titularDisplay.length > 30) titularDisplay.take(28) + "..." else titularDisplay
                     paint.color = Color.parseColor("#334155")
                     paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-                    canvas.drawText(safeTitular, 285f, currentY + 2f, paint)
-
-                    // Comanda / Status
-                    val comandaLabel = if (tx.comandaNumber != null && tx.comandaNumber > 0) "Comanda #${tx.comandaNumber}" else tx.status
-                    val statusColor = when (tx.status) {
-                        "ASOCIADA" -> Color.parseColor("#059669")
-                        "PARCIAL" -> Color.parseColor("#0284C7")
-                        else -> Color.parseColor("#D97706")
-                    }
-                    paint.color = statusColor
-                    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                    canvas.drawText(comandaLabel, 420f, currentY + 2f, paint)
+                    canvas.drawText(safeTitular, 310f, currentY + 2f, paint)
 
                     // Amount
                     paint.color = Color.parseColor("#0F172A")

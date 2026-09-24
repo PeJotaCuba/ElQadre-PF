@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
+import android.os.Environment
 import android.widget.Toast
 import androidx.core.content.FileProvider
 import java.io.File
@@ -25,6 +26,7 @@ object CuadreCajaPdfExporter {
         val defectuoso: Double,
         val consumo: Double,
         val regalia: Double,
+        val pendientes: Double = 0.0,
         val vendible: Double,
         val price: Double,
         val ingresoEstimado: Double
@@ -409,10 +411,11 @@ object CuadreCajaPdfExporter {
                 paint.textSize = 7.5f
                 paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
                 canvas.drawText("PRODUCTO", 40f, y, paint)
-                canvas.drawText("TANDAS", 160f, y, paint)
-                canvas.drawText("PROD.", 210f, y, paint)
-                canvas.drawText("MERMAS", 270f, y, paint)
-                canvas.drawText("VENDIBLE", 355f, y, paint)
+                canvas.drawText("TANDAS", 150f, y, paint)
+                canvas.drawText("PROD.", 195f, y, paint)
+                canvas.drawText("MERMAS", 250f, y, paint)
+                canvas.drawText("PEND.", 315f, y, paint)
+                canvas.drawText("VENDIDO", 365f, y, paint)
                 canvas.drawText("PRECIO", 430f, y, paint)
                 paint.textAlign = Paint.Align.RIGHT
                 canvas.drawText("TOTAL", (pageWidth - 40).toFloat(), y, paint)
@@ -424,19 +427,35 @@ object CuadreCajaPdfExporter {
                     paint.color = Color.parseColor("#0F172A")
                     paint.textSize = 8f
                     paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-                    val prodName = if (row.productName.length > 22) row.productName.take(20) + ".." else row.productName
+                    val prodName = if (row.productName.length > 20) row.productName.take(18) + ".." else row.productName
                     canvas.drawText(prodName, 40f, y, paint)
-                    canvas.drawText("${row.tandasCount}", 160f, y, paint)
-                    canvas.drawText("${"%.1f".format(row.totalProduced)} ${row.unit}", 210f, y, paint)
-                    val mermaTxt = "${"%.1f".format(row.defectuoso + row.consumo + row.regalia)} (D:${row.defectuoso.toInt()} C:${row.consumo.toInt()} R:${row.regalia.toInt()})"
-                    canvas.drawText(mermaTxt, 270f, y, paint)
-                    canvas.drawText("${"%.1f".format(row.vendible)}", 355f, y, paint)
+                    canvas.drawText("${row.tandasCount}", 150f, y, paint)
+                    canvas.drawText("${"%.1f".format(row.totalProduced)} ${row.unit}", 195f, y, paint)
+                    val mermaTxt = "${"%.1f".format(row.defectuoso + row.consumo + row.regalia)}"
+                    canvas.drawText(mermaTxt, 250f, y, paint)
+                    val pendTxt = if (row.pendientes > 0.0) "${"%.1f".format(row.pendientes)}" else "-"
+                    if (row.pendientes > 0.0) {
+                        paint.color = Color.parseColor("#B45309")
+                        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                    }
+                    canvas.drawText(pendTxt, 315f, y, paint)
+                    paint.color = Color.parseColor("#0F172A")
+                    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+                    canvas.drawText("${"%.1f".format(row.vendible)}", 365f, y, paint)
                     canvas.drawText("$${"%.2f".format(row.price)}", 430f, y, paint)
                     paint.textAlign = Paint.Align.RIGHT
                     paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
                     canvas.drawText("$${"%.2f".format(row.ingresoEstimado)}", (pageWidth - 40).toFloat(), y, paint)
                     paint.textAlign = Paint.Align.LEFT
                     y += 12f
+                }
+                if (data.produccionRows.any { it.pendientes > 0.0 }) {
+                    y = checkNewPage(14f, y)
+                    paint.textSize = 7f
+                    paint.color = Color.parseColor("#B45309")
+                    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.ITALIC)
+                    canvas.drawText("* PEND. = Unidades pendientes (no vendidas). NO generan ingresos en esta jornada y se trasladan como Tanda 00 a la siguiente jornada.", 40f, y, paint)
+                    y += 10f
                 }
                 y += 6f
             }
@@ -590,10 +609,49 @@ object CuadreCajaPdfExporter {
                 putExtra(Intent.EXTRA_TEXT, "Adjunto el comprobante oficial de Cuadre de Caja de la Jornada.")
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            context.startActivity(Intent.createChooser(intent, "Compartir / Descargar PDF de Cuadre"))
+            context.startActivity(Intent.createChooser(intent, "Compartir PDF de Cuadre"))
         } catch (e: Exception) {
             e.printStackTrace()
             Toast.makeText(context, "No se pudo compartir el archivo PDF: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    fun viewPdfReport(context: Context, file: File) {
+        try {
+            val uri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                file
+            )
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/pdf")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(intent, "Ver Informe PDF"))
+        } catch (e: Exception) {
+            shareCuadreCajaReport(context, file)
+        }
+    }
+
+    fun savePdfToDownloads(context: Context, sourceFile: File): File? {
+        try {
+            val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            if (!downloadsDir.exists()) downloadsDir.mkdirs()
+            val destFile = File(downloadsDir, sourceFile.name)
+            sourceFile.copyTo(destFile, overwrite = true)
+            Toast.makeText(context, "PDF guardado en Descargas:\n${destFile.name}", Toast.LENGTH_LONG).show()
+            return destFile
+        } catch (e: Exception) {
+            try {
+                val extDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir
+                val destFile = File(extDir, sourceFile.name)
+                sourceFile.copyTo(destFile, overwrite = true)
+                Toast.makeText(context, "PDF guardado en el dispositivo:\n${destFile.name}", Toast.LENGTH_LONG).show()
+                return destFile
+            } catch (ex: Exception) {
+                Toast.makeText(context, "Error al guardar el archivo PDF: ${ex.message}", Toast.LENGTH_SHORT).show()
+                return null
+            }
         }
     }
 }

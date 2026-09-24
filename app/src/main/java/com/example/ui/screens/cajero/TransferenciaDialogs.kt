@@ -240,52 +240,29 @@ fun TransferenciaAlertDialog(
                         )
                     }
 
-                    // Action Buttons: Associate to Order vs Save Unassociated
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    // Action Button: Save Transfer
+                    Button(
+                        onClick = {
+                            viewModel.saveTransferenciaSinAsociar(
+                                parsed = parsed,
+                                titularName = titularName,
+                                titularCi = titularCi,
+                                phoneNumber = titularPhone
+                            )
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(46.dp)
+                            .testTag("btn_guardar_transferencia"),
+                        colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
+                        shape = RoundedCornerShape(10.dp)
                     ) {
-                        OutlinedButton(
-                            onClick = {
-                                viewModel.saveTransferenciaSinAsociar(
-                                    parsed = parsed,
-                                    titularName = titularName,
-                                    titularCi = titularCi,
-                                    phoneNumber = titularPhone
-                                )
-                            },
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(46.dp)
-                                .testTag("btn_guardar_sin_asociar"),
-                            shape = RoundedCornerShape(10.dp)
-                        ) {
-                            Text(
-                                text = "GUARDAR SIN ASOCIAR",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                textAlign = TextAlign.Center
-                            )
-                        }
-
-                        Button(
-                            onClick = { isAssociatingWithOrder = true },
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(46.dp)
-                                .testTag("btn_asociar_a_comanda"),
-                            colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
-                            shape = RoundedCornerShape(10.dp)
-                        ) {
-                            Icon(Icons.Default.Link, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "ASOCIAR A COMANDA",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                textAlign = TextAlign.Center
-                            )
-                        }
+                        Text(
+                            text = "GUARDAR TRANSFERENCIA",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center
+                        )
                     }
                 } else {
                     // Select Open Order Step
@@ -1075,9 +1052,6 @@ fun InformeTransferenciasDialog(
     val context = LocalContext.current
     val totalAmount = remember(transfers) { transfers.sumOf { it.amount } }
     val countTotal = remember(transfers) { transfers.size }
-    val countAsoc = remember(transfers) { transfers.count { it.status == "ASOCIADA" } }
-    val countNoAsoc = remember(transfers) { transfers.count { it.status == "NO ASOCIADA" } }
-    val countParcial = remember(transfers) { transfers.count { it.status == "PARCIAL" } }
     val countSms = remember(transfers) { transfers.count { !it.isManual } }
     val countManual = remember(transfers) { transfers.count { it.isManual } }
 
@@ -1193,28 +1167,14 @@ fun InformeTransferenciasDialog(
                         ) {
                             Surface(shape = RoundedCornerShape(6.dp), color = Color.White, modifier = Modifier.weight(1f)) {
                                 Column(modifier = Modifier.padding(6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text("Asociadas", fontSize = 9.sp, color = Emerald600)
-                                    Text("$countAsoc", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Emerald600)
+                                    Text("Detectadas por SMS", fontSize = 9.sp, color = Color(0xFF0284C7))
+                                    Text("$countSms", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF0284C7))
                                 }
                             }
                             Surface(shape = RoundedCornerShape(6.dp), color = Color.White, modifier = Modifier.weight(1f)) {
                                 Column(modifier = Modifier.padding(6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text("Sin Asoc.", fontSize = 9.sp, color = Amber600)
-                                    Text("$countNoAsoc", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Amber600)
-                                }
-                            }
-                            if (countParcial > 0) {
-                                Surface(shape = RoundedCornerShape(6.dp), color = Color.White, modifier = Modifier.weight(1f)) {
-                                    Column(modifier = Modifier.padding(6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text("Parciales", fontSize = 9.sp, color = Color(0xFF0284C7))
-                                        Text("$countParcial", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF0284C7))
-                                    }
-                                }
-                            }
-                            Surface(shape = RoundedCornerShape(6.dp), color = Color.White, modifier = Modifier.weight(1f)) {
-                                Column(modifier = Modifier.padding(6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text("SMS / Manual", fontSize = 9.sp, color = Slate500)
-                                    Text("$countSms / $countManual", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = ElQadreNavy)
+                                    Text("Entrada Manual/Ext.", fontSize = 9.sp, color = Color(0xFF7C3AED))
+                                    Text("$countManual", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF7C3AED))
                                 }
                             }
                         }
@@ -1287,7 +1247,7 @@ fun InformeTransferenciasDialog(
                                         val dateStr = if (tx.smsDate.isNotBlank()) tx.smsDate else SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(tx.receivedAt))
                                         val timeStr = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(tx.receivedAt))
                                         Text(
-                                            text = "Fecha: $dateStr | Hora: $timeStr • ${if (tx.comandaNumber != null) "Comanda #${tx.comandaNumber}" else tx.status}",
+                                            text = "Fecha: $dateStr | Hora: $timeStr",
                                             fontSize = 10.sp,
                                             color = Slate500
                                         )

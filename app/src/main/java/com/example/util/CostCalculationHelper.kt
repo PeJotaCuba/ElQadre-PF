@@ -1023,8 +1023,11 @@ object CostCalculationHelper {
         val costoDirectoUnitario = mercaderia.acquisitionCost + directExpenses
         val porcentajeParticipacion = prorrateoItem?.porcentajeParticipacion ?: (if (prorrateoResult.baseTotal > 0.0) ((effectiveStock * costoDirectoUnitario) / prorrateoResult.baseTotal) * 100.0 else 0.0)
         
-        // Gasto unitario indirecto = Costo indirecto general por día × % de participación en el prorrateo (en decimal)
-        val gastoUnitarioIndirecto = costosIndirectosDiariosTotales * (porcentajeParticipacion / 100.0)
+        // Participación aplicada = porcentaje / 100 (ej. 26 % -> 0.26)
+        val participacionAplicada = if (porcentajeParticipacion > 1.0) porcentajeParticipacion / 100.0 else porcentajeParticipacion
+
+        // Gasto unitario indirecto = Costo indirecto general por día × 0.26 (participación aplicada en proporción)
+        val gastoUnitarioIndirecto = costosIndirectosDiariosTotales * participacionAplicada
 
         val totalCostosIndirectosAsignados = totalGastosAsignados + totalDepreciacionAsignada
 

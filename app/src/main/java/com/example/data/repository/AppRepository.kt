@@ -112,6 +112,18 @@ class AppRepository(private val db: AppDatabase) {
             )
         }
 
+        // Asegurar que la nueva jornada comience con INICIO = FINAL de la jornada anterior para todas las materias primas
+        try {
+            val allMaterias = db.materiaPrimaDao().getAllSync()
+            allMaterias.forEach { mp ->
+                if (mp.initialStock != mp.stock) {
+                    db.materiaPrimaDao().update(mp.copy(initialStock = mp.stock))
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
         db.bitacoraDao().insertEntry(
             BitacoraEntry(
                 title = "Apertura de Jornada",

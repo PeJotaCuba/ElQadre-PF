@@ -128,6 +128,7 @@ import kotlinx.coroutines.launch
 
 enum class DuenoView {
     INICIO,
+    INFORME_INSUMOS,
     TANDAS,
     CUADRE_CAJA,
     INVENTARIO,
@@ -277,6 +278,7 @@ fun DuenoScreen(
                         // Navigation Items
                         val allNavItems = listOf(
                             Triple(DuenoView.INICIO, "Inicio", Icons.Outlined.Home),
+                            Triple(DuenoView.INFORME_INSUMOS, "Informe Insumos", Icons.Outlined.Assessment),
                             Triple(DuenoView.TANDAS, "Tandas", Icons.Outlined.History),
                             Triple(DuenoView.CUADRE_CAJA, "Cuadre de Caja", Icons.Outlined.PointOfSale),
                             Triple(DuenoView.AJUSTES, "Ajustes", Icons.Outlined.Settings)
@@ -730,6 +732,17 @@ fun DuenoScreen(
                                     currentView = selectedView
                                 }
                             }
+                        }
+
+                        DuenoView.INFORME_INSUMOS -> {
+                            InformeInsumosScreen(
+                                uiState = uiState,
+                                onBack = {
+                                    currentView = previousView ?: DuenoView.INICIO
+                                    previousView = null
+                                },
+                                modifier = Modifier.fillMaxSize()
+                            )
                         }
 
                         DuenoView.TANDAS -> {
@@ -1349,6 +1362,7 @@ fun DuenoCardsGrid(
     onCardClick: (DuenoView) -> Unit
 ) {
     val items = listOf(
+        Triple(DuenoView.INFORME_INSUMOS, "INFORME INSUMOS", "Consulta rápida de existencias: Inicio, Entradas, Final e Importe"),
         Triple(DuenoView.TANDAS, "TANDAS", "Lotes de producción, control de costos y rendimientos"),
         Triple(DuenoView.CUADRE_CAJA, "CUADRE DE CAJA", "Arqueo de efectivo, balances e ingresos"),
         Triple(DuenoView.AJUSTES, "AJUSTES", "Preferencias del sistema y Gestión operativa")
@@ -1416,6 +1430,7 @@ fun DuenoBigCard(
 ) {
     val (view, title, subtitle) = item
     val icon = when (view) {
+        DuenoView.INFORME_INSUMOS -> Icons.Outlined.Assessment
         DuenoView.TANDAS -> Icons.Outlined.History
         DuenoView.CUADRE_CAJA -> Icons.Outlined.PointOfSale
         DuenoView.INVENTARIO -> Icons.Outlined.Inventory2

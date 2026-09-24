@@ -88,6 +88,7 @@ fun TandasPane(
     var selectedTandaForEdit by remember { mutableStateOf<Tanda?>(null) }
     var selectedTandaForClose by remember { mutableStateOf<Tanda?>(null) }
     var showArchivarPendientesDialog by remember { mutableStateOf(false) }
+    var showHayTandasAbiertasDialog by remember { mutableStateOf(false) }
 
     // 1. DETALLE DE PRODUCTO: Pantalla completa de Tandas del producto seleccionado
     selectedProductForDetail?.let { summary ->
@@ -106,7 +107,11 @@ fun TandasPane(
                 tanda = tanda,
                 uiState = uiState,
                 viewModel = viewModel,
-                onDismiss = { selectedTandaForClose = null }
+                onDismiss = { selectedTandaForClose = null },
+                onClosed = {
+                    selectedTandaForClose = null
+                    selectedProductForDetail = null
+                }
             )
         }
         return
@@ -122,17 +127,17 @@ fun TandasPane(
         return
     }
 
-    // Tandas de la jornada actual que estén abiertas (no cerradas)
+    // Tandas de la jornada actual que estén abiertas (no cerradas ni archivadas)
     val activeJornada = uiState.activeJornada
     val openTandas = remember(uiState.tandas, activeJornada) {
-        val activeTandas = uiState.tandas.filter { it.status == "ACTIVA" || it.status == "ACTIVADA" || it.status == "ABIERTA" }
-        if (activeJornada != null) {
-            val jorTandas = activeTandas.filter {
-                it.jornadaId == activeJornada.id || (activeJornada.openedAt > 0 && it.date >= activeJornada.openedAt) || it.jornadaId == 0L
-            }
-            if (jorTandas.isNotEmpty()) jorTandas else activeTandas
+        if (activeJornada == null || !activeJornada.isOpen) {
+            emptyList()
         } else {
-            activeTandas
+            uiState.tandas.filter { tanda ->
+                tanda.status != "ARCHIVADA" &&
+                (tanda.status == "ACTIVA" || tanda.status == "ACTIVADA" || tanda.status == "ABIERTA") &&
+                (tanda.jornadaId == activeJornada.id || (activeJornada.openedAt > 0 && tanda.date >= activeJornada.openedAt && tanda.jornadaId == 0L))
+            }
         }
     }
 
@@ -158,23 +163,22 @@ fun TandasPane(
         }.sortedBy { it.productName.lowercase() }
     }
 
-    // Tandas cerradas para la lista resumida y los gráficos
+    // Tandas cerradas de la jornada activa (excluyendo tandas que ya fueron mandadas a ARCHIVO)
     val closedTandas = remember(uiState.tandas, activeJornada) {
-        val allClosed = uiState.tandas.filter {
-            it.status == "CERRADA" || it.status == "FINALIZADA" || it.status == "PROCESADA" || it.status == "ARCHIVADA"
-        }
-        val jorClosed = if (activeJornada != null) {
-            allClosed.filter {
-                it.jornadaId == activeJornada.id || (activeJornada.openedAt > 0 && it.date >= activeJornada.openedAt)
+        if (activeJornada == null || !activeJornada.isOpen) {
+            emptyList()
+        } else {
+            val currentClosed = uiState.tandas.filter { tanda ->
+                tanda.status != "ARCHIVADA" &&
+                (tanda.status == "CERRADA" || tanda.status == "FINALIZADA" || tanda.status == "PROCESADA") &&
+                (tanda.jornadaId == activeJornada.id || (activeJornada.openedAt > 0 && tanda.date >= activeJornada.openedAt && tanda.jornadaId == 0L))
             }
-        } else emptyList()
-
-        val list = if (jorClosed.isNotEmpty()) jorClosed else allClosed
-        list.sortedWith(
-            compareBy<Tanda> { it.tandaNumber.toIntOrNull() ?: Int.MAX_VALUE }
-                .thenBy { it.tandaNumber }
-                .thenBy { it.date }
-        )
+            currentClosed.sortedWith(
+                compareBy<Tanda> { it.tandaNumber.toIntOrNull() ?: Int.MAX_VALUE }
+                    .thenBy { it.tandaNumber }
+                    .thenBy { it.date }
+            )
+        }
     }
 
     Column(
@@ -337,32 +341,44 @@ fun TandasPane(
         )
 
         // 2. TANDAS ABIERTAS: Una tarjeta por producto con tandas abiertas
+        Text(
+            text = "TANDAS ABIERTAS",
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Black,
+            color = ElQadreNavy,
+            letterSpacing = 0.5.sp
+        )
+
         if (productSummaries.isEmpty()) {
             Surface(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(14.dp),
                 color = Color.White,
                 border = BorderStroke(1.dp, Slate200),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 12.dp)
+                    .padding(vertical = 4.dp)
+                    .testTag("empty_open_tandas_card")
             ) {
-                Column(
-                    modifier = Modifier.padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 18.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
                 ) {
                     Icon(
                         imageVector = Icons.Outlined.CheckCircle,
                         contentDescription = null,
                         tint = Emerald600,
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier.size(26.dp)
                     )
+                    Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = "No hay tandas abiertas en la jornada",
+                        text = "NO HAY TANDAS ABIERTAS",
                         fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = FontWeight.Black,
                         color = ElQadreNavy,
-                        textAlign = TextAlign.Center
+                        letterSpacing = 0.5.sp
                     )
                 }
             }
@@ -438,7 +454,11 @@ fun TandasPane(
             // 6. BOTÓN PARA MANDAR A ARCHIVO
             Button(
                 onClick = {
-                    showArchivarPendientesDialog = true
+                    if (openTandas.isNotEmpty()) {
+                        showHayTandasAbiertasDialog = true
+                    } else {
+                        showArchivarPendientesDialog = true
+                    }
                 },
                 colors = ButtonDefaults.buttonColors(
                     containerColor = ElQadreNavy,
@@ -555,7 +575,11 @@ fun TandasPane(
             tanda = tanda,
             uiState = uiState,
             viewModel = viewModel,
-            onDismiss = { selectedTandaForClose = null }
+            onDismiss = { selectedTandaForClose = null },
+            onClosed = {
+                selectedTandaForClose = null
+                selectedProductForDetail = null
+            }
         )
     }
 
@@ -576,6 +600,58 @@ fun TandasPane(
             onArchivedConfirmed = {
                 showArchivarPendientesDialog = false
             }
+        )
+    }
+
+    if (showHayTandasAbiertasDialog) {
+        AlertDialog(
+            onDismissRequest = { showHayTandasAbiertasDialog = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Outlined.Warning,
+                    contentDescription = null,
+                    tint = Amber600,
+                    modifier = Modifier.size(40.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = "TANDAS ABIERTAS EN PROCESO",
+                    fontWeight = FontWeight.Black,
+                    fontSize = 19.sp,
+                    color = ElQadreNavy,
+                    textAlign = TextAlign.Center
+                )
+            },
+            text = {
+                Text(
+                    text = "Aún hay tandas abiertas en la jornada actual. Debe cerrar todas las tandas antes de mandar la jornada a Archivo para poder registrar los pendientes y métricas finales correctamente.",
+                    fontSize = 14.sp,
+                    color = Slate700,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 20.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = { showHayTandasAbiertasDialog = false },
+                    colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .testTag("btn_entendido_tandas_abiertas")
+                ) {
+                    Text(
+                        text = "Entendido",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = Color.White
+                    )
+                }
+            },
+            containerColor = Color.White,
+            shape = RoundedCornerShape(16.dp)
         )
     }
 }
@@ -946,22 +1022,78 @@ fun ArchivarTandasPendientesDialog(
 
     val inputStates = remember { mutableStateMapOf<String, String>() }
 
+    fun isFieldConfirmed(key: String): Boolean {
+        val text = inputStates[key]?.trim()
+        return text != null && text.isNotEmpty() && text.toDoubleOrNull() != null && text.toDouble() >= 0.0
+    }
+
+    val areAllConfirmed = remember(groupedByProduct, inputStates.toMap()) {
+        if (groupedByProduct.isEmpty()) false
+        else {
+            groupedByProduct.all { (product, _, specialPres) ->
+                val baseOk = isFieldConfirmed("base_${product.id}")
+                val presOk = specialPres.all { pres ->
+                    val presKey = "pres_${product.id}_${pres.id.ifBlank { pres.name }}"
+                    isFieldConfirmed(presKey)
+                }
+                baseOk && presOk
+            }
+        }
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
-                    text = "UNIDADES PENDIENTES",
+                    text = "UNIDADES PENDIENTES OBLIGATORIAS",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Black,
                     color = ElQadreNavy
                 )
                 Text(
-                    text = "Indica las unidades producidas que no se vendieron y quedaron pendientes para la siguiente jornada.",
+                    text = "Antes de mandar a Archivo, indique obligatoriamente 0 si no quedaron unidades pendientes, o la cantidad que quedó sin vender.",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium,
                     color = Slate600
                 )
+                if (groupedByProduct.isNotEmpty()) {
+                    OutlinedButton(
+                        onClick = {
+                            groupedByProduct.forEach { (product, _, specialPres) ->
+                                val bKey = "base_${product.id}"
+                                if (inputStates[bKey]?.isBlank() != false) {
+                                    inputStates[bKey] = "0"
+                                }
+                                specialPres.forEach { pres ->
+                                    val pKey = "pres_${product.id}_${pres.id.ifBlank { pres.name }}"
+                                    if (inputStates[pKey]?.isBlank() != false) {
+                                        inputStates[pKey] = "0"
+                                    }
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = ElQadreNavy),
+                        border = BorderStroke(1.dp, Slate300),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.padding(top = 2.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.DoneAll,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = ElQadreNavy
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "MARCAR TODOS EN 0",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = ElQadreNavy
+                        )
+                    }
+                }
             }
         },
         text = {
@@ -1003,14 +1135,26 @@ fun ArchivarTandasPendientesDialog(
 
                                 val baseKey = "base_${product.id}"
                                 val baseVal = inputStates[baseKey] ?: ""
+                                val isBaseConfirmed = isFieldConfirmed(baseKey)
+                                val isBaseMalformed = baseVal.isNotBlank() && (baseVal.toDoubleOrNull() == null || baseVal.toDouble() < 0.0)
 
                                 OutlinedTextField(
                                     value = baseVal,
                                     onValueChange = { inputStates[baseKey] = it },
-                                    label = { Text("Unidades pendientes (${product.unitOfMeasure.ifBlank { "Unidad" }})") },
-                                    placeholder = { Text("0") },
+                                    label = { Text("Pendientes (${product.unitOfMeasure.ifBlank { "Unidad" }}) * Obligatorio") },
+                                    placeholder = { Text("0 o cantidad pendiente") },
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                     singleLine = true,
+                                    isError = isBaseMalformed || (baseVal.isBlank() && !areAllConfirmed),
+                                    supportingText = {
+                                        if (isBaseMalformed) {
+                                            Text("Número inválido", color = Rose700, fontSize = 11.sp)
+                                        } else if (isBaseConfirmed) {
+                                            Text("✓ Confirmado: ${baseVal.trim()} pendientes", color = Emerald700, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        } else {
+                                            Text("Obligatorio: indique 0 o la cantidad", color = Rose700, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                        }
+                                    },
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .testTag("input_pendientes_base_${product.id}")
@@ -1028,14 +1172,26 @@ fun ArchivarTandasPendientesDialog(
                                     specialPresentations.forEach { pres ->
                                         val presKey = "pres_${product.id}_${pres.id.ifBlank { pres.name }}"
                                         val presVal = inputStates[presKey] ?: ""
+                                        val isPresConfirmed = isFieldConfirmed(presKey)
+                                        val isPresMalformed = presVal.isNotBlank() && (presVal.toDoubleOrNull() == null || presVal.toDouble() < 0.0)
 
                                         OutlinedTextField(
                                             value = presVal,
                                             onValueChange = { inputStates[presKey] = it },
-                                            label = { Text("Unidades en ${pres.name} (eq: ${pres.baseEquivalence} base)") },
-                                            placeholder = { Text("0") },
+                                            label = { Text("Pendientes en ${pres.name} (eq: ${pres.baseEquivalence}) *") },
+                                            placeholder = { Text("0 o cantidad") },
                                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                             singleLine = true,
+                                            isError = isPresMalformed || (presVal.isBlank() && !areAllConfirmed),
+                                            supportingText = {
+                                                if (isPresMalformed) {
+                                                    Text("Número inválido", color = Rose700, fontSize = 11.sp)
+                                                } else if (isPresConfirmed) {
+                                                    Text("✓ Confirmado: ${presVal.trim()} en ${pres.name}", color = Emerald700, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                } else {
+                                                    Text("Obligatorio: indique 0 o la cantidad", color = Rose700, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                                }
+                                            },
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .testTag("input_pendientes_pres_${product.id}_${pres.id}")
@@ -1045,23 +1201,54 @@ fun ArchivarTandasPendientesDialog(
                             }
                         }
                     }
+
+                    if (!areAllConfirmed) {
+                        Surface(
+                            color = Rose50,
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, Rose200),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Warning,
+                                    contentDescription = null,
+                                    tint = Rose700,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Text(
+                                    text = "Debes indicar obligatoriamente 0 o la cantidad pendiente de cada producto para poder archivar.",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Rose700
+                                )
+                            }
+                        }
+                    }
                 }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
+                    if (!areAllConfirmed) return@Button
+
                     val updatedTandas = mutableListOf<Tanda>()
                     val summaryList = mutableListOf<String>()
+                    val currentJornadaId = uiState.activeJornada?.id ?: 0L
 
                     groupedByProduct.forEach { (product, tandasList, specialPresentations) ->
                         val baseKey = "base_${product.id}"
-                        val baseQty = inputStates[baseKey]?.toDoubleOrNull() ?: 0.0
+                        val baseQty = inputStates[baseKey]?.trim()?.toDoubleOrNull() ?: 0.0
 
                         val presDetails = mutableListOf<String>()
                         specialPresentations.forEach { pres ->
                             val presKey = "pres_${product.id}_${pres.id.ifBlank { pres.name }}"
-                            val presQty = inputStates[presKey]?.toDoubleOrNull() ?: 0.0
+                            val presQty = inputStates[presKey]?.trim()?.toDoubleOrNull() ?: 0.0
                             if (presQty > 0.0) {
                                 val presQtyStr = if (presQty % 1.0 == 0.0) presQty.toInt().toString() else presQty.toString()
                                 presDetails.add("${pres.name}: $presQtyStr u")
@@ -1086,15 +1273,38 @@ fun ArchivarTandasPendientesDialog(
 
                         summaryList.add("${product.name} -> $noteTag")
 
+                        val totalProducedOfProduct = tandasList.sumOf {
+                            if (it.actualYield > 0.0) it.actualYield else if (it.expectedYield > 0.0) it.expectedYield else it.estimatedYield
+                        }
+                        val totalSoldOfProduct = (totalProducedOfProduct - baseQty).coerceAtLeast(0.0)
+                        var remainingSoldToAssign = totalSoldOfProduct
+
                         tandasList.forEach { tanda ->
+                            val tYield = if (tanda.actualYield > 0.0) tanda.actualYield else if (tanda.expectedYield > 0.0) tanda.expectedYield else tanda.estimatedYield
+                            val soldThisTanda = if (remainingSoldToAssign >= tYield) {
+                                remainingSoldToAssign -= tYield
+                                tYield
+                            } else {
+                                val s = remainingSoldToAssign
+                                remainingSoldToAssign = 0.0
+                                s
+                            }
                             val existingObs = tanda.observation
                             val newObs = if (existingObs.isNotBlank()) {
-                                if (existingObs.contains("Pendientes:")) existingObs else "$existingObs | $noteTag"
+                                if (existingObs.contains("Pendientes:")) {
+                                    existingObs.replace(Regex("Pendientes:[^|]*"), noteTag).trim()
+                                } else {
+                                    "$existingObs | $noteTag"
+                                }
                             } else {
                                 noteTag
                             }
+                            val targetJornadaId = if (tanda.jornadaId > 0) tanda.jornadaId else currentJornadaId
                             val updatedTanda = tanda.copy(
+                                jornadaId = targetJornadaId,
                                 status = "ARCHIVADA",
+                                quantitySold = soldThisTanda,
+                                realRevenue = soldThisTanda * tanda.salePrice,
                                 observation = newObs
                             )
                             updatedTandas.add(updatedTanda)
@@ -1105,16 +1315,27 @@ fun ArchivarTandasPendientesDialog(
                     viewModel.archivarTandasConUnidadesPendientes(updatedTandas, bitacoraSummary)
                     onArchivedConfirmed()
                 },
-                enabled = groupedByProduct.isNotEmpty(),
-                colors = ButtonDefaults.buttonColors(containerColor = Emerald600),
+                enabled = areAllConfirmed,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Emerald600,
+                    disabledContainerColor = Slate300,
+                    disabledContentColor = Slate500
+                ),
                 shape = RoundedCornerShape(10.dp),
                 modifier = Modifier.testTag("btn_confirmar_archivar_pendientes")
             ) {
+                Icon(
+                    imageVector = Icons.Outlined.History,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = if (areAllConfirmed) Color.White else Slate500
+                )
+                Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = "CONFIRMAR Y ARCHIVAR",
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Black,
-                    color = Color.White
+                    color = if (areAllConfirmed) Color.White else Slate500
                 )
             }
         },
@@ -1290,24 +1511,25 @@ fun ProductTandasDetailScreen(
         uiState.products.find { it.id == summary.productId }
     }
 
-    // Tandas de este producto ordenadas secuencialmente (Tanda 01, Tanda 02...)
-    val productTandas = remember(summary.productId, uiState.tandas, uiState.activeJornada) {
+    // Tandas abiertas de este producto en proceso (prioridad absoluta a tandas abiertas)
+    val activeJ = uiState.activeJornada
+    val openTandasList = remember(summary.productId, uiState.tandas, activeJ) {
         val allForProduct = uiState.tandas.filter { it.productId == summary.productId }
-        val activeJ = uiState.activeJornada
         val forJornada = if (activeJ != null) {
-            allForProduct.filter { it.jornadaId == activeJ.id || (activeJ.openedAt > 0 && it.date >= activeJ.openedAt) }
-        } else emptyList()
-
+            allForProduct.filter {
+                it.status != "ARCHIVADA" &&
+                (it.jornadaId == activeJ.id || (activeJ.openedAt > 0 && it.date >= activeJ.openedAt))
+            }
+        } else {
+            allForProduct.filter { it.status != "ARCHIVADA" }
+        }
         val list = when {
             forJornada.isNotEmpty() -> forJornada
             summary.tandas.isNotEmpty() -> summary.tandas
             else -> allForProduct
         }
-        list.sortedWith(
-            compareBy<Tanda> { it.tandaNumber.toIntOrNull() ?: Int.MAX_VALUE }
-                .thenBy { it.tandaNumber }
-                .thenBy { it.date }
-        )
+        list.filter { it.status == "ABIERTA" || it.status == "ACTIVA" || it.status == "ACTIVADA" }
+            .sortedBy { it.tandaNumber }
     }
 
     Scaffold(
@@ -1368,7 +1590,16 @@ fun ProductTandasDetailScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            if (productTandas.isEmpty()) {
+            if (openTandasList.isNotEmpty()) {
+                // Mostrar exclusivamente las tandas que están en proceso con sus datos y botón CERRAR TANDA
+                openTandasList.forEach { tanda ->
+                    TandaAbiertaCard(
+                        tanda = tanda,
+                        fallbackProductionUnit = summary.productionUnit,
+                        onCerrarTanda = { onCloseTanda(tanda) }
+                    )
+                }
+            } else {
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = Color.White,
@@ -1376,31 +1607,13 @@ fun ProductTandasDetailScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = "No hay tandas registradas para este producto.",
-                        fontSize = 18.sp,
+                        text = "No hay tanda abierta para este producto.",
+                        fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         color = Slate600,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.padding(32.dp)
                     )
-                }
-            } else {
-                productTandas.forEach { tanda ->
-                    val isOpen = tanda.status == "ABIERTA" || tanda.status == "ACTIVA" || tanda.status == "ACTIVADA"
-                    if (isOpen) {
-                        // TARJETA DE TANDA ABIERTA
-                        TandaAbiertaCard(
-                            tanda = tanda,
-                            fallbackProductionUnit = summary.productionUnit,
-                            onCerrarTanda = { onCloseTanda(tanda) }
-                        )
-                    } else {
-                        // TARJETA DE TANDA CERRADA
-                        TandaCerradaCard(
-                            tanda = tanda,
-                            fallbackProductionUnit = summary.productionUnit
-                        )
-                    }
                 }
             }
 
@@ -1851,7 +2064,8 @@ fun TandasArchivoScreen(
                     .thenBy { it.tandaNumber }
                     .thenBy { it.date }
             )
-            if (jTandas.isNotEmpty()) {
+            val isArchivedOrClosed = !j.isOpen || (j.closedAt != null && j.closedAt > 0) || jTandas.any { it.status == "ARCHIVADA" }
+            if (jTandas.isNotEmpty() && isArchivedOrClosed) {
                 list.add(j to jTandas)
             }
         }
@@ -2124,6 +2338,12 @@ fun TandasArchivoScreen(
                         }
                     }
                 }
+            }
+
+            // Gráficos correspondientes a la jornada archivada
+            if (tandasDeJornada.isNotEmpty()) {
+                TandasPieChartSection(closedTandas = tandasDeJornada)
+                TandasEfficiencyBarChartSection(closedTandas = tandasDeJornada)
             }
 
             // Mostrar las tandas organizadas por producto
@@ -3689,7 +3909,8 @@ fun CerrarTandaDialog(
     tanda: Tanda,
     uiState: MainUiState,
     viewModel: MainViewModel,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onClosed: (() -> Unit)? = null
 ) {
     val product = remember(tanda.productId, uiState.products) {
         uiState.products.find { it.id == tanda.productId }
@@ -3949,7 +4170,14 @@ fun CerrarTandaDialog(
                     val realProfitMargin = if (realRevenue > 0.0) (realProfit / realRevenue) * 100.0 else 0.0
                     val realUnitCost = if (finalQty > 0.0) tanda.totalBatchCost / finalQty else 0.0
 
+                    val existingPrefix = if (tanda.observation.contains("[")) {
+                        tanda.observation.split("|").filter { it.contains("[") }.joinToString(" | ") { it.trim() }
+                    } else ""
+
                     val obsText = buildString {
+                        if (existingPrefix.isNotBlank()) {
+                            append(existingPrefix).append(" | ")
+                        }
                         if (selectedPresentacion != null) {
                             append("Presentación: ${selectedPresentacion?.name}")
                             if (cantidadPresentacionText.isNotBlank()) {
@@ -3974,6 +4202,7 @@ fun CerrarTandaDialog(
 
                     viewModel.cerrarTanda(updatedTanda)
                     onDismiss()
+                    onClosed?.invoke()
                 },
                 enabled = finalQty > 0.0,
                 colors = ButtonDefaults.buttonColors(
@@ -3987,7 +4216,7 @@ fun CerrarTandaDialog(
                     .testTag("confirm_cerrar_tanda")
             ) {
                 Text(
-                    text = "ACEPTAR",
+                    text = "CERRAR TANDA",
                     fontWeight = FontWeight.Black,
                     fontSize = 18.sp,
                     color = Color.White

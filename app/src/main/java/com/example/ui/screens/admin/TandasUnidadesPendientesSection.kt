@@ -15,9 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForward
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.outlined.History
-import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -37,19 +35,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.model.Jornada
-import com.example.data.local.model.Product
 import com.example.data.local.model.Tanda
 import com.example.data.local.model.parsePresentacionesEspeciales
 import com.example.ui.theme.ElQadreNavy
-import com.example.ui.theme.Emerald600
-import com.example.ui.theme.Emerald700
 import com.example.ui.theme.Slate100
 import com.example.ui.theme.Slate200
-import com.example.ui.theme.Slate300
 import com.example.ui.theme.Slate500
 import com.example.ui.theme.Slate600
 import com.example.ui.theme.Slate700
@@ -71,6 +64,8 @@ data class PendingProductItem(
     val baseIngredientName: String,
     val baseQuantityUnit: String,
     val sampleTanda: Tanda?,
+    val sourceTandas: List<Tanda>,
+    val previousJornadaId: Long,
     val isBaseAlreadyConverted: Boolean
 )
 
@@ -89,11 +84,13 @@ fun TandasUnidadesPendientesSection(
     onShowJornadaCerradaDialog: () -> Unit
 ) {
     val activeJornada = uiState.activeJornada
+    // Solo se procesan unidades pendientes hacia Tanda 00 si existe una jornada abierta actualmente
+    if (activeJornada == null || !activeJornada.isOpen) return
 
-    // 1. Identificar la jornada inmediatamente anterior (la más reciente cerrada)
+    // 1. Identificar la jornada inmediatamente anterior cerrada más reciente
     val previousJornada = remember(uiState.allJornadas, activeJornada) {
         val candidates = uiState.allJornadas.filter {
-            it.id != activeJornada?.id && (!it.isOpen || (it.closedAt != null && it.closedAt > 0))
+            it.id != activeJornada.id && (!it.isOpen || (it.closedAt != null && it.closedAt > 0))
         }
         candidates.sortedWith(
             compareByDescending<Jornada> { it.closedAt ?: 0L }
@@ -102,43 +99,66 @@ fun TandasUnidadesPendientesSection(
         ).firstOrNull()
     }
 
-    if (previousJornada == null) return
-
-    // 2. Tandas de la jornada anterior
-    val previousJornadaTandas = remember(uiState.tandas, previousJornada) {
-        uiState.tandas.filter {
-            it.jornadaId == previousJornada.id || (previousJornada.openedAt > 0 && it.date >= previousJornada.openedAt && (previousJornada.closedAt == null || it.date <= previousJornada.closedAt!! + 60000L))
-        }
-    }
-
-    if (previousJornadaTandas.isEmpty()) return
-
-    // 3. Tandas de la jornada actual (para verificar qué unidades pendientes ya fueron convertidas)
+    // 2. Tandas de la jornada actual
     val currentJornadaTandas = remember(uiState.tandas, activeJornada) {
-        if (activeJornada == null) emptyList()
-        else uiState.tandas.filter {
+        uiState.tandas.filter {
             it.jornadaId == activeJornada.id || (activeJornada.openedAt > 0 && it.date >= activeJornada.openedAt)
         }
     }
 
+    // 3. Tandas de jornadas anteriores con registro de unidades pendientes que aún no hayan sido convertidas
+    val priorTandasWithPending = remember(uiState.tandas, activeJornada, previousJornada) {
+        uiState.tandas.filter { tanda ->
+            val notCurrentJornada = tanda.jornadaId != activeJornada.id &&
+                    (activeJornada.openedAt == 0L || tanda.date < activeJornada.openedAt)
+            val isArchivedOrClosed = tanda.status == "ARCHIVADA" || tanda.status == "CERRADA"
+            val hasPendingNote = tanda.observation.contains("Pendientes:") &&
+                    !tanda.observation.contains("Pendientes_Convertidos:") &&
+                    !tanda.observation.contains("[YA_CONVERTIDA")
+            notCurrentJornada && isArchivedOrClosed && hasPendingNote
+        }
+    }
+
+    // Si no existen tandas previas con pendientes pendientes, no mostrar nada
+    if (priorTandasWithPending.isEmpty()) return
+
     // 4. Analizar y agrupar las unidades pendientes por producto
-    val pendingItems = remember(previousJornadaTandas, currentJornadaTandas, uiState.products) {
+    val pendingItems = remember(priorTandasWithPending, currentJornadaTandas, uiState.products) {
         val productMap = uiState.products.associateBy { it.id }
-        val groups = previousJornadaTandas.groupBy { it.productId }
+        val groups = priorTandasWithPending.groupBy { it.productId }
 
         groups.mapNotNull { (prodId, tList) ->
+            // REGLA CRÍTICA 1: Si la jornada actual ya tiene una TANDA 00 para este producto,
+            // no volver a mostrar el cuadro de pendientes para evitar duplicar Tandas 00
+            val hasTanda00InCurrentJornada = currentJornadaTandas.any {
+                it.tandaNumber == "00" && it.productId == prodId
+            }
+            if (hasTanda00InCurrentJornada) {
+                return@mapNotNull null
+            }
+
+            // Si todas las tandas del producto en la jornada anterior ya están marcadas como convertidas
+            val allAlreadyConverted = tList.all {
+                it.observation.contains("[YA_CONVERTIDA") || it.observation.contains("Pendientes_Convertidos:")
+            }
+            if (allAlreadyConverted) {
+                return@mapNotNull null
+            }
+
             val product = productMap[prodId]
             val pName = product?.name ?: tList.firstOrNull()?.productName ?: "Producto #$prodId"
 
-            // Buscar la observación de pendientes en las tandas archivadas de ese producto
             val rawObs = tList.firstNotNullOfOrNull { t ->
-                if (t.observation.contains("Pendientes:")) {
+                if (t.observation.contains("Pendientes:") &&
+                    !t.observation.contains("Pendientes_Convertidos:") &&
+                    !t.observation.contains("[YA_CONVERTIDA")
+                ) {
                     val part = t.observation.substringAfter("Pendientes:").trim()
                     if (part.isNotBlank() && part != "0") part else null
                 } else null
             } ?: return@mapNotNull null
 
-            // Rendimiento promedio histórico de la jornada anterior (excluyendo Tanda 00 previa para no distorsionar rendimiento real)
+            // Rendimiento promedio histórico (excluyendo Tanda 00 previa)
             val prodTandas = tList.filter { it.tandaNumber != "00" && it.baseQuantityUsed > 0.0 }
             val targetList = if (prodTandas.isNotEmpty()) prodTandas else tList
             val totalFinalQty = targetList.sumOf {
@@ -157,6 +177,7 @@ fun TandasUnidadesPendientesSection(
             val sampleTanda = tList.firstOrNull()
             val baseIngredientName = sampleTanda?.baseMateriaPrimaName?.ifBlank { null } ?: "Insumo Base"
             val baseQuantityUnit = sampleTanda?.baseQuantityUnit?.ifBlank { null } ?: "lb"
+            val prevJornadaId = previousJornada?.id ?: tList.firstOrNull()?.jornadaId ?: 0L
 
             // Parsear rawObs: e.g. "50 Pizzas | Familiar: 10 u"
             val parts = rawObs.split("|").map { it.trim() }.filter { it.isNotBlank() }
@@ -176,8 +197,7 @@ fun TandasUnidadesPendientesSection(
                     val equiv = presObj?.baseEquivalence ?: 1.0
 
                     val isConverted = currentJornadaTandas.any {
-                        it.observation.contains("ORIGEN_PENDIENTE_JORNADA_${previousJornada.id}_PROD_${prodId}_PRES_${pNamePart}") ||
-                        (it.tandaNumber == "00" && it.productId == prodId && it.observation.contains("ORIGEN_JORNADA_ANTERIOR: ${previousJornada.id}") && it.observation.contains(pNamePart))
+                        it.tandaNumber == "00" && it.productId == prodId && it.observation.contains(pNamePart)
                     }
 
                     if (qty > 0.0) {
@@ -200,11 +220,9 @@ fun TandasUnidadesPendientesSection(
             }
 
             val isBaseConverted = currentJornadaTandas.any {
-                it.observation.contains("ORIGEN_PENDIENTE_JORNADA_${previousJornada.id}_PROD_${prodId}_BASE") ||
-                (it.tandaNumber == "00" && it.productId == prodId && it.observation.contains("ORIGEN_JORNADA_ANTERIOR: ${previousJornada.id}") && !it.observation.contains("Presentación:"))
+                it.tandaNumber == "00" && it.productId == prodId && !it.observation.contains("Presentación:")
             }
 
-            // Si no hay cantidades pendientes detectadas, omitir
             if (baseQty <= 0.0 && specialList.isEmpty()) return@mapNotNull null
 
             PendingProductItem(
@@ -217,6 +235,8 @@ fun TandasUnidadesPendientesSection(
                 baseIngredientName = baseIngredientName,
                 baseQuantityUnit = baseQuantityUnit,
                 sampleTanda = sampleTanda,
+                sourceTandas = tList,
+                previousJornadaId = prevJornadaId,
                 isBaseAlreadyConverted = isBaseConverted
             )
         }
@@ -228,8 +248,9 @@ fun TandasUnidadesPendientesSection(
                 item.specialPresentations.any { !it.isAlreadyConverted && it.quantity > 0.0 }
     }
 
+    // Inmediatamente después de convertir la Tanda 00, itemsAvailableForConversion queda vacío
+    // y este bloque hace desaparecer por completo el cuadro de pendientes
     if (itemsAvailableForConversion.isEmpty()) {
-        // No hay unidades pendientes pendientes de convertir
         return
     }
 
@@ -283,8 +304,9 @@ fun TandasUnidadesPendientesSection(
                             color = Color(0xFF92400E),
                             letterSpacing = 0.5.sp
                         )
+                        val prevJId = itemsAvailableForConversion.firstOrNull()?.previousJornadaId ?: previousJornada?.id ?: 0L
                         Text(
-                            text = "Procedentes del cierre de la Jornada #${previousJornada.id}",
+                            text = if (prevJId > 0) "Procedentes del cierre de la Jornada #$prevJId" else "Procedentes de la jornada anterior",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Medium,
                             color = Color(0xFFB45309)
@@ -303,16 +325,16 @@ fun TandasUnidadesPendientesSection(
                 itemsAvailableForConversion.forEach { item ->
                     PendingProductCard(
                         item = item,
-                        previousJornadaId = previousJornada.id,
+                        previousJornadaId = item.previousJornadaId,
                         onConvertBase = {
-                            if (activeJornada == null || !activeJornada.isOpen) {
+                            if (!activeJornada.isOpen) {
                                 onShowJornadaCerradaDialog()
                             } else {
                                 conversionTarget = ConversionTarget.Base(item)
                             }
                         },
                         onConvertPresentation = { pres ->
-                            if (activeJornada == null || !activeJornada.isOpen) {
+                            if (!activeJornada.isOpen) {
                                 onShowJornadaCerradaDialog()
                             } else {
                                 conversionTarget = ConversionTarget.Presentation(item, pres)
@@ -324,15 +346,13 @@ fun TandasUnidadesPendientesSection(
         }
     }
 
-    // Modal de confirmación para crear la nueva tanda
+    // Modal de confirmación para crear la Tanda 00
     conversionTarget?.let { target ->
         ConfirmConversionDialog(
             target = target,
-            previousJornada = previousJornada,
-            activeJornada = activeJornada!!,
-            currentJornadaTandas = currentJornadaTandas,
-            uiState = uiState,
+            activeJornada = activeJornada,
             viewModel = viewModel,
+            uiState = uiState,
             onDismiss = { conversionTarget = null }
         )
     }
@@ -390,8 +410,8 @@ fun PendingProductCard(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Unidades pendientes:",
-                            fontSize = 14.sp,
+                            text = "UNIDADES PENDIENTES:",
+                            fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
                             color = Slate700
                         )
@@ -451,7 +471,7 @@ fun PendingProductCard(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "CONVERTIR EN TANDA 00",
+                            text = "CONVERTIR EN TANDA",
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Black,
                             letterSpacing = 0.5.sp
@@ -540,7 +560,7 @@ fun PendingProductCard(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "CONVERTIR EN TANDA 00 (${pres.name.uppercase()})",
+                            text = "CONVERTIR EN TANDA (${pres.name.uppercase()})",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Black,
                             letterSpacing = 0.5.sp
@@ -555,11 +575,9 @@ fun PendingProductCard(
 @Composable
 fun ConfirmConversionDialog(
     target: ConversionTarget,
-    previousJornada: Jornada,
     activeJornada: Jornada,
-    currentJornadaTandas: List<Tanda>,
-    uiState: MainUiState,
     viewModel: MainViewModel,
+    uiState: MainUiState,
     onDismiss: () -> Unit
 ) {
     val item = when (target) {
@@ -587,9 +605,6 @@ fun ConfirmConversionDialog(
     }
     val calculatedBaseIngFormatted = "%.2f".format(calculatedBaseIngQty)
 
-    // Regla 1: NUMERACIÓN OBLIGATORIA TANDA 00 reservada para unidades pendientes
-    val tandaNumStr = "00"
-
     val avgYieldFormatted = if (item.averageYield % 1.0 == 0.0) item.averageYield.toInt().toString() else "%.2f".format(item.averageYield)
 
     AlertDialog(
@@ -607,7 +622,7 @@ fun ConfirmConversionDialog(
                 )
                 Column {
                     Text(
-                        text = "CONVERTIR EN TANDA 00",
+                        text = "CONVERTIR EN TANDA",
                         fontWeight = FontWeight.Black,
                         fontSize = 18.sp,
                         color = ElQadreNavy
@@ -627,7 +642,7 @@ fun ConfirmConversionDialog(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = "Se creará la Tanda 00 en la jornada actual para organizar y trasladar las unidades pendientes.",
+                    text = "Se creará la Tanda 00 en la jornada actual para incorporar las unidades pendientes.",
                     fontSize = 13.5.sp,
                     color = Slate600
                 )
@@ -643,13 +658,13 @@ fun ConfirmConversionDialog(
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Text(
-                            text = "REGLAS CRÍTICAS DE LA TANDA 00:",
+                            text = "REGLAS DE LA TANDA 00:",
                             fontWeight = FontWeight.Black,
                             fontSize = 11.5.sp,
                             color = Color(0xFF92400E)
                         )
                         Text(
-                            text = "• NO es una nueva producción (producida en la jornada anterior).\n• NO descuenta insumos ni modifica inventario.\n• El insumo base es estrictamente informativo y analítico.\n• Las tandas normales continuarán numerándose desde 01.",
+                            text = "• Numeración obligatoria 00.\n• Procede de unidades pendientes (no representa nueva producción).\n• NO descuenta insumos ni genera nuevo consumo de receta.\n• Insumo base calculado estrictamente informativo y analítico.\n• Conserva la referencia a la jornada de origen.",
                             fontSize = 11.sp,
                             color = Color(0xFF78350F),
                             lineHeight = 15.sp
@@ -722,16 +737,17 @@ fun ConfirmConversionDialog(
                     val totalCost = unitCost * pendingUnits
                     val salePrice = sample?.salePrice ?: (product?.price ?: 0.0)
 
+                    val srcJornadaId = if (item.previousJornadaId > 0) item.previousJornadaId else 0L
                     val originTag = if (isPresentation && presentation != null) {
-                        "[TANDA_00_PENDIENTES] [ORIGEN_JORNADA_ANTERIOR: ${previousJornada.id}] [ORIGEN_PENDIENTE_JORNADA_${previousJornada.id}_PROD_${item.productId}_PRES_${presentation.name}]"
+                        "[TANDA_00_PENDIENTES] [ORIGEN_JORNADA_ANTERIOR: $srcJornadaId] [ORIGEN_PENDIENTE_PROD_${item.productId}_PRES_${presentation.name}]"
                     } else {
-                        "[TANDA_00_PENDIENTES] [ORIGEN_JORNADA_ANTERIOR: ${previousJornada.id}] [ORIGEN_PENDIENTE_JORNADA_${previousJornada.id}_PROD_${item.productId}_BASE]"
+                        "[TANDA_00_PENDIENTES] [ORIGEN_JORNADA_ANTERIOR: $srcJornadaId] [ORIGEN_PENDIENTE_PROD_${item.productId}_BASE]"
                     }
 
                     val humanObs = if (isPresentation && presentation != null) {
-                        "Tanda 00 — Unidades pendientes de jornada anterior (Jornada #${previousJornada.id}) - Presentación: ${presentation.name} | UNIDADES PENDIENTES DE LA JORNADA ANTERIOR | Insumo base equivalente (solo informativo): $calculatedBaseIngFormatted ${item.baseQuantityUnit} (${item.baseIngredientName}) | Rendimiento promedio previo: $avgYieldFormatted"
+                        "Tanda 00 — Unidades pendientes de jornada anterior (Jornada #$srcJornadaId) - Presentación: ${presentation.name} | UNIDADES PENDIENTES DE LA JORNADA ANTERIOR | Insumo base equivalente (solo informativo): $calculatedBaseIngFormatted ${item.baseQuantityUnit} (${item.baseIngredientName}) | Rendimiento promedio previo: $avgYieldFormatted"
                     } else {
-                        "Tanda 00 — Unidades pendientes de jornada anterior (Jornada #${previousJornada.id}) | UNIDADES PENDIENTES DE LA JORNADA ANTERIOR | Insumo base equivalente (solo informativo): $calculatedBaseIngFormatted ${item.baseQuantityUnit} (${item.baseIngredientName}) | Rendimiento promedio previo: $avgYieldFormatted"
+                        "Tanda 00 — Unidades pendientes de jornada anterior (Jornada #$srcJornadaId) | UNIDADES PENDIENTES DE LA JORNADA ANTERIOR | Insumo base equivalente (solo informativo): $calculatedBaseIngFormatted ${item.baseQuantityUnit} (${item.baseIngredientName}) | Rendimiento promedio previo: $avgYieldFormatted"
                     }
 
                     val fullObs = "$originTag $humanObs"
@@ -780,14 +796,15 @@ fun ConfirmConversionDialog(
                         deviceId = "DISPOSITIVO-LOCAL"
                     )
 
-                    // Se registra la Tanda 00 sin consumos porque los insumos fueron consumidos en la jornada previa
-                    viewModel.registrarTanda(newTanda, emptyList())
+                    // Se convierte a Tanda 00 y se marcan las tandas previas como YA CONVERTIDAS en Room
+                    viewModel.convertirPendientesATanda00(newTanda, item.sourceTandas)
                     onDismiss()
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
-                shape = RoundedCornerShape(10.dp)
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.testTag("btn_confirmar_convertir_tanda_00")
             ) {
-                Text("CONFIRMAR Y CREAR TANDA 00", fontWeight = FontWeight.Bold, color = Color.White)
+                Text("CONVERTIR EN TANDA", fontWeight = FontWeight.Bold, color = Color.White)
             }
         },
         dismissButton = {

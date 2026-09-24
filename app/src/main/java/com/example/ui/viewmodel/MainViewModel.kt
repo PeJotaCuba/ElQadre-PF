@@ -1288,7 +1288,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         extracciones: Double,
         notes: String,
         mercaderiaItems: List<MercaderiaCuadreItem> = emptyList(),
-        agregadoItems: List<AgregadoCuadreItem> = emptyList()
+        agregadoItems: List<AgregadoCuadreItem> = emptyList(),
+        produccionItems: List<ProduccionCuadreItem> = emptyList()
     ) {
         viewModelScope.launch {
             val active = repository.getActiveJornadaSync()
@@ -1308,6 +1309,50 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             repository.updateJornada(updated)
 
             val username = _uiState.value.currentUser?.username ?: "dueno"
+
+            // Process Production Items: Update tandas quantitySold and record pending units if declared
+            if (produccionItems.isNotEmpty()) {
+                val currentTandas = _uiState.value.tandas.filter {
+                    it.jornadaId == jornadaId || (active.openedAt > 0 && it.date >= active.openedAt)
+                }
+                for (pItem in produccionItems) {
+                    val tandasForProduct = currentTandas.filter { it.productId == pItem.productId }
+                    if (tandasForProduct.isNotEmpty()) {
+                        var remainingSold = pItem.vendible
+                        for (tanda in tandasForProduct) {
+                            val tYield = if (tanda.actualYield > 0.0) tanda.actualYield else if (tanda.expectedYield > 0.0) tanda.expectedYield else tanda.estimatedYield
+                            val soldThisTanda = if (remainingSold >= tYield) {
+                                remainingSold -= tYield
+                                tYield
+                            } else {
+                                val s = remainingSold
+                                remainingSold = 0.0
+                                s
+                            }
+                            var obs = tanda.observation
+                            if (pItem.pendientes > 0.0) {
+                                val pQtyStr = if (pItem.pendientes % 1.0 == 0.0) pItem.pendientes.toInt().toString() else "%.1f".format(pItem.pendientes)
+                                val noteTag = "Pendientes: $pQtyStr ${pItem.unit}"
+                                obs = if (obs.isNotBlank()) {
+                                    if (obs.contains("Pendientes:")) {
+                                        obs.replace(Regex("Pendientes:[^|\\[]*"), noteTag).trim()
+                                    } else {
+                                        "$obs | $noteTag"
+                                    }
+                                } else {
+                                    noteTag
+                                }
+                            }
+                            val updatedTanda = tanda.copy(
+                                quantitySold = soldThisTanda,
+                                realRevenue = soldThisTanda * tanda.salePrice,
+                                observation = obs
+                            )
+                            repository.updateTanda(updatedTanda)
+                        }
+                    }
+                }
+            }
 
             // Process Agregados: Return sobrantes to warehouse stock, reset stockEnVenta/racionesEnVenta, record movements
             val mpList = _uiState.value.materiasPrimas
@@ -1550,6 +1595,37 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
 
+            // 2. Guardar snapshot congelado de INFORME INSUMOS para el ARCHIVO histórico
+            try {
+                val insumosArchive = com.example.util.InformeInsumosArchiveManager.buildArchiveFromHistoricalData(
+                    jornada = currentJornada.copy(closedAt = System.currentTimeMillis(), closedBy = username),
+                    allMaterias = state.materiasPrimas,
+                    allMovimientos = state.movimientosMateriaPrima,
+                    businessName = state.businessName,
+                    closedBy = username
+                )
+                com.example.util.InformeInsumosArchiveManager.saveArchive(getApplication(), insumosArchive)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
+            // 3. Guardar snapshot congelado de CUADRE DE CAJA para el ARCHIVO histórico
+            try {
+                val cuadreArchive = com.example.util.CuadreCajaArchiveManager.getOrBuildArchive(
+                    context = getApplication(),
+                    jornada = currentJornada.copy(closedAt = System.currentTimeMillis(), closedBy = username, finalCash = finalCash, notes = notes),
+                    allTandas = state.tandas,
+                    allMovimientosMercaderia = state.movimientosMercaderia,
+                    allProducts = state.products,
+                    allMercaderias = state.mercaderias,
+                    allTransferencias = state.allTransferencias,
+                    businessName = state.businessName
+                )
+                com.example.util.CuadreCajaArchiveManager.saveArchive(getApplication(), cuadreArchive)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
             repository.closeJornada(currentJornada, finalCash, username, notes)
             _uiState.update { it.copy(successMessage = "Jornada cerrada correctamente y cuadre registrado.") }
         }
@@ -1630,6 +1706,37 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             // Save file to local storage
             com.example.util.QJornadaExporter.saveQJornadaToFile(context, jsonString, currentJornada.id)
+
+            // Save Informe Insumos Archive Snapshot congelado
+            try {
+                val insumosArchive = com.example.util.InformeInsumosArchiveManager.buildArchiveFromHistoricalData(
+                    jornada = currentJornada.copy(closedAt = System.currentTimeMillis(), closedBy = username),
+                    allMaterias = state.materiasPrimas,
+                    allMovimientos = state.movimientosMateriaPrima,
+                    businessName = nombreNegocio,
+                    closedBy = username
+                )
+                com.example.util.InformeInsumosArchiveManager.saveArchive(context, insumosArchive)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
+            // Save Cuadre de Caja Archive Snapshot congelado
+            try {
+                val cuadreArchive = com.example.util.CuadreCajaArchiveManager.getOrBuildArchive(
+                    context = context,
+                    jornada = currentJornada.copy(closedAt = System.currentTimeMillis(), closedBy = username, finalCash = finalCash, notes = notes),
+                    allTandas = updatedTandasList,
+                    allMovimientosMercaderia = state.movimientosMercaderia,
+                    allProducts = state.products,
+                    allMercaderias = state.mercaderias,
+                    allTransferencias = state.allTransferencias,
+                    businessName = nombreNegocio
+                )
+                com.example.util.CuadreCajaArchiveManager.saveArchive(context, cuadreArchive)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
 
             // Close in DB with immutable snapshot
             repository.closeJornada(
@@ -3569,6 +3676,80 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {
                 e.printStackTrace()
                 _uiState.update { it.copy(errorMessage = "Error al registrar tanda: ${e.message}") }
+            }
+        }
+    }
+
+    // Convertir Unidades Pendientes de Jornada Anterior a Tanda 00
+    fun convertirPendientesATanda00(
+        tanda00: Tanda,
+        previousTandasToMarkConverted: List<Tanda>
+    ) {
+        viewModelScope.launch {
+            try {
+                val activeJornada = _uiState.value.activeJornada
+                if (activeJornada == null || !activeJornada.isOpen) {
+                    _uiState.update { it.copy(errorMessage = "No se puede registrar la Tanda 00 sin una jornada abierta. Por favor, abra la jornada primero.") }
+                    return@launch
+                }
+
+                // 1. Guardar la Tanda 00 en Room vinculada a la jornada abierta
+                val tandaToInsert = tanda00.copy(
+                    jornada = "Jornada #${activeJornada.id}",
+                    jornadaId = activeJornada.id,
+                    status = "ABIERTA",
+                    tandaNumber = "00",
+                    inventoryDeducted = true
+                )
+                val generatedId = repository.insertTanda(tandaToInsert)
+                val finalTanda00 = tandaToInsert.copy(id = if (generatedId > 0) generatedId else tandaToInsert.id)
+
+                // 2. Marcar las tandas de la jornada anterior como YA CONVERTIDAS en Room
+                val updatedPreviousTandas = previousTandasToMarkConverted.map { oldTanda ->
+                    val newObs = if (oldTanda.observation.contains("Pendientes:")) {
+                        oldTanda.observation.replace("Pendientes:", "Pendientes_Convertidos:") + " [YA_CONVERTIDA_A_TANDA_00]"
+                    } else if (!oldTanda.observation.contains("[YA_CONVERTIDA_A_TANDA_00]")) {
+                        oldTanda.observation + " [YA_CONVERTIDA_A_TANDA_00]"
+                    } else {
+                        oldTanda.observation
+                    }
+                    val updated = oldTanda.copy(observation = newObs)
+                    repository.updateTanda(updated)
+                    updated
+                }
+
+                // 3. Actualización atómica inmediata del StateFlow para que la UI reaccione instantáneamente
+                val updatedOldIds = updatedPreviousTandas.map { it.id }.filter { it > 0 }.toSet()
+                val updatedOldUuids = updatedPreviousTandas.map { it.uuid }.filter { it.isNotBlank() }.toSet()
+
+                _uiState.update { state ->
+                    val currentTandas = state.tandas.map { existing ->
+                        if (existing.id in updatedOldIds || (existing.uuid.isNotBlank() && existing.uuid in updatedOldUuids)) {
+                            updatedPreviousTandas.find { it.id == existing.id || (existing.uuid.isNotBlank() && it.uuid == existing.uuid) } ?: existing
+                        } else {
+                            existing
+                        }
+                    }
+                    val withTanda00 = currentTandas.filter { it.uuid != finalTanda00.uuid && it.id != finalTanda00.id } + finalTanda00
+                    state.copy(
+                        tandas = withTanda00,
+                        successMessage = "Tanda 00 creada exitosamente para las unidades pendientes.",
+                        errorMessage = null
+                    )
+                }
+
+                // 4. Bitácora
+                repository.insertBitacora(
+                    BitacoraEntry(
+                        title = "Registro de Tanda 00 (Unidades Pendientes)",
+                        content = "Tanda 00 de ${finalTanda00.productName} registrada en Jornada #${activeJornada.id} procedente de la jornada anterior. Unidades: ${finalTanda00.estimatedYield.toInt()} ${finalTanda00.productionUnit}. Insumo base equivalente (solo informativo): ${finalTanda00.baseQuantityUsed} ${finalTanda00.baseQuantityUnit}. Sin consumo ni descuento de inventario.",
+                        category = "PRODUCCIÓN",
+                        authorUsername = finalTanda00.responsibleUser
+                    )
+                )
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _uiState.update { it.copy(errorMessage = "Error al convertir unidades pendientes a Tanda 00: ${e.message}") }
             }
         }
     }
@@ -5939,6 +6120,16 @@ data class AgregadoCuadreItem(
     val precioVenta: Double,
     val costoPorRacion: Double,
     val rationQuantity: Double,
+    val unit: String
+)
+
+data class ProduccionCuadreItem(
+    val productId: Long,
+    val productName: String,
+    val totalProduced: Double,
+    val vendible: Double,
+    val pendientes: Double,
+    val mermas: Double,
     val unit: String
 )
 

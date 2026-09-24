@@ -21,6 +21,19 @@ import java.util.Locale
 
 object QJornadaExporter {
 
+    fun extractUnidadesPendientesFromObservation(obs: String): Double {
+        if (obs.isBlank()) return 0.0
+        val key = when {
+            obs.contains("Pendientes:") -> "Pendientes:"
+            obs.contains("Pendientes_Convertidos:") -> "Pendientes_Convertidos:"
+            else -> return 0.0
+        }
+        val after = obs.substringAfter(key).trim()
+        val firstPart = after.substringBefore("|").substringBefore("[").trim()
+        val match = """^([\d.,]+)""".toRegex().find(firstPart) ?: return 0.0
+        return match.value.replace(',', '.').toDoubleOrNull() ?: 0.0
+    }
+
     data class TandaItemSummary(
         val tandaId: Long,
         val productName: String,
@@ -163,8 +176,21 @@ object QJornadaExporter {
                 val effectiveSalePrice = if (prod != null && prod.price > 0.0) prod.price else t.salePrice
                 val producedQty = if (t.actualYield > 0.0) t.actualYield else (if (t.estimatedYield > 0.0) t.estimatedYield else 1.0)
                 val unitCost = if (producedQty > 0.0) t.totalBatchCost / producedQty else t.realUnitCost
-                val soldQty = t.quantitySold
-                val remainingQty = (producedQty - soldQty).coerceAtLeast(0.0)
+                val pendingFromObs = extractUnidadesPendientesFromObservation(t.observation)
+                val soldQty = if (t.quantitySold > 0.0) {
+                    t.quantitySold
+                } else if (pendingFromObs > 0.0) {
+                    (producedQty - pendingFromObs).coerceAtLeast(0.0)
+                } else {
+                    t.quantitySold
+                }
+                val remainingQty = if (t.quantitySold > 0.0) {
+                    (producedQty - soldQty).coerceAtLeast(0.0)
+                } else if (pendingFromObs > 0.0) {
+                    pendingFromObs
+                } else {
+                    (producedQty - soldQty).coerceAtLeast(0.0)
+                }
                 val realRev = soldQty * effectiveSalePrice
                 val soldCost = soldQty * unitCost
                 val net = realRev - soldCost
