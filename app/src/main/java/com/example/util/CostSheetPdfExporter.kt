@@ -227,7 +227,12 @@ object CostSheetPdfExporter {
             paint.color = textDark
             paint.textSize = 10f
             paint.isFakeBoldText = false
-            canvas.drawText("• Pago Cocina: $${"%.2f".format(costSheet.pagoCocinaUnitario)} CUP (x ${costSheet.cantidadCocineros} coc.) = $${"%.2f".format(costSheet.totalPagoCocinaUnitario)} CUP", 45f, y, paint)
+            val cocinaPdfText = if (costSheet.isPagoCocinaFijo) {
+                "• Pago Cocina: $${"%.2f".format(costSheet.pagoCocinaUnitario)} CUP (Pago Fijo ÷ ${"%.1f".format(costSheet.ppd)} PPD) = $${"%.2f".format(costSheet.totalPagoCocinaUnitario)} CUP/ud"
+            } else {
+                "• Pago Cocina: $${"%.2f".format(costSheet.pagoCocinaUnitario)} CUP (x ${costSheet.cantidadCocineros} coc.) = $${"%.2f".format(costSheet.totalPagoCocinaUnitario)} CUP"
+            }
+            canvas.drawText(cocinaPdfText, 45f, y, paint)
             canvas.drawText("• Pago Dependiente: $${"%.2f".format(costSheet.totalPagoDependienteUnitario)} CUP", 310f, y, paint)
             y += 16f
             canvas.drawText("• Pago Cajero: $${"%.2f".format(costSheet.totalPagoCajeroUnitario)} CUP", 45f, y, paint)

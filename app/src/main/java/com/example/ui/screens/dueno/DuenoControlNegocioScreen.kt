@@ -1190,7 +1190,7 @@ private fun ControlProduccionContent(
             val vendible = (totalProduced - mermasTotal).coerceAtLeast(0.0)
             val restanteTotal = tandas.sumOf { it.cantidadRestante }
             val ingresos = vendible * price
-            val costoRealTotal = vendible * realUnitCost
+            val costoRealTotal = (vendible + mermasTotal) * realUnitCost
             val utilidad = ingresos - costoRealTotal
 
             ProduccionProductSummary(
@@ -1606,7 +1606,7 @@ private fun ControlMercaderiasContent(
             val ventas = movs.filter { it.type.uppercase() == "VENTA" }.sumOf { if (it.quantitySold > 0) it.quantitySold else it.quantity }
 
             val ingresos = ventas * price
-            val costoReal = ventas * acqCost
+            val costoReal = (ventas + mermas) * acqCost
             val utilidad = ingresos - costoReal
 
             MercaderiaSummaryItem(

@@ -34,7 +34,8 @@ data class CuadrePagosJornada(
     val distributionMode: String = "CATEGORIA", // "CATEGORIA" o "GLOBAL"
     val efectivoContado: Double = 0.0,
     val dineroFinalEnCaja: Double = 0.0,
-    val cantidadCocineros: Int = 1
+    val cantidadCocineros: Int = 1,
+    val spaguettiPago: Double = 0.0
 )
 
 /**
@@ -81,7 +82,8 @@ object CuadrePagosManager {
                 distributionMode = obj.optString("distributionMode", "CATEGORIA"),
                 efectivoContado = obj.optDouble("efectivoContado", 0.0),
                 dineroFinalEnCaja = obj.optDouble("dineroFinalEnCaja", 0.0),
-                cantidadCocineros = obj.optInt("cantidadCocineros", 1)
+                cantidadCocineros = obj.optInt("cantidadCocineros", 1),
+                spaguettiPago = obj.optDouble("spaguettiPago", 0.0)
             )
         } catch (e: Exception) {
             null
@@ -104,6 +106,7 @@ object CuadrePagosManager {
         obj.put("efectivoContado", pagos.efectivoContado)
         obj.put("dineroFinalEnCaja", pagos.dineroFinalEnCaja)
         obj.put("cantidadCocineros", pagos.cantidadCocineros)
+        obj.put("spaguettiPago", pagos.spaguettiPago)
 
         val depsArray = JSONArray()
         for (dep in pagos.dependientes) {

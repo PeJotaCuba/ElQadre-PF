@@ -2945,7 +2945,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         pagoCocinaUnitario: Double,
         cantidadCocineros: Int,
         pagoDependienteUnitario: Double,
-        pagoCajeroUnitario: Double
+        pagoCajeroUnitario: Double,
+        isPagoCocinaFijo: Boolean = false
     ) {
         viewModelScope.launch {
             val prodElaborado = _uiState.value.productosElaborados.find { it.productId == productId }
@@ -2956,7 +2957,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         pagoCocinaUnitario = pagoCocinaUnitario,
                         cantidadCocineros = cocinerosCount,
                         pagoDependienteUnitario = pagoDependienteUnitario,
-                        pagoCajeroUnitario = pagoCajeroUnitario
+                        pagoCajeroUnitario = pagoCajeroUnitario,
+                        isPagoCocinaFijo = isPagoCocinaFijo
                     )
                 )
             } else {
@@ -2968,7 +2970,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         pagoCocinaUnitario = pagoCocinaUnitario,
                         cantidadCocineros = cocinerosCount,
                         pagoDependienteUnitario = pagoDependienteUnitario,
-                        pagoCajeroUnitario = pagoCajeroUnitario
+                        pagoCajeroUnitario = pagoCajeroUnitario,
+                        isPagoCocinaFijo = isPagoCocinaFijo
                     )
                 )
             }

@@ -18,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -461,6 +462,10 @@ fun FichaCostoDialog(
 
     var estimatedQtyText by remember(costSheet.ppd) {
         mutableStateOf(if (costSheet.ppd % 1.0 == 0.0) costSheet.ppd.toLong().toString() else costSheet.ppd.toString())
+    }
+
+    var isPagoCocinaFijo by remember(costSheet.isPagoCocinaFijo) {
+        mutableStateOf(costSheet.isPagoCocinaFijo)
     }
 
     var pagoCocinaText by remember(costSheet.pagoCocinaUnitario) {
@@ -948,19 +953,31 @@ fun FichaCostoDialog(
                                     )
                                 }
 
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = Color(0xFFEEF2FF),
-                                    border = BorderStroke(1.dp, Color(0xFFC7D2FE))
-                                ) {
-                                    Text(
-                                        text = "$${"%.2f".format(costSheet.totalPagoPersonalUnitario)} CUP / ud",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color(0xFF4338CA),
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                    )
-                                }
+                                    val currentPpdForPersonal = costSheet.ppd.takeIf { it > 0.0 } ?: estimatedQtyText.toDoubleOrNull()?.takeIf { it > 0.0 } ?: 1.0
+                                    val cocinaUnitLive = pagoCocinaText.toDoubleOrNull() ?: 0.0
+                                    val cocinerosCountLive = cantidadCocinerosText.toIntOrNull() ?: 1
+                                    val subtotalCocinaLive = if (isPagoCocinaFijo) {
+                                        if (currentPpdForPersonal > 0.0) cocinaUnitLive / currentPpdForPersonal else 0.0
+                                    } else {
+                                        cocinaUnitLive * (if (cocinerosCountLive > 0) cocinerosCountLive else 1)
+                                    }
+                                    val depValLive = pagoDependienteText.toDoubleOrNull() ?: 0.0
+                                    val cajeroValLive = pagoCajeroText.toDoubleOrNull() ?: 0.0
+                                    val totalPersonalLive = subtotalCocinaLive + depValLive + cajeroValLive
+
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = Color(0xFFEEF2FF),
+                                        border = BorderStroke(1.dp, Color(0xFFC7D2FE))
+                                    ) {
+                                        Text(
+                                            text = "$${"%.2f".format(totalPersonalLive)} CUP / ud",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color(0xFF4338CA),
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                        )
+                                    }
                             }
 
                             Text(
@@ -977,52 +994,158 @@ fun FichaCostoDialog(
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    val cocinaUnit = pagoCocinaText.toDoubleOrNull() ?: 0.0
+                                    val cocinerosCount = cantidadCocinerosText.toIntOrNull() ?: 1
+                                    val currentPpd = costSheet.ppd.takeIf { it > 0.0 } ?: estimatedQtyText.toDoubleOrNull()?.takeIf { it > 0.0 } ?: 1.0
+                                    val subtotalCocina = if (isPagoCocinaFijo) {
+                                        if (currentPpd > 0.0) cocinaUnit / currentPpd else 0.0
+                                    } else {
+                                        cocinaUnit * (if (cocinerosCount > 0) cocinerosCount else 1)
+                                    }
+
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text("COCINA", fontSize = 11.sp, fontWeight = FontWeight.Black, color = ElQadreNavy)
-                                        val cocinaUnit = pagoCocinaText.toDoubleOrNull() ?: 0.0
-                                        val cocinerosCount = cantidadCocinerosText.toIntOrNull() ?: 1
-                                        val subtotalCocina = cocinaUnit * (if (cocinerosCount > 0) cocinerosCount else 1)
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Text("COCINA", fontSize = 11.sp, fontWeight = FontWeight.Black, color = ElQadreNavy)
+
+                                            // CONTROL: EL PAGO FIJO (ACTIVADO / DESACTIVADO)
+                                            Surface(
+                                                onClick = { isPagoCocinaFijo = !isPagoCocinaFijo },
+                                                shape = RoundedCornerShape(16.dp),
+                                                color = if (isPagoCocinaFijo) Color(0xFFEEF2FF) else Slate100,
+                                                border = BorderStroke(1.dp, if (isPagoCocinaFijo) Color(0xFF6366F1) else Slate300),
+                                                modifier = Modifier.testTag("control_el_pago_fijo")
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "EL PAGO FIJO",
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = if (isPagoCocinaFijo) Color(0xFF4338CA) else Slate600
+                                                    )
+                                                    Surface(
+                                                        shape = RoundedCornerShape(8.dp),
+                                                        color = if (isPagoCocinaFijo) Color(0xFF4F46E5) else Slate300
+                                                    ) {
+                                                        Text(
+                                                            text = if (isPagoCocinaFijo) "ACTIVADO" else "DESACTIVADO",
+                                                            fontSize = 9.sp,
+                                                            fontWeight = FontWeight.Black,
+                                                            color = if (isPagoCocinaFijo) Color.White else Slate700,
+                                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                                        )
+                                                    }
+                                                    Switch(
+                                                        checked = isPagoCocinaFijo,
+                                                        onCheckedChange = { isPagoCocinaFijo = it },
+                                                        modifier = Modifier.scale(0.7f).height(20.dp).testTag("switch_el_pago_fijo"),
+                                                        colors = SwitchDefaults.colors(
+                                                            checkedThumbColor = Color.White,
+                                                            checkedTrackColor = Color(0xFF4F46E5),
+                                                            uncheckedThumbColor = Slate400,
+                                                            uncheckedTrackColor = Slate200
+                                                        )
+                                                    )
+                                                }
+                                            }
+                                        }
+
                                         Text(
-                                            "Subtotal: $${"%.2f".format(subtotalCocina)} CUP / ud",
+                                            text = if (isPagoCocinaFijo) "Costo: $${"%.2f".format(subtotalCocina)} CUP / ud" else "Subtotal: $${"%.2f".format(subtotalCocina)} CUP / ud",
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = Color(0xFF4338CA)
                                         )
                                     }
 
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        OutlinedTextField(
-                                            value = pagoCocinaText,
-                                            onValueChange = { pagoCocinaText = it },
-                                            label = { Text("Pago por unidad ($ CUP)") },
-                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                            singleLine = true,
-                                            modifier = Modifier.weight(1.3f).testTag("pago_cocina_unitario_input"),
-                                            colors = OutlinedTextFieldDefaults.colors(
-                                                focusedBorderColor = Color(0xFF6366F1),
-                                                focusedLabelColor = Color(0xFF4F46E5)
+                                    if (isPagoCocinaFijo) {
+                                        // CUANDO ESTÁ ACTIVADO
+                                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            OutlinedTextField(
+                                                value = pagoCocinaText,
+                                                onValueChange = { pagoCocinaText = it },
+                                                label = { Text("Pago Fijo Diario ($ CUP)") },
+                                                placeholder = { Text("Ej. 100") },
+                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                                singleLine = true,
+                                                modifier = Modifier.fillMaxWidth().testTag("pago_cocina_fijo_diario_input"),
+                                                colors = OutlinedTextFieldDefaults.colors(
+                                                    focusedBorderColor = Color(0xFF6366F1),
+                                                    focusedLabelColor = Color(0xFF4F46E5)
+                                                )
                                             )
-                                        )
 
-                                        OutlinedTextField(
-                                            value = cantidadCocinerosText,
-                                            onValueChange = { cantidadCocinerosText = it },
-                                            label = { Text("Cant. Cocineros") },
-                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                            singleLine = true,
-                                            modifier = Modifier.weight(1f).testTag("cantidad_cocineros_input"),
-                                            colors = OutlinedTextFieldDefaults.colors(
-                                                focusedBorderColor = Color(0xFF6366F1),
-                                                focusedLabelColor = Color(0xFF4F46E5)
+                                            val costoUnitarioFijo = if (currentPpd > 0.0) cocinaUnit / currentPpd else 0.0
+
+                                            Surface(
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = Color(0xFFEEF2FF),
+                                                border = BorderStroke(1.dp, Color(0xFFC7D2FE)),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                                    Text(
+                                                        text = "PAGO FIJO DIARIO ÷ PPD = COSTO DE PAGO FIJO POR UNIDAD",
+                                                        fontSize = 9.sp,
+                                                        fontWeight = FontWeight.Black,
+                                                        color = Color(0xFF4338CA)
+                                                    )
+                                                    Text(
+                                                        text = "$${"%.2f".format(cocinaUnit)} CUP (pago fijo diario) ÷ ${"%.1f".format(currentPpd)} ud (PPD) = $${"%.2f".format(costoUnitarioFijo)} CUP por unidad",
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = ElQadreNavy
+                                                    )
+                                                    Text(
+                                                        text = "Es fijo durante la jornada, se paga una sola vez por día y no depende directamente de las unidades producidas. El pago fijo real sigue siendo un solo pago diario de $${"%.2f".format(cocinaUnit)} CUP.",
+                                                        fontSize = 9.sp,
+                                                        color = Slate600
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        // CUANDO ESTÁ DESACTIVADO
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            OutlinedTextField(
+                                                value = pagoCocinaText,
+                                                onValueChange = { pagoCocinaText = it },
+                                                label = { Text("Pago por unidad ($ CUP)") },
+                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                                singleLine = true,
+                                                modifier = Modifier.weight(1.3f).testTag("pago_cocina_unitario_input"),
+                                                colors = OutlinedTextFieldDefaults.colors(
+                                                    focusedBorderColor = Color(0xFF6366F1),
+                                                    focusedLabelColor = Color(0xFF4F46E5)
+                                                )
                                             )
-                                        )
+
+                                            OutlinedTextField(
+                                                value = cantidadCocinerosText,
+                                                onValueChange = { cantidadCocinerosText = it },
+                                                label = { Text("Cant. Cocineros") },
+                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                                singleLine = true,
+                                                modifier = Modifier.weight(1f).testTag("cantidad_cocineros_input"),
+                                                colors = OutlinedTextFieldDefaults.colors(
+                                                    focusedBorderColor = Color(0xFF6366F1),
+                                                    focusedLabelColor = Color(0xFF4F46E5)
+                                                )
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -1129,7 +1252,8 @@ fun FichaCostoDialog(
                                         pagoCocinaUnitario = cocinaVal,
                                         cantidadCocineros = cocinerosVal,
                                         pagoDependienteUnitario = depVal,
-                                        pagoCajeroUnitario = cajeroVal
+                                        pagoCajeroUnitario = cajeroVal,
+                                        isPagoCocinaFijo = isPagoCocinaFijo
                                     )
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5)),

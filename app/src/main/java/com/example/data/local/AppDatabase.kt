@@ -42,7 +42,7 @@ import com.example.util.toSha256
         SmsComandaQueue::class,
         PersonalContratado::class
     ],
-    version = 49,
+    version = 50,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -583,6 +583,16 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_49_50 = object : androidx.room.migration.Migration(49, 50) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    db.execSQL("ALTER TABLE `productos_elaborados` ADD COLUMN `isPagoCocinaFijo` INTEGER NOT NULL DEFAULT 0")
+                } catch (e: Exception) {
+                    // Ignore if columns already exist
+                }
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -600,7 +610,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36, MIGRATION_36_37, MIGRATION_37_38,
                     MIGRATION_38_39, MIGRATION_39_40, MIGRATION_40_41, MIGRATION_41_42, MIGRATION_42_43,
                     MIGRATION_43_44, MIGRATION_44_45, MIGRATION_45_46, MIGRATION_46_47, MIGRATION_47_48,
-                    MIGRATION_48_49
+                    MIGRATION_48_49, MIGRATION_49_50
                 )
                 .fallbackToDestructiveMigration()
                 .addCallback(object : Callback() {

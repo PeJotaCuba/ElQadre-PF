@@ -151,8 +151,13 @@ class ProduccionItemState(
     // de ingresos, NO se consideran vendidas, NO incrementan el efectivo esperado.
     val vendible: Double get() = (effectiveTotalProduced - mermaTotal - pendientes).coerceAtLeast(0.0)
     val ingresoEstimado: Double get() = vendible * effectivePrice
-    val costoEstimado: Double get() = vendible * costoUnitarioTeorico
-    val mermaValor: Double get() = mermaTotal * effectivePrice
+
+    // TRATAMIENTO CONTABLE DE MERMAS:
+    // Una merma NUNCA reduce ventas ni ingresos. Su valor se incorpora a COSTOS al costo unitario real.
+    val costoVendido: Double get() = vendible * costoUnitarioTeorico
+    val costoMerma: Double get() = mermaTotal * costoUnitarioTeorico
+    val costoEstimado: Double get() = costoVendido + costoMerma
+    val mermaValor: Double get() = costoMerma
     val pagoCocinaEstimado: Double get() = vendible * pagoCocinaUnitario * (if (cantidadCocineros > 0) cantidadCocineros else 1)
     val pagoDependienteEstimado: Double get() = vendible * pagoDependienteUnitario
     val pagoCajeroEstimado: Double get() = vendible * pagoCajeroUnitario
@@ -198,8 +203,13 @@ class MercaderiaItemState(
     } else 0.0
 
     val ingresoEstimado: Double get() = if (isCompleted) ventas * effectivePrice else 0.0
-    val costoEstimado: Double get() = if (isCompleted) ventas * costoUnitarioTeorico else 0.0
-    val mermaValor: Double get() = mermaTotal * effectivePrice
+
+    // TRATAMIENTO CONTABLE DE MERMAS:
+    // La merma se valora a costo unitario real y se incorpora a COSTOS.
+    val costoVendido: Double get() = if (isCompleted) ventas * costoUnitarioTeorico else 0.0
+    val costoMerma: Double get() = if (isCompleted) mermaTotal * costoUnitarioTeorico else 0.0
+    val costoEstimado: Double get() = if (isCompleted) (ventas + mermaTotal) * costoUnitarioTeorico else 0.0
+    val mermaValor: Double get() = costoMerma
     val pagoDependienteEstimado: Double get() = ventas * pagoDependienteUnitario
     val pagoCajeroEstimado: Double get() = ventas * pagoCajeroUnitario
 }
@@ -212,21 +222,45 @@ class AgregadoCuadreItemState(
     val rationUnit: String,
     val precioVenta: Double,
     val costoPorRacion: Double,
-    racionesEnviadasStr: String = "0",
-    racionesVendidasStr: String = "0",
-    racionesRegaliaStr: String = "0"
+    existenciaInicialStr: String = "0",
+    entradasStr: String = "0",
+    existenciaFinalStr: String = "",
+    mermaStr: String = "0"
 ) {
-    var racionesEnviadasStr by mutableStateOf(racionesEnviadasStr)
-    var racionesVendidasStr by mutableStateOf(racionesVendidasStr)
-    var racionesRegaliaStr by mutableStateOf(racionesRegaliaStr)
+    var existenciaInicialStr by mutableStateOf(existenciaInicialStr)
+    var entradasStr by mutableStateOf(entradasStr)
+    var existenciaFinalStr by mutableStateOf(existenciaFinalStr)
+    var mermaStr by mutableStateOf(mermaStr)
 
-    val racionesEnviadas: Double get() = racionesEnviadasStr.toDoubleOrNull() ?: 0.0
-    val racionesVendidas: Double get() = racionesVendidasStr.toDoubleOrNull() ?: 0.0
-    val racionesRegalia: Double get() = racionesRegaliaStr.toDoubleOrNull() ?: 0.0
-    val racionesSobrantes: Double get() = (racionesEnviadas - racionesVendidas - racionesRegalia).coerceAtLeast(0.0)
-    val ingresoEstimado: Double get() = racionesVendidas * precioVenta
-    val costoVendido: Double get() = racionesVendidas * costoPorRacion
-    val sobranteFisico: Double get() = racionesSobrantes * rationQuantity
+    val unitDisplay: String get() = if (rationUnit.isNotBlank()) "raciones" else unit.ifBlank { "ud" }
+    val isCompleted: Boolean get() = existenciaFinalStr.isNotBlank()
+    val existenciaInicial: Double get() = existenciaInicialStr.toDoubleOrNull() ?: 0.0
+    val entradas: Double get() = entradasStr.toDoubleOrNull() ?: 0.0
+    val existenciaFinal: Double get() = existenciaFinalStr.toDoubleOrNull() ?: 0.0
+    val mermaTotal: Double get() = mermaStr.toDoubleOrNull() ?: 0.0
+    val existenciaDisponible: Double get() = existenciaInicial + entradas
+
+    // Ventas = Inicio + Entradas - Final - Mermas (lógica idéntica a Mercaderías)
+    val ventas: Double get() = if (isCompleted) {
+        (existenciaDisponible - existenciaFinal - mermaTotal).coerceAtLeast(0.0)
+    } else 0.0
+
+    // Ingresos = Ventas * precioVenta (precio configurado en el propio Agregado)
+    val ingresoEstimado: Double get() = if (isCompleted) ventas * precioVenta else 0.0
+
+    // TRATAMIENTO CONTABLE DE MERMAS:
+    // El costo de la merma se valora a costoPorRacion real y se incorpora a COSTOS.
+    val costoVendido: Double get() = if (isCompleted) ventas * costoPorRacion else 0.0
+    val costoMerma: Double get() = if (isCompleted) mermaTotal * costoPorRacion else 0.0
+    val costoEstimado: Double get() = if (isCompleted) (ventas + mermaTotal) * costoPorRacion else 0.0
+    val mermaValor: Double get() = costoMerma
+    val sobranteFisico: Double get() = if (rationQuantity > 0.0) existenciaFinal * rationQuantity else existenciaFinal
+
+    // Compatibilidad para exportación y cierre
+    val racionesEnviadas: Double get() = existenciaDisponible
+    val racionesVendidas: Double get() = ventas
+    val racionesRegalia: Double get() = mermaTotal
+    val racionesSobrantes: Double get() = existenciaFinal
 }
 
 @Composable
@@ -305,7 +339,8 @@ fun CuadreCajaScreen(
 
             val costoUnitario = costSheet?.costoRealUnitario ?: product?.cost ?: 0.0
             val pagoCocinaUnit = costSheet?.pagoCocinaUnitario ?: prodElab?.pagoCocinaUnitario ?: 0.0
-            val cantCocineros = savedPagos?.cantidadCocineros ?: 1
+            val fichaCocineros = costSheet?.cantidadCocineros?.takeIf { it > 0 } ?: prodElab?.cantidadCocineros?.takeIf { it > 0 } ?: 1
+            val cantCocineros = savedPagos?.cantidadCocineros ?: fichaCocineros
             val pagoDepUnit = costSheet?.totalPagoDependienteUnitario ?: prodElab?.totalPagoDependienteUnitario ?: 0.0
             val pagoCajUnit = costSheet?.totalPagoCajeroUnitario ?: prodElab?.totalPagoCajeroUnitario ?: 0.0
             val presList = product?.let { com.example.data.local.model.parsePresentacionesEspeciales(it.presentacionesEspeciales) } ?: emptyList()
@@ -405,9 +440,15 @@ fun CuadreCajaScreen(
                 mp.racionesEnVenta
             } else if (mp.stockEnVenta > 0.0 && mp.rationQuantity > 0.0) {
                 mp.stockEnVenta / mp.rationQuantity
+            } else if (mp.stock > 0.0 && mp.rationQuantity > 0.0) {
+                mp.stock / mp.rationQuantity
             } else {
                 0.0
             }
+            val initialStr = if (enviadasRaciones > 0.0) {
+                if (enviadasRaciones % 1.0 == 0.0) enviadasRaciones.toLong().toString() else "%.1f".format(enviadasRaciones).replace(',', '.')
+            } else "0"
+
             AgregadoCuadreItemState(
                 materiaPrimaId = mp.id,
                 name = mp.name,
@@ -416,9 +457,10 @@ fun CuadreCajaScreen(
                 rationUnit = mp.rationUnit.ifBlank { mp.unit },
                 precioVenta = mp.precioEfectivoVenta,
                 costoPorRacion = mp.costoPorRacion,
-                racionesEnviadasStr = if (enviadasRaciones > 0.0) "%.1f".format(enviadasRaciones).replace(',', '.') else "0",
-                racionesVendidasStr = "0",
-                racionesRegaliaStr = "0"
+                existenciaInicialStr = initialStr,
+                entradasStr = "0",
+                existenciaFinalStr = "",
+                mermaStr = "0"
             )
         }.toMutableStateList()
     }
@@ -483,21 +525,66 @@ fun CuadreCajaScreen(
     val totalIngresosGenerales = ingresosProduccion + ingresosMercaderias
 
     val costoProduccionVal = produccionStates.sumOf { it.costoEstimado }
-    val costoAgregadosVal = agregadosStates.sumOf { it.costoVendido }
+    val costoAgregadosVal = agregadosStates.sumOf { it.costoEstimado }
     val costoMercaderiasVal = mercaderiasStates.sumOf { it.costoEstimado }
     val costoTotalTotal = costoProduccionVal + costoAgregadosVal + costoMercaderiasVal
     val utilidadTeorica = totalIngresosGenerales - costoTotalTotal
 
-    val totalMermasValor = produccionStates.sumOf { it.mermaValor } + mercaderiasStates.sumOf { it.mermaValor }
-    val totalMermasUnidades = produccionStates.sumOf { it.mermaTotal } + mercaderiasStates.sumOf { it.mermaTotal }
+    val totalMermasValor = produccionStates.sumOf { it.mermaValor } + mercaderiasStates.sumOf { it.mermaValor } + agregadosStates.sumOf { it.mermaValor }
+    val totalMermasUnidades = produccionStates.sumOf { it.mermaTotal } + mercaderiasStates.sumOf { it.mermaTotal } + agregadosStates.sumOf { it.mermaTotal }
 
     val extraccionesVal = extraccionesList.sumOf { it.montoStr.toDoubleOrNull() ?: 0.0 }
     val efectivoRealVal = efectivoRealStr.toDoubleOrNull() ?: 0.0
 
     // Personal Payments Calculation
-    val totalPagoCocina = produccionStates.sumOf { item ->
+    val pizzaElaborado = remember(uiState.productosElaborados, uiState.products) {
+        uiState.productosElaborados.find { el ->
+            uiState.products.any { p -> p.id == el.productId && p.name.contains("pizza", ignoreCase = true) }
+        }
+    }
+    val pizzaFichaCocineros = pizzaElaborado?.cantidadCocineros?.takeIf { it > 0 } ?: 1
+
+    val spaguettiProduct = remember(uiState.products) {
+        uiState.products.find { p ->
+            p.name.contains("spaguetti", ignoreCase = true) ||
+            p.name.contains("espagueti", ignoreCase = true) ||
+            p.name.contains("spaghetti", ignoreCase = true)
+        }
+    }
+    val spaguettiElaborado = remember(spaguettiProduct, uiState.productosElaborados) {
+        spaguettiProduct?.let { p -> uiState.productosElaborados.find { it.productId == p.id } }
+    }
+    val spaguettiFichaPago = spaguettiElaborado?.pagoCocinaUnitario ?: 0.0
+    val spaguettiHasFichaPago = spaguettiProduct != null && spaguettiFichaPago > 0.0
+
+    val spaguettiInProduccion = produccionStates.find {
+        it.productName.contains("spaguetti", ignoreCase = true) ||
+        it.productName.contains("espagueti", ignoreCase = true) ||
+        it.productName.contains("spaghetti", ignoreCase = true)
+    }
+
+    val isSpaguettiFijoConfigurado = spaguettiElaborado?.isPagoCocinaFijo == true ||
+            spaguettiElaborado?.recipeName?.contains("fijo", ignoreCase = true) == true ||
+            spaguettiProduct?.description?.contains("fijo", ignoreCase = true) == true ||
+            spaguettiInProduccion == null
+
+    val initialSpaguettiMonto = if (savedPagos != null && savedPagos.spaguettiPago > 0.0) {
+        savedPagos.spaguettiPago
+    } else if (spaguettiHasFichaPago) {
+        if (isSpaguettiFijoConfigurado) {
+            spaguettiFichaPago * (if ((spaguettiElaborado?.cantidadCocineros ?: 1) > 0) spaguettiElaborado?.cantidadCocineros ?: 1 else 1)
+        } else {
+            (spaguettiInProduccion?.vendible ?: 0.0) * spaguettiFichaPago * (spaguettiInProduccion?.cantidadCocineros ?: 1)
+        }
+    } else 0.0
+
+    val produccionPizzasCocina = produccionStates.filter {
+        spaguettiInProduccion == null || it.productId != spaguettiInProduccion.productId
+    }.sumOf { item ->
         item.vendible * item.pagoCocinaUnitario * (if (item.cantidadCocineros > 0) item.cantidadCocineros else 1)
     }
+
+    val totalPagoCocina = produccionPizzasCocina + (if (spaguettiHasFichaPago) initialSpaguettiMonto else (spaguettiInProduccion?.let { it.vendible * it.pagoCocinaUnitario * it.cantidadCocineros } ?: 0.0))
     val pagoDependienteProduccion = produccionStates.sumOf { item ->
         item.vendible * item.pagoDependienteUnitario
     }
@@ -1114,20 +1201,37 @@ fun CuadreCajaScreen(
                         isCuadrado = isCuadrado,
                         pagosConfirmados = pagosConfirmados,
                         totalPagosConfirmados = totalPagosConfirmados,
+                        totalPagoPersonal = totalPagosEfectivos,
                         dineroFinalEnCaja = dineroFinalEnCaja,
                         onIrAPagos = { selectedTab = CuadreTab.PAGOS },
                         onCuadrarCaja = {
                             showAvisoPagosDialog = true
                         },
                         onDescargarPdf = {
-                            val cocinaPdfRows = produccionStates.map { p ->
-                                CuadreCajaPdfExporter.CocinaPagoPdfRow(
-                                    productName = p.productName,
-                                    vendible = p.vendible,
-                                    unit = p.unit,
-                                    pagoUnitario = p.pagoCocinaUnitario,
-                                    cantidadCocineros = if (p.cantidadCocineros > 0) p.cantidadCocineros else 1,
-                                    totalPago = p.vendible * p.pagoCocinaUnitario * (if (p.cantidadCocineros > 0) p.cantidadCocineros else 1)
+                            val cocinaPdfRows = mutableListOf<CuadreCajaPdfExporter.CocinaPagoPdfRow>()
+                            produccionStates.filter { spaguettiInProduccion == null || it.productId != spaguettiInProduccion.productId }.forEach { p ->
+                                cocinaPdfRows.add(
+                                    CuadreCajaPdfExporter.CocinaPagoPdfRow(
+                                        productName = p.productName,
+                                        vendible = p.vendible,
+                                        unit = p.unit,
+                                        pagoUnitario = p.pagoCocinaUnitario,
+                                        cantidadCocineros = if (p.cantidadCocineros > 0) p.cantidadCocineros else 1,
+                                        totalPago = p.vendible * p.pagoCocinaUnitario * (if (p.cantidadCocineros > 0) p.cantidadCocineros else 1)
+                                    )
+                                )
+                            }
+                            if (spaguettiHasFichaPago) {
+                                val spgPagoVal = if (savedPagos != null && savedPagos.spaguettiPago > 0.0) savedPagos.spaguettiPago else initialSpaguettiMonto
+                                cocinaPdfRows.add(
+                                    CuadreCajaPdfExporter.CocinaPagoPdfRow(
+                                        productName = spaguettiProduct?.name ?: "Spaguettis",
+                                        vendible = spaguettiInProduccion?.vendible ?: 1.0,
+                                        unit = if (isSpaguettiFijoConfigurado) "Fijo" else (spaguettiInProduccion?.unit ?: "ud"),
+                                        pagoUnitario = spaguettiFichaPago,
+                                        cantidadCocineros = spaguettiElaborado?.cantidadCocineros ?: 1,
+                                        totalPago = spgPagoVal
+                                    )
                                 )
                             }
                             val cajeroPdfInfo = CuadreCajaPdfExporter.CajeroPagoPdfInfo(
@@ -1237,11 +1341,13 @@ fun CuadreCajaScreen(
                         mercaderiasStates = mercaderiasStates,
                         tarifasBebidas = uiState.tarifasPagoBebidas,
                         users = uiState.users,
+                        productosElaborados = uiState.productosElaborados,
+                        products = uiState.products,
                         activeJornadaId = activeJornadaId,
                         efectivoRealVal = efectivoRealVal,
                         utilidadTeorica = utilidadTeorica,
                         pagosConfirmados = pagosConfirmados,
-                        onConfirmarPagos = { totalP, totalCoc, totalCaj, totalDep, cantDeps, depsList, distMode, cantCoc ->
+                        onConfirmarPagos = { totalP, totalCoc, totalCaj, totalDep, cantDeps, depsList, distMode, cantCoc, spgPago ->
                             val finalCash = (efectivoRealVal - totalP).coerceAtLeast(0.0)
                             val record = CuadrePagosJornada(
                                 jornadaId = activeJornadaId,
@@ -1257,7 +1363,8 @@ fun CuadreCajaScreen(
                                 distributionMode = distMode,
                                 efectivoContado = efectivoRealVal,
                                 dineroFinalEnCaja = finalCash,
-                                cantidadCocineros = cantCoc
+                                cantidadCocineros = cantCoc,
+                                spaguettiPago = spgPago
                             )
                             CuadrePagosManager.savePagosJornada(context, record)
                             val detallesStr = depsList.joinToString("; ") { "${it.name}: $${"%.2f".format(it.montoPago)} CUP (${"%.1f".format(it.ventasTotales)} u)" }
@@ -1322,6 +1429,7 @@ fun CuadreGeneralesTab(
     isCuadrado: Boolean,
     pagosConfirmados: Boolean = false,
     totalPagosConfirmados: Double = 0.0,
+    totalPagoPersonal: Double = totalPagosConfirmados,
     dineroFinalEnCaja: Double = 0.0,
     onIrAPagos: () -> Unit = {},
     onCuadrarCaja: () -> Unit,
@@ -1967,36 +2075,26 @@ fun CuadreGeneralesTab(
                     color = Color(0xFFB91C1C),
                     isBold = true
                 )
-
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = Color(0xFFF1F5F9),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = "Costos provenientes de Fichas de Costo. No se duplican gastos generales ni pagos de personal.",
-                        fontSize = 10.sp,
-                        color = Slate600,
-                        modifier = Modifier.padding(8.dp)
-                    )
-                }
             }
         }
 
-        // BLOQUE EFECTIVO FÍSICO Y DINERO FINAL EN CAJA
+        // =============================================================
+        // BALANCE FINAL DE EFECTIVO EN CAJA
+        // =============================================================
         Surface(
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(20.dp),
             color = Color.White,
-            border = BorderStroke(1.5.dp, if (pagosConfirmados) Color(0xFF16A34A).copy(alpha = 0.5f) else Color(0xFF0284C7).copy(alpha = 0.4f)),
-            shadowElevation = 2.dp,
+            border = BorderStroke(1.5.dp, Slate200),
+            shadowElevation = 3.dp,
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                // ENCABEZADO DE SECCIÓN
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -2004,31 +2102,31 @@ fun CuadreGeneralesTab(
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = (if (pagosConfirmados) Color(0xFF16A34A) else Color(0xFF0284C7)).copy(alpha = 0.12f),
-                            modifier = Modifier.size(34.dp)
+                            shape = RoundedCornerShape(10.dp),
+                            color = ElQadreNavy.copy(alpha = 0.1f),
+                            modifier = Modifier.size(38.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     imageVector = Icons.Outlined.AccountBalanceWallet,
                                     contentDescription = null,
-                                    tint = if (pagosConfirmados) Color(0xFF16A34A) else Color(0xFF0284C7),
-                                    modifier = Modifier.size(20.dp)
+                                    tint = ElQadreNavy,
+                                    modifier = Modifier.size(22.dp)
                                 )
                             }
                         }
                         Column {
                             Text(
-                                text = "ESTADO DE EFECTIVO Y CAJA FINAL",
+                                text = "BALANCE FINAL DE EFECTIVO EN CAJA",
                                 fontWeight = FontWeight.Black,
-                                fontSize = 13.sp,
+                                fontSize = 15.sp,
                                 color = ElQadreNavy
                             )
                             Text(
-                                text = "Dinero final en caja = Efectivo contado − Pagos reales",
+                                text = "Efectivo disponible tras liquidar pagos",
                                 fontSize = 11.sp,
                                 color = Slate500
                             )
@@ -2040,11 +2138,11 @@ fun CuadreGeneralesTab(
                             color = Color(0xFFDCFCE7)
                         ) {
                             Text(
-                                text = "PAGOS DEDUCIDOS",
+                                text = "PAGOS REALIZADOS",
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.Black,
                                 color = Color(0xFF166534),
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                             )
                         }
                     } else {
@@ -2053,11 +2151,11 @@ fun CuadreGeneralesTab(
                             color = Color(0xFFFEF3C7)
                         ) {
                             Text(
-                                text = "PAGOS PENDIENTES",
+                                text = "PENDIENTE PAGOS",
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.Black,
                                 color = Color(0xFF92400E),
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                             )
                         }
                     }
@@ -2065,40 +2163,186 @@ fun CuadreGeneralesTab(
 
                 HorizontalDivider(color = Slate100)
 
-                val efContadoVal = efectivoRealStr.toDoubleOrNull() ?: 0.0
-                CuadreMetricRow(
-                    label = "Efectivo Contado en Caja",
-                    value = "$${"%.2f".format(efContadoVal)} CUP",
-                    color = ElQadreNavy
-                )
+                val efectivoRealVal = efectivoRealStr.toDoubleOrNull() ?: 0.0
 
-                CuadreMetricRow(
-                    label = "Pagos Reales a Personal (Salida física)",
-                    value = if (pagosConfirmados) "-$${"%.2f".format(totalPagosConfirmados)} CUP" else "Pendiente de confirmar en PAGOS",
-                    color = if (pagosConfirmados) Color(0xFFDC2626) else Color(0xFFD97706),
-                    isBold = pagosConfirmados
-                )
+                // PRIMER BLOQUE: EFECTIVO CONTADO EN CAJA + TOTAL PAGOS DE PERSONAL
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // TARJETA 1: EFECTIVO CONTADO EN CAJA
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = Color(0xFFF8FAFC),
+                        border = BorderStroke(1.dp, Slate200),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Payments,
+                                    contentDescription = null,
+                                    tint = ElQadreNavy,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = "EFECTIVO CONTADO",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Slate600
+                                )
+                            }
+                            Text(
+                                text = "$${"%.2f".format(efectivoRealVal)} CUP",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Black,
+                                color = ElQadreNavy
+                            )
+                            Text(
+                                text = "Físico en caja",
+                                fontSize = 10.sp,
+                                color = Slate500
+                            )
+                        }
+                    }
 
-                HorizontalDivider(color = Slate100)
+                    // TARJETA 2: TOTAL PAGOS DE PERSONAL
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = Color(0xFFFEF2F2),
+                        border = BorderStroke(1.dp, Color(0xFFFCA5A5)),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Badge,
+                                    contentDescription = null,
+                                    tint = Color(0xFFDC2626),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = "PAGOS PERSONAL",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Color(0xFF991B1B)
+                                )
+                            }
+                            Text(
+                                text = "-$${"%.2f".format(totalPagoPersonal)} CUP",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFFDC2626)
+                            )
+                            Text(
+                                text = if (pagosConfirmados) "Salida real confirmada" else "Salida por pagar",
+                                fontSize = 10.sp,
+                                color = Color(0xFF991B1B).copy(alpha = 0.8f)
+                            )
+                        }
+                    }
+                }
 
-                CuadreMetricRow(
-                    label = "DINERO FINAL EN CAJA",
-                    value = "$${"%.2f".format(dineroFinalEnCaja)} CUP",
-                    color = Color(0xFF15803D),
-                    isBold = true
-                )
-
+                // TARJETA DE MAYOR PRESENCIA VISUAL (HERO): DINERO FINAL EN CAJA
                 Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = Color(0xFFF8FAFC),
+                    shape = RoundedCornerShape(16.dp),
+                    color = ElQadreNavy,
+                    border = BorderStroke(2.dp, ElQadreGold),
+                    shadowElevation = 6.dp,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
-                        text = "Nota (Sin doble contabilización): La Utilidad Teórica ($${"%.2f".format(utilidadTeorica)} CUP) se mantiene separada. El pago real confirmado descuenta físicamente el dinero de caja.",
-                        fontSize = 11.sp,
-                        color = Slate600,
-                        modifier = Modifier.padding(8.dp)
-                    )
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = ElQadreGold.copy(alpha = 0.25f)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.AccountBalance,
+                                        contentDescription = null,
+                                        tint = ElQadreGold,
+                                        modifier = Modifier
+                                            .padding(6.dp)
+                                            .size(24.dp)
+                                    )
+                                }
+                                Text(
+                                    text = "DINERO FINAL EN CAJA",
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 16.sp,
+                                    color = Color.White
+                                )
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = ElQadreGold
+                            ) {
+                                Text(
+                                    text = "EFECTIVO RESTANTE",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = ElQadreNavy,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
+                        }
+
+                        HorizontalDivider(color = Color.White.copy(alpha = 0.15f))
+
+                        Text(
+                            text = "EFECTIVO CONTADO ($${"%.2f".format(efectivoRealVal)}) − PAGOS REALES ($${"%.2f".format(totalPagoPersonal)}) = DINERO FINAL",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Slate300
+                        )
+
+                        Text(
+                            text = "$${"%.2f".format(dineroFinalEnCaja)} CUP",
+                            fontSize = 36.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color(0xFF4ADE80),
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
+
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color.White.copy(alpha = 0.10f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "Los pagos de personal representan la salida física real de efectivo de la caja. No se vuelven a descontar como costo para calcular la utilidad del negocio.",
+                                fontSize = 10.sp,
+                                color = Slate300,
+                                modifier = Modifier.padding(8.dp)
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -2148,14 +2392,14 @@ fun CuadreGeneralesTab(
                 HorizontalDivider(color = Slate100)
 
                 CuadreMetricRow(
-                    label = "Ingresos/Valor asociado a Mermas (${"%.1f".format(totalMermasUnidades)} unid.)",
+                    label = "Costo Total de Mermas (${"%.1f".format(totalMermasUnidades)} unid.)",
                     value = "$${"%.2f".format(totalMermasValor)} CUP",
                     color = Color(0xFFB91C1C),
                     isBold = true
                 )
 
                 Text(
-                    text = "Mermas registradas en la jornada. No se convierten en ventas ni se suman a Ingresos Reales.",
+                    text = "Pérdida por mermas valorada a costo real unitario. No reduce las ventas ni los ingresos; su valor se incorpora a los COSTOS totales de la jornada.",
                     fontSize = 10.sp,
                     color = Slate500
                 )
@@ -2719,8 +2963,8 @@ fun CuadreProduccionTab(
             item {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "AGREGADOS VINCULADOS A PRODUCTOS",
-                    fontSize = 11.sp,
+                    text = "AGREGADOS",
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.Black,
                     color = Color(0xFF15803D),
                     modifier = Modifier.padding(horizontal = 4.dp)
@@ -2757,18 +3001,25 @@ fun CuadreProduccionTab(
 fun AgregadoCuadreCard(
     item: AgregadoCuadreItemState
 ) {
+    var showEditModal by remember { mutableStateOf(false) }
+
     Card(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        modifier = Modifier.testTag("card_agregado_${item.materiaPrimaId}")
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .clickable { showEditModal = true }
+            .testTag("card_agregado_${item.materiaPrimaId}")
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+                .padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            // Nombre del Agregado
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -2776,110 +3027,375 @@ fun AgregadoCuadreCard(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.weight(1f)
                 ) {
-                    Surface(shape = RoundedCornerShape(4.dp), color = Color(0xFFDCFCE7)) {
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = Color(0xFFDCFCE7),
+                        border = BorderStroke(1.dp, Color(0xFF86EFAC))
+                    ) {
                         Text(
                             text = "AGREGADO",
-                            fontSize = 9.sp,
+                            fontSize = 10.sp,
                             fontWeight = FontWeight.Black,
                             color = Color(0xFF15803D),
-                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                         )
                     }
                     Text(
                         text = item.name,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 18.sp,
                         color = ElQadreNavy
                     )
                 }
-                Text(
-                    text = "$${"%.2f".format(item.precioVenta)} CUP/rac.",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Slate600
+                Icon(
+                    imageVector = Icons.Default.ChevronRight,
+                    contentDescription = "Ver detalle",
+                    tint = Slate400,
+                    modifier = Modifier.size(24.dp)
                 )
             }
 
-            HorizontalDivider(color = Slate100)
+            HorizontalDivider(color = Slate100, thickness = 1.dp)
 
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    text = "CONTROL DE RACIONES (1 ración = ${item.rationQuantity} ${item.rationUnit}):",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Slate700
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedTextField(
-                        value = item.racionesEnviadasStr,
-                        onValueChange = { clean ->
-                            item.racionesEnviadasStr = clean.filter { c -> c.isDigit() || c == '.' }
-                        },
-                        label = { Text("Enviadas", fontSize = 10.sp) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-
-                    OutlinedTextField(
-                        value = item.racionesVendidasStr,
-                        onValueChange = { clean ->
-                            item.racionesVendidasStr = clean.filter { c -> c.isDigit() || c == '.' }
-                        },
-                        label = { Text("Vendidas", fontSize = 10.sp) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-
-                    OutlinedTextField(
-                        value = item.racionesRegaliaStr,
-                        onValueChange = { clean ->
-                            item.racionesRegaliaStr = clean.filter { c -> c.isDigit() || c == '.' }
-                        },
-                        label = { Text("Regalía", fontSize = 10.sp) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-            }
-
-            // RESULTS ROW
+            // 3 Datos Clave: CANTIDAD, PRECIO ACTUAL, INGRESOS GENERADOS
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFFF8FAFC), RoundedCornerShape(8.dp))
-                    .padding(8.dp),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                // CANTIDAD
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(
-                        text = "Sobrantes: ${"%.1f".format(item.racionesSobrantes)} raciones (${"%.2f".format(item.sobranteFisico)} ${item.unit})",
-                        fontSize = 11.sp,
+                        text = "CANTIDAD",
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2563EB)
+                        color = Slate500,
+                        letterSpacing = 0.5.sp
                     )
                     Text(
-                        text = "Regresan al inventario al cerrar jornada",
-                        fontSize = 10.sp,
-                        color = Slate500
+                        text = "${"%.1f".format(item.ventas)} ${item.unitDisplay}",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Black,
+                        color = if (item.ventas > 0.0 || item.isCompleted) Color(0xFF15803D) else ElQadreNavy
                     )
                 }
 
-                Text(
-                    text = "Venta: $${"%.2f".format(item.ingresoEstimado)} CUP",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Black,
-                    color = Color(0xFF15803D)
-                )
+                // PRECIO ACTUAL
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(
+                        text = "PRECIO ACTUAL",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Slate500,
+                        letterSpacing = 0.5.sp
+                    )
+                    Text(
+                        text = "$${"%.2f".format(item.precioVenta)} CUP",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Black,
+                        color = ElQadreNavy
+                    )
+                }
+
+                // INGRESOS GENERADOS
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    Text(
+                        text = "INGRESOS",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF15803D),
+                        letterSpacing = 0.5.sp
+                    )
+                    Text(
+                        text = "$${"%.2f".format(item.ingresoEstimado)} CUP",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color(0xFF15803D)
+                    )
+                }
+            }
+        }
+    }
+
+    if (showEditModal) {
+        AgregadoEditModal(
+            item = item,
+            onDismiss = { showEditModal = false }
+        )
+    }
+}
+
+@Composable
+fun AgregadoEditModal(
+    item: AgregadoCuadreItemState,
+    onDismiss: () -> Unit
+) {
+    var inicioInput by remember { mutableStateOf(item.existenciaInicialStr) }
+    var entradasInput by remember { mutableStateOf(item.entradasStr) }
+    var finalInput by remember { mutableStateOf(item.existenciaFinalStr) }
+    var mermaInput by remember { mutableStateOf(item.mermaStr) }
+
+    val inicioVal = inicioInput.toDoubleOrNull() ?: 0.0
+    val finalVal = finalInput.toDoubleOrNull() ?: 0.0
+    val entradasVal = entradasInput.toDoubleOrNull() ?: 0.0
+    val mermaVal = mermaInput.toDoubleOrNull() ?: 0.0
+
+    // Unidades vendidas = Inicio + Entradas - Final - Merma (lógica idéntica a Mercaderías)
+    val vendidasCalc = (inicioVal + entradasVal - finalVal - mermaVal).coerceAtLeast(0.0)
+    val ingresosCalc = vendidasCalc * item.precioVenta
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            modifier = Modifier
+                .fillMaxWidth(0.94f)
+                .padding(vertical = 16.dp)
+                .testTag("modal_edit_agregado_${item.materiaPrimaId}")
+        ) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Header
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = Color(0xFFDCFCE7),
+                                    border = BorderStroke(1.dp, Color(0xFF86EFAC))
+                                ) {
+                                    Text(
+                                        text = "AGREGADO",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = Color(0xFF15803D),
+                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                    )
+                                }
+                                Text(
+                                    text = item.name,
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = ElQadreNavy
+                                )
+                            }
+                            Text(
+                                text = "Precio: $${"%.2f".format(item.precioVenta)} CUP / ${item.unitDisplay}",
+                                fontSize = 13.sp,
+                                color = Slate500
+                            )
+                        }
+                        IconButton(onClick = onDismiss) {
+                            Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Slate500)
+                        }
+                    }
+                }
+
+                item {
+                    HorizontalDivider(color = Slate200)
+                }
+
+                // 1. INICIO
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = "1. INICIO (${item.unitDisplay}):",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Black,
+                            color = ElQadreNavy
+                        )
+                        OutlinedTextField(
+                            value = inicioInput,
+                            onValueChange = { clean ->
+                                inicioInput = clean.filter { c -> c.isDigit() || c == '.' }
+                            },
+                            placeholder = { Text("0.0", fontSize = 16.sp) },
+                            textStyle = LocalTextStyle.current.copy(fontSize = 18.sp, fontWeight = FontWeight.Bold),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("input_inicio_agregado_modal")
+                        )
+                    }
+                }
+
+                // 2. ENTRADAS
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = "2. ENTRADAS (${item.unitDisplay}):",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Black,
+                            color = ElQadreNavy
+                        )
+                        OutlinedTextField(
+                            value = entradasInput,
+                            onValueChange = { clean ->
+                                entradasInput = clean.filter { c -> c.isDigit() || c == '.' }
+                            },
+                            placeholder = { Text("0.0", fontSize = 16.sp) },
+                            textStyle = LocalTextStyle.current.copy(fontSize = 18.sp, fontWeight = FontWeight.Bold),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("input_entradas_agregado_modal")
+                        )
+                    }
+                }
+
+                // 3. MERMAS
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = "3. MERMAS (${item.unitDisplay}):",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Black,
+                            color = ElQadreNavy
+                        )
+                        OutlinedTextField(
+                            value = mermaInput,
+                            onValueChange = { clean ->
+                                mermaInput = clean.filter { c -> c.isDigit() || c == '.' }
+                            },
+                            placeholder = { Text("0.0", fontSize = 16.sp) },
+                            textStyle = LocalTextStyle.current.copy(fontSize = 18.sp, fontWeight = FontWeight.Bold),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("input_merma_agregado_modal")
+                        )
+                    }
+                }
+
+                // 4. FINAL
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = "4. FINAL (${item.unitDisplay}):",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Black,
+                            color = ElQadreNavy
+                        )
+                        OutlinedTextField(
+                            value = finalInput,
+                            onValueChange = { clean ->
+                                finalInput = clean.filter { c -> c.isDigit() || c == '.' }
+                            },
+                            placeholder = { Text("0.0", fontSize = 16.sp) },
+                            textStyle = LocalTextStyle.current.copy(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1D4ED8)),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("input_final_agregado_modal")
+                        )
+                    }
+                }
+
+                // Cálculo automático
+                item {
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = Color(0xFFF0FDF4),
+                        border = BorderStroke(1.5.dp, Color(0xFF86EFAC)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "CÁLCULO AUTOMÁTICO:",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFF166534),
+                                letterSpacing = 0.5.sp
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Ventas calculadas:", fontSize = 14.sp, color = Slate700)
+                                Text(
+                                    "${"%.1f".format(vendidasCalc)} ${item.unitDisplay}",
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Color(0xFF15803D)
+                                )
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Ingresos generados:", fontSize = 14.sp, color = Slate700)
+                                Text(
+                                    "$${"%.2f".format(ingresosCalc)} CUP",
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Color(0xFF15803D)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Botón grande CONFIRMAR REGISTRO
+                item {
+                    Button(
+                        onClick = {
+                            item.existenciaInicialStr = inicioInput.ifBlank { "0" }
+                            item.entradasStr = entradasInput.ifBlank { "0" }
+                            item.existenciaFinalStr = finalInput.ifBlank { "0" }
+                            item.mermaStr = mermaInput.ifBlank { "0" }
+                            onDismiss()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
+                            .testTag("btn_confirmar_agregado_modal")
+                    ) {
+                        Icon(Icons.Default.Check, contentDescription = null, tint = Color.White)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            "CONFIRMAR REGISTRO",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color.White
+                        )
+                    }
+                }
             }
         }
     }
@@ -3841,6 +4357,8 @@ fun CuadrePagosTab(
     mercaderiasStates: List<MercaderiaItemState>,
     tarifasBebidas: com.example.util.TarifasPagoBebidas = com.example.util.TarifasPagoBebidas(),
     users: List<com.example.data.local.model.User> = emptyList(),
+    productosElaborados: List<com.example.data.local.model.ProductoElaborado> = emptyList(),
+    products: List<com.example.data.local.model.Product> = emptyList(),
     activeJornadaId: Long = 1L,
     efectivoRealVal: Double = 0.0,
     utilidadTeorica: Double = 0.0,
@@ -3853,8 +4371,9 @@ fun CuadrePagosTab(
         cantidadDependientes: Int,
         dependientes: List<DependientePagoDistribucion>,
         distributionMode: String,
-        cantidadCocineros: Int
-    ) -> Unit = { _, _, _, _, _, _, _, _ -> },
+        cantidadCocineros: Int,
+        spaguettiPago: Double
+    ) -> Unit = { _, _, _, _, _, _, _, _, _ -> },
     onModificarPagos: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -3865,20 +4384,87 @@ fun CuadrePagosTab(
         CuadrePagosManager.getPagosJornada(context, activeJornadaId)
     }
 
-    // Estado de trabajadores de cocina a pagar hoy (independiente de la Ficha de Costo)
+    // 1. OBTENCIÓN DE DATOS DE FICHAS DE PRODUCTO DE PRODUCCIÓN
+    // Para PIZZAS, utilizar como número de cocineros/personal de Cocina el valor establecido en su Ficha
+    val pizzaElaborado = remember(productosElaborados, products) {
+        productosElaborados.find { el ->
+            products.any { p -> p.id == el.productId && p.name.contains("pizza", ignoreCase = true) }
+        }
+    }
+    val pizzaCocinerosFromFicha = pizzaElaborado?.cantidadCocineros?.takeIf { it > 0 }
+        ?: produccionStates.find { it.productName.contains("pizza", ignoreCase = true) }?.let { p ->
+            productosElaborados.find { it.productId == p.productId }?.cantidadCocineros?.takeIf { it > 0 }
+        }
+        ?: 1
+
+    // Estado de trabajadores de cocina a pagar hoy para Pizzas (inicializado automáticamente desde su Ficha)
     var cantidadCocineros by rememberSaveable(activeJornadaId) {
-        mutableStateOf(savedPagos?.cantidadCocineros ?: 1)
+        mutableStateOf(savedPagos?.cantidadCocineros ?: pizzaCocinerosFromFicha)
     }
 
     LaunchedEffect(cantidadCocineros) {
-        produccionStates.forEach { it.cantidadCocinerosStr = cantidadCocineros.toString() }
+        produccionStates.filter {
+            !it.productName.contains("spaguetti", ignoreCase = true) &&
+            !it.productName.contains("espagueti", ignoreCase = true) &&
+            !it.productName.contains("spaghetti", ignoreCase = true)
+        }.forEach { it.cantidadCocinerosStr = cantidadCocineros.toString() }
     }
 
-    // 1. CÁLCULO DE PAGOS COCINA (Producción)
-    // Pago unitario de la Ficha × Cantidad de trabajadores indicada en el Pago de ese día
-    val totalPagoCocina = produccionStates.sumOf { item ->
+    // SPAGUETTIS: producto registrado con pago de Cocina configurado en su Ficha
+    val spaguettiProduct = remember(products) {
+        products.find { p ->
+            p.name.contains("spaguetti", ignoreCase = true) ||
+            p.name.contains("espagueti", ignoreCase = true) ||
+            p.name.contains("spaghetti", ignoreCase = true)
+        }
+    }
+    val spaguettiElaborado = remember(spaguettiProduct, productosElaborados) {
+        spaguettiProduct?.let { p -> productosElaborados.find { it.productId == p.id } }
+    }
+    val spaguettiFichaPago = spaguettiElaborado?.pagoCocinaUnitario ?: 0.0
+    val spaguettiHasFichaPago = spaguettiProduct != null && spaguettiFichaPago > 0.0
+
+    val spaguettiInProduccion = produccionStates.find {
+        it.productName.contains("spaguetti", ignoreCase = true) ||
+        it.productName.contains("espagueti", ignoreCase = true) ||
+        it.productName.contains("spaghetti", ignoreCase = true)
+    }
+
+    // Si el producto utiliza EL PAGO FIJO configurado en su Ficha
+    val isSpaguettiFijoConfigurado = spaguettiElaborado?.isPagoCocinaFijo == true ||
+            spaguettiElaborado?.recipeName?.contains("fijo", ignoreCase = true) == true ||
+            spaguettiProduct?.description?.contains("fijo", ignoreCase = true) == true ||
+            spaguettiInProduccion == null
+
+    val defaultSpaguettiMonto = remember(spaguettiHasFichaPago, spaguettiFichaPago, isSpaguettiFijoConfigurado, spaguettiInProduccion) {
+        if (!spaguettiHasFichaPago) 0.0
+        else if (isSpaguettiFijoConfigurado) {
+            spaguettiFichaPago * (if ((spaguettiElaborado?.cantidadCocineros ?: 1) > 0) spaguettiElaborado?.cantidadCocineros ?: 1 else 1)
+        } else {
+            (spaguettiInProduccion?.vendible ?: 0.0) * spaguettiFichaPago * (spaguettiInProduccion?.cantidadCocineros ?: 1)
+        }
+    }
+
+    var spaguettiMontoStr by rememberSaveable(activeJornadaId) {
+        mutableStateOf(
+            if (savedPagos != null && savedPagos.spaguettiPago > 0.0) {
+                if (savedPagos.spaguettiPago % 1.0 == 0.0) savedPagos.spaguettiPago.toInt().toString() else "%.2f".format(savedPagos.spaguettiPago)
+            } else if (defaultSpaguettiMonto > 0.0) {
+                if (defaultSpaguettiMonto % 1.0 == 0.0) defaultSpaguettiMonto.toInt().toString() else "%.2f".format(defaultSpaguettiMonto)
+            } else ""
+        )
+    }
+
+    val spaguettiMontoVal = spaguettiMontoStr.toDoubleOrNull() ?: defaultSpaguettiMonto
+
+    // CÁLCULO DE PAGOS COCINA (Producción)
+    val produccionPizzasCocina = produccionStates.filter {
+        spaguettiInProduccion == null || it.productId != spaguettiInProduccion.productId
+    }.sumOf { item ->
         item.vendible * item.pagoCocinaUnitario * item.cantidadCocineros
     }
+
+    val totalPagoCocina = produccionPizzasCocina + (if (spaguettiHasFichaPago) spaguettiMontoVal else (spaguettiInProduccion?.let { it.vendible * it.pagoCocinaUnitario * it.cantidadCocineros } ?: 0.0))
 
     // 2. CÁLCULO DE PAGOS DEPENDIENTE Y CAJERO
     val pagoDependienteProduccion = produccionStates.sumOf { item ->
@@ -4273,7 +4859,7 @@ fun CuadrePagosTab(
                                 color = ElQadreNavy
                             )
                             Text(
-                                text = "Pago unitario de Ficha × Trabajadores de hoy",
+                                text = "Valores iniciales tomados de Fichas de Producción",
                                 fontSize = 10.sp,
                                 color = Slate500
                             )
@@ -4293,131 +4879,266 @@ fun CuadrePagosTab(
                     }
                 }
 
-                // Selector de cantidad de trabajadores de cocina a pagar en la jornada
+                // ==============================
+                // APARTADO PIZZAS
+                // ==============================
                 Surface(
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(12.dp),
                     color = Slate50,
                     border = BorderStroke(1.dp, Slate200),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Column {
-                            Text(
-                                text = "Trabajadores a pagar hoy",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Slate800
-                            )
-                            Text(
-                                text = "Independiente de la Ficha de Costo",
-                                fontSize = 10.sp,
-                                color = Slate500
-                            )
-                        }
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            FilledTonalIconButton(
-                                onClick = {
-                                    if (cantidadCocineros > 1) {
-                                        cantidadCocineros--
-                                        produccionStates.forEach { it.cantidadCocinerosStr = cantidadCocineros.toString() }
-                                    }
-                                },
-                                enabled = !pagosConfirmados && cantidadCocineros > 1,
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Icon(Icons.Default.Remove, contentDescription = "Menos trabajadores", modifier = Modifier.size(16.dp))
-                            }
-
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = Color.White,
-                                border = BorderStroke(1.dp, Slate300),
-                                modifier = Modifier.widthIn(min = 44.dp)
-                            ) {
-                                Text(
-                                    text = "$cantidadCocineros",
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = ElQadreNavy,
-                                    textAlign = TextAlign.Center,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                                )
-                            }
-
-                            FilledTonalIconButton(
-                                onClick = {
-                                    if (cantidadCocineros < 99) {
-                                        cantidadCocineros++
-                                        produccionStates.forEach { it.cantidadCocinerosStr = cantidadCocineros.toString() }
-                                    }
-                                },
-                                enabled = !pagosConfirmados,
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Icon(Icons.Default.Add, contentDescription = "Más trabajadores", modifier = Modifier.size(16.dp))
-                            }
-                        }
-                    }
-                }
-
-                HorizontalDivider(color = Slate100)
-
-                if (produccionStates.isEmpty()) {
-                    Text(
-                        text = "No se registraron productos de producción en esta jornada.",
-                        fontSize = 12.sp,
-                        color = Slate500
-                    )
-                } else {
-                    produccionStates.forEach { item ->
-                        val subtotalCocina = item.vendible * item.pagoCocinaUnitario * item.cantidadCocineros
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = "PIZZAS",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = Slate800
+                                    )
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = Color(0xFFFED7AA)
+                                    ) {
+                                        Text(
+                                            text = "Ficha: $pizzaCocinerosFromFicha ${if (pizzaCocinerosFromFicha > 1) "cocineros" else "cocinero"}",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF9A3412),
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
                                 Text(
-                                    text = item.productName,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Slate800
-                                )
-                                Text(
-                                    text = "${"%.1f".format(item.vendible)} ${item.unit} vendibles × $${"%.2f".format(item.pagoCocinaUnitario)} × ${item.cantidadCocineros} ${if (item.cantidadCocineros > 1) "trabajadores" else "trabajador"}",
-                                    fontSize = 11.sp,
+                                    text = "Personal de cocina a pagar hoy (inicializado desde su Ficha)",
+                                    fontSize = 10.sp,
                                     color = Slate500
                                 )
                             }
+
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                FilledTonalIconButton(
+                                    onClick = {
+                                        if (cantidadCocineros > 1) {
+                                            cantidadCocineros--
+                                            produccionStates.filter {
+                                                !it.productName.contains("spaguetti", ignoreCase = true) &&
+                                                !it.productName.contains("espagueti", ignoreCase = true) &&
+                                                !it.productName.contains("spaghetti", ignoreCase = true)
+                                            }.forEach { it.cantidadCocinerosStr = cantidadCocineros.toString() }
+                                        }
+                                    },
+                                    enabled = !pagosConfirmados && cantidadCocineros > 1,
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(Icons.Default.Remove, contentDescription = "Menos cocineros", modifier = Modifier.size(16.dp))
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Color.White,
+                                    border = BorderStroke(1.dp, Slate300),
+                                    modifier = Modifier.widthIn(min = 44.dp)
+                                ) {
+                                    Text(
+                                        text = "$cantidadCocineros",
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = ElQadreNavy,
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                    )
+                                }
+
+                                FilledTonalIconButton(
+                                    onClick = {
+                                        if (cantidadCocineros < 99) {
+                                            cantidadCocineros++
+                                            produccionStates.filter {
+                                                !it.productName.contains("spaguetti", ignoreCase = true) &&
+                                                !it.productName.contains("espagueti", ignoreCase = true) &&
+                                                !it.productName.contains("spaghetti", ignoreCase = true)
+                                            }.forEach { it.cantidadCocinerosStr = cantidadCocineros.toString() }
+                                        }
+                                    },
+                                    enabled = !pagosConfirmados,
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = "Más cocineros", modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        }
+
+                        val pizzaItems = produccionStates.filter {
+                            !it.productName.contains("spaguetti", ignoreCase = true) &&
+                            !it.productName.contains("espagueti", ignoreCase = true) &&
+                            !it.productName.contains("spaghetti", ignoreCase = true)
+                        }
+
+                        if (pizzaItems.isEmpty()) {
                             Text(
-                                text = "$${"%.2f".format(subtotalCocina)} CUP",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Black,
-                                color = if (subtotalCocina > 0) Slate800 else Slate400
+                                text = "No se registraron productos de Pizzas en esta jornada.",
+                                fontSize = 11.sp,
+                                color = Slate500
+                            )
+                        } else {
+                            pizzaItems.forEach { item ->
+                                val subtotalCocina = item.vendible * item.pagoCocinaUnitario * item.cantidadCocineros
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = item.productName,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Slate800
+                                        )
+                                        Text(
+                                            text = "${"%.1f".format(item.vendible)} ${item.unit} vendibles × $${"%.2f".format(item.pagoCocinaUnitario)} × ${item.cantidadCocineros} ${if (item.cantidadCocineros > 1) "cocineros" else "cocinero"}",
+                                            fontSize = 11.sp,
+                                            color = Slate500
+                                        )
+                                    }
+                                    Text(
+                                        text = "$${"%.2f".format(subtotalCocina)} CUP",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = if (subtotalCocina > 0) Slate800 else Slate400
+                                    )
+                                }
+                                HorizontalDivider(color = Slate200.copy(alpha = 0.5f))
+                            }
+                        }
+                    }
+                }
+
+                // ==============================
+                // APARTADO SPAGUETTIS
+                // (Cuando exista registrado y tenga configurado pago de Cocina en su Ficha)
+                // ==============================
+                if (spaguettiHasFichaPago) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFFFFFBEB),
+                        border = BorderStroke(1.dp, Color(0xFFFDE68A)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = spaguettiProduct?.name ?: "SPAGUETTIS",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = Slate800
+                                    )
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = Color(0xFFFEF3C7)
+                                    ) {
+                                        Text(
+                                            text = if (isSpaguettiFijoConfigurado) "PAGO FIJO" else "POR UNIDAD",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = Color(0xFF92400E),
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = Color.White,
+                                    border = BorderStroke(1.dp, Color(0xFFFDE68A))
+                                ) {
+                                    Text(
+                                        text = "$${"%.2f".format(spaguettiMontoVal)} CUP",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = Color(0xFFB45309),
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+
+                            Text(
+                                text = "Configurado en Ficha: $${"%.2f".format(spaguettiFichaPago)} CUP ${if (isSpaguettiFijoConfigurado) "(Pago Fijo)" else "por unidad"}. Importe inicial tomado de dicha Ficha, modificable libremente para esta jornada.",
+                                fontSize = 10.sp,
+                                color = Color(0xFF78350F)
+                            )
+
+                            if (spaguettiInProduccion != null) {
+                                Text(
+                                    text = "Producción de hoy: ${"%.1f".format(spaguettiInProduccion.vendible)} ${spaguettiInProduccion.unit} vendibles",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Slate700
+                                )
+                            }
+
+                            // Campo para modificar manualmente el importe en Pagos
+                            OutlinedTextField(
+                                value = spaguettiMontoStr,
+                                onValueChange = { newVal ->
+                                    if (newVal.isEmpty() || newVal.matches(Regex("""^\d*\.?\d*$"""))) {
+                                        spaguettiMontoStr = newVal
+                                    }
+                                },
+                                label = { Text("Importe a pagar Cocina - ${spaguettiProduct?.name ?: "Spaguettis"} ($ CUP)") },
+                                placeholder = { Text("%.2f".format(defaultSpaguettiMonto)) },
+                                singleLine = true,
+                                enabled = !pagosConfirmados,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("spaguettis_pago_input")
                             )
                         }
-                        HorizontalDivider(color = Slate50)
                     }
                 }
 
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = Color(0xFFFFFBEB),
+                    color = Color(0xFFEFF6FF),
+                    border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = "Pago Cocina = Pago unitario de Ficha ($${"%.2f".format(produccionStates.firstOrNull()?.pagoCocinaUnitario ?: 0.0)} CUP) × Cantidad de trabajadores indicada hoy ($cantidadCocineros). La cantidad configurada en la Ficha de Costo no fija los cocineros del día.",
+                        text = "Los pagos de Cocina toman como valor inicial los datos configurados en las Fichas de Producto de Producción (Pizzas: cantidad de cocineros; Spaguettis: pago fijado en Ficha). Ambos pueden modificarse manualmente y se suman al TOTAL DE PAGOS EFECTUADOS en Caja sin descontarse de Utilidades.",
                         fontSize = 10.sp,
-                        color = Color(0xFFB45309),
+                        color = Color(0xFF1E40AF),
                         modifier = Modifier.padding(8.dp)
                     )
                 }
@@ -5025,274 +5746,7 @@ fun CuadrePagosTab(
         }
 
         // =============================================================
-        // 4. ESTADO DE EFECTIVO Y DINERO FINAL EN CAJA (Sin doble誕生)
-        // =============================================================
-        Surface(
-            shape = RoundedCornerShape(20.dp),
-            color = Color.White,
-            border = BorderStroke(1.5.dp, Slate200),
-            shadowElevation = 3.dp,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(18.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                // ENCABEZADO DE SECCIÓN
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = ElQadreNavy.copy(alpha = 0.1f),
-                            modifier = Modifier.size(38.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Outlined.AccountBalanceWallet,
-                                    contentDescription = null,
-                                    tint = ElQadreNavy,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
-                        }
-                        Column {
-                            Text(
-                                text = "BALANCE FINAL DE CAJA",
-                                fontWeight = FontWeight.Black,
-                                fontSize = 15.sp,
-                                color = ElQadreNavy
-                            )
-                            Text(
-                                text = "Efectivo disponible tras liquidar pagos",
-                                fontSize = 11.sp,
-                                color = Slate500
-                            )
-                        }
-                    }
-                    if (pagosConfirmados) {
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = Color(0xFFDCFCE7)
-                        ) {
-                            Text(
-                                text = "PAGOS REALIZADOS",
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Black,
-                                color = Color(0xFF166534),
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                            )
-                        }
-                    } else {
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = Color(0xFFFEF3C7)
-                        ) {
-                            Text(
-                                text = "PENDIENTE PAGOS",
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Black,
-                                color = Color(0xFF92400E),
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                            )
-                        }
-                    }
-                }
-
-                HorizontalDivider(color = Slate100)
-
-                // PRIMER BLOQUE: EFECTIVO CONTADO EN CAJA + TOTAL PAGOS DE PERSONAL
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    // TARJETA 1: EFECTIVO CONTADO EN CAJA
-                    Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = Color(0xFFF8FAFC),
-                        border = BorderStroke(1.dp, Slate200),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(14.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.Payments,
-                                    contentDescription = null,
-                                    tint = ElQadreNavy,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Text(
-                                    text = "EFECTIVO CONTADO",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = Slate600
-                                )
-                            }
-                            Text(
-                                text = "$${"%.2f".format(efectivoRealVal)} CUP",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Black,
-                                color = ElQadreNavy
-                            )
-                            Text(
-                                text = "Físico en caja",
-                                fontSize = 10.sp,
-                                color = Slate500
-                            )
-                        }
-                    }
-
-                    // TARJETA 2: TOTAL PAGOS DE PERSONAL
-                    Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = Color(0xFFFEF2F2),
-                        border = BorderStroke(1.dp, Color(0xFFFCA5A5)),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(14.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.Badge,
-                                    contentDescription = null,
-                                    tint = Color(0xFFDC2626),
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Text(
-                                    text = "PAGOS PERSONAL",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = Color(0xFF991B1B)
-                                )
-                            }
-                            Text(
-                                text = "-$${"%.2f".format(totalPagoPersonal)} CUP",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Black,
-                                color = Color(0xFFDC2626)
-                            )
-                            Text(
-                                text = if (pagosConfirmados) "Salida real confirmada" else "Salida por pagar",
-                                fontSize = 10.sp,
-                                color = Color(0xFF991B1B).copy(alpha = 0.8f)
-                            )
-                        }
-                    }
-                }
-
-                // TARJETA DE MAYOR PRESENCIA VISUAL (HERO): DINERO FINAL EN CAJA
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = ElQadreNavy,
-                    border = BorderStroke(2.dp, ElQadreGold),
-                    shadowElevation = 6.dp,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = ElQadreGold.copy(alpha = 0.25f)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.AccountBalance,
-                                        contentDescription = null,
-                                        tint = ElQadreGold,
-                                        modifier = Modifier
-                                            .padding(6.dp)
-                                            .size(24.dp)
-                                    )
-                                }
-                                Text(
-                                    text = "DINERO FINAL EN CAJA",
-                                    fontWeight = FontWeight.Black,
-                                    fontSize = 16.sp,
-                                    color = Color.White
-                                )
-                            }
-
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = ElQadreGold
-                            ) {
-                                Text(
-                                    text = "EFECTIVO RESTANTE",
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = ElQadreNavy,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                )
-                            }
-                        }
-
-                        HorizontalDivider(color = Color.White.copy(alpha = 0.15f))
-
-                        Text(
-                            text = "EFECTIVO CONTADO ($${"%.2f".format(efectivoRealVal)}) − PAGOS REALES ($${"%.2f".format(if (pagosConfirmados) totalPagoPersonal else totalPagoPersonal)}) = DINERO FINAL",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Slate300
-                        )
-
-                        Text(
-                            text = "$${"%.2f".format(dineroFinalEnCaja)} CUP",
-                            fontSize = 36.sp,
-                            fontWeight = FontWeight.Black,
-                            color = Color(0xFF4ADE80),
-                            modifier = Modifier.padding(vertical = 4.dp)
-                        )
-
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = Color.White.copy(alpha = 0.10f),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = "Los pagos de personal representan la salida física real de efectivo de la caja. No se vuelven a descontar como costo para calcular la utilidad del negocio.",
-                                fontSize = 10.sp,
-                                color = Slate300,
-                                modifier = Modifier.padding(8.dp)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // =============================================================
-        // 5. ACCIÓN DE CONFIRMACIÓN DE PAGOS
+        // 4. ACCIÓN DE CONFIRMACIÓN DE PAGOS
         // =============================================================
         if (pagosConfirmados) {
             Surface(
@@ -5354,7 +5808,8 @@ fun CuadrePagosTab(
                                 cantidadDependientes,
                                 dependientesList,
                                 distributionMode,
-                                cantidadCocineros
+                                cantidadCocineros,
+                                spaguettiMontoVal
                             )
                         }
                     },

@@ -30,6 +30,7 @@ data class ProductCostSheet(
     val gastoIndirectoAsignado: Double,
     val gastoIndirectoUnitario: Double,
     val gastoGeneralUnitarioProrrateo: Double = 0.0, // Gasto general prorrateado por unidad (Prompt 2)
+    val isPagoCocinaFijo: Boolean = false,
     val pagoCocinaUnitario: Double = 0.0,
     val cantidadCocineros: Int = 1,
     val totalPagoCocinaUnitario: Double = 0.0,
@@ -699,9 +700,16 @@ object CostCalculationHelper {
         val depreciacionInversionesUnitario = if (productPpd > 0.0) depreciacionAsignada / productPpd else 0.0
 
         // 5. PAGOS DE PERSONAL ASOCIADOS
+        val isPagoCocinaFijo = prodElaborado?.isPagoCocinaFijo ?: false
         val pagoCocinaUnitario = prodElaborado?.pagoCocinaUnitario ?: 0.0
         val cantidadCocineros = prodElaborado?.cantidadCocineros?.takeIf { it > 0 } ?: 1
-        val totalPagoCocina = if (pagoCocinaUnitario > 0.0) pagoCocinaUnitario * cantidadCocineros else 0.0
+        // Si EL PAGO FIJO está activado: PAGO FIJO DIARIO ÷ PPD = COSTO DE PAGO FIJO POR UNIDAD
+        // Si está desactivado: pago por unidad × cantidad de cocineros
+        val totalPagoCocina = if (isPagoCocinaFijo) {
+            if (productPpd > 0.0) pagoCocinaUnitario / productPpd else 0.0
+        } else {
+            if (pagoCocinaUnitario > 0.0) pagoCocinaUnitario * cantidadCocineros else 0.0
+        }
         val pagoDependienteUnitario = prodElaborado?.pagoDependienteUnitario ?: 0.0
         val totalPagoDependiente = pagoDependienteUnitario
         val pagoCajeroUnitario = prodElaborado?.pagoCajeroUnitario ?: 0.0
@@ -744,6 +752,7 @@ object CostCalculationHelper {
             gastoIndirectoAsignado = asignacionDirecta,
             gastoIndirectoUnitario = gastoIndirectoUnitario,
             gastoGeneralUnitarioProrrateo = gastoGeneralUnitarioProrrateo,
+            isPagoCocinaFijo = isPagoCocinaFijo,
             pagoCocinaUnitario = pagoCocinaUnitario,
             cantidadCocineros = cantidadCocineros,
             totalPagoCocinaUnitario = totalPagoCocina,

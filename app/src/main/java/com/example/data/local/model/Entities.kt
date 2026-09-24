@@ -313,7 +313,7 @@ data class MateriaPrima(
     val racionesDisponibles: Double get() = if (rationQuantity > 0.0) (stock / rationQuantity).coerceAtLeast(0.0) else 0.0
     val costoPorRacion: Double get() = if (rationQuantity > 0.0) unitCost * rationQuantity else 0.0
     val precioSugeridoCalculado: Double get() = if (costoPorRacion > 0.0) costoPorRacion / 0.70 else 0.0
-    val precioEfectivoVenta: Double get() = if (salePrice > 0.0) salePrice else precioSugeridoCalculado
+    val precioEfectivoVenta: Double get() = if (salePrice > 0.0) salePrice else if (suggestedPrice > 0.0) suggestedPrice else precioSugeridoCalculado
 }
 
 @Entity(tableName = "productos_elaborados")
@@ -331,13 +331,18 @@ data class ProductoElaborado(
     val precioDefinitivo: Double = 0.0, // Precio definitivo confirmado por el Administrador
     val hasPrecioDefinitivo: Boolean = false, // false = SIN PRECIO DEFINITIVO, true = PRECIO DEFINITIVO CONFIGURADO
     val targetMarginPct: Double = 30.0, // Margen de referencia para calcular precio de referencia (ej. 30%)
-    val pagoCocinaUnitario: Double = 0.0, // Pago por unidad producida/vendida para cocina
+    val pagoCocinaUnitario: Double = 0.0, // Pago por unidad producida/vendida para cocina o Pago Fijo Diario si isPagoCocinaFijo = true
     val cantidadCocineros: Int = 1, // Cantidad de cocineros asociados al producto
+    val isPagoCocinaFijo: Boolean = false, // true = PAGO FIJO DIARIO, false = PAGO POR UNIDAD
     val pagoDependienteUnitario: Double = 0.0, // Pago por unidad producida/vendida para dependiente (1 dependiente asociado)
     val pagoCajeroUnitario: Double = 0.0 // Pago por unidad producida/vendida para cajero
 ) {
     val effectivePpd: Double get() = if (ppd > 0.0) ppd else (if (estimatedDailyQuantity > 0.0) estimatedDailyQuantity else 10.0)
-    val totalPagoCocinaUnitario: Double get() = if (pagoCocinaUnitario > 0.0) pagoCocinaUnitario * (if (cantidadCocineros > 0) cantidadCocineros else 1) else 0.0
+    val totalPagoCocinaUnitario: Double get() = if (isPagoCocinaFijo) {
+        if (effectivePpd > 0.0) pagoCocinaUnitario / effectivePpd else 0.0
+    } else {
+        if (pagoCocinaUnitario > 0.0) pagoCocinaUnitario * (if (cantidadCocineros > 0) cantidadCocineros else 1) else 0.0
+    }
     val totalPagoDependienteUnitario: Double get() = pagoDependienteUnitario
     val totalPagoCajeroUnitario: Double get() = pagoCajeroUnitario
     val totalPagoPersonalUnitario: Double get() = totalPagoCocinaUnitario + totalPagoDependienteUnitario + totalPagoCajeroUnitario
