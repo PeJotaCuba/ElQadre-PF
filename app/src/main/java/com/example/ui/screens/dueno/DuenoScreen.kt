@@ -13274,6 +13274,62 @@ fun DuenoAjustesView(
             }
 
             // List of Archived Jornadas
+            var showConfirmDeleteAllJornadas by remember { mutableStateOf(false) }
+
+            if (showConfirmDeleteAllJornadas) {
+                AlertDialog(
+                    onDismissRequest = { showConfirmDeleteAllJornadas = false },
+                    title = {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFDC2626))
+                            Text("¿Eliminar todas las jornadas?", fontWeight = FontWeight.Bold, color = Slate900)
+                        }
+                    },
+                    text = {
+                        Text(
+                            "Esta acción eliminará de manera permanente TODAS las jornadas registradas en el dispositivo y reiniciará el contador para que la próxima sea la JORNADA 1. Esta operación no se puede deshacer.",
+                            fontSize = 14.sp,
+                            color = Slate700
+                        )
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                viewModel.eliminarTodasLasJornadas {
+                                    Toast.makeText(context, "Todas las jornadas han sido eliminadas.", Toast.LENGTH_SHORT).show()
+                                }
+                                showConfirmDeleteAllJornadas = false
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                            modifier = Modifier.testTag("btn_confirm_delete_all_jornadas")
+                        ) {
+                            Text("SÍ, ELIMINAR TODO")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showConfirmDeleteAllJornadas = false }) {
+                            Text("CANCELAR", color = Slate600)
+                        }
+                    }
+                )
+            }
+
+            if (displayedJornadas.isNotEmpty()) {
+                Button(
+                    onClick = { showConfirmDeleteAllJornadas = true },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp)
+                        .testTag("btn_eliminar_todas_las_jornadas")
+                ) {
+                    Icon(Icons.Outlined.DeleteForever, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("ELIMINAR TODAS LAS JORNADAS", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+
             if (displayedJornadas.isEmpty()) {
                 Box(
                     modifier = Modifier

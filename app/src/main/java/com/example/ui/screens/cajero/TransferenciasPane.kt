@@ -50,19 +50,39 @@ fun TransferenciasPane(
     triggerScanSignal: Int = 0
 ) {
     val context = LocalContext.current
-    var selectedTransferDateFilter by remember { mutableStateOf("TODAS") } // "TODAS" or "dd/MM/yyyy"
+    val dateOnlyFormatter = remember { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()) }
+    val todayDateStr = remember(uiState.activeJornada) {
+        val nowCal = Calendar.getInstance()
+        if (uiState.activeJornada != null && uiState.activeJornada.openedAt > 0) {
+            val jCal = Calendar.getInstance().apply { timeInMillis = uiState.activeJornada.openedAt }
+            if (jCal.get(Calendar.YEAR) == nowCal.get(Calendar.YEAR) &&
+                jCal.get(Calendar.DAY_OF_YEAR) == nowCal.get(Calendar.DAY_OF_YEAR)
+            ) {
+                SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(uiState.activeJornada.openedAt))
+            } else {
+                SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date())
+            }
+        } else {
+            SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date())
+        }
+    }
+    var selectedTransferDateFilter by remember(todayDateStr) { mutableStateOf(todayDateStr) } // Default to "HOY"
     var showInformeDialog by remember { mutableStateOf(false) }
     var showAgregarExternaDialog by remember { mutableStateOf(false) }
     var showConfirmBorrarTodoDialog by remember { mutableStateOf(false) }
     var pendingNewTransfersToConfirm by remember { mutableStateOf<List<com.example.util.SearchedPagoXMovilSms>>(emptyList()) }
     var selectedTransferForDetail by remember { mutableStateOf<Transferencia?>(null) }
 
-    val dateOnlyFormatter = remember { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()) }
-
     fun autoSearchJornadaTransfers(showNoNewToast: Boolean = false) {
         val cal = Calendar.getInstance()
+        val nowCal = Calendar.getInstance()
         if (uiState.activeJornada != null && uiState.activeJornada.openedAt > 0) {
-            cal.timeInMillis = uiState.activeJornada.openedAt
+            val jCal = Calendar.getInstance().apply { timeInMillis = uiState.activeJornada.openedAt }
+            if (jCal.get(Calendar.YEAR) == nowCal.get(Calendar.YEAR) &&
+                jCal.get(Calendar.DAY_OF_YEAR) == nowCal.get(Calendar.DAY_OF_YEAR)
+            ) {
+                cal.timeInMillis = uiState.activeJornada.openedAt
+            }
         }
         val existingTxs = uiState.allTransferencias.map { it.transactionNumber.trim() }.toSet()
         val list = com.example.util.SmsSearchHelper.searchPagoXMovilByDate(context, cal, existingTxs)
@@ -120,8 +140,6 @@ fun TransferenciasPane(
             calendar.get(Calendar.DAY_OF_MONTH)
         )
     }
-
-    val todayDateStr = remember { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date()) }
 
     val filteredTransfers = remember(uiState.allTransferencias, selectedTransferDateFilter) {
         uiState.allTransferencias.filter { tx ->
@@ -198,20 +216,12 @@ fun TransferenciasPane(
             }
         }
 
-        // SELECTOR DE FECHA
+        // SELECTOR DE FECHA (Hoy -> Todas -> Elegir fecha)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Option "TODAS"
-            FilterChip(
-                selected = selectedTransferDateFilter == "TODAS",
-                onClick = { selectedTransferDateFilter = "TODAS" },
-                label = { Text("Todas las Fechas", fontSize = 11.5.sp, fontWeight = FontWeight.Bold) },
-                modifier = Modifier.height(38.dp).testTag("chip_fecha_todas")
-            )
-
             // Option "HOY"
             FilterChip(
                 selected = selectedTransferDateFilter == todayDateStr,
@@ -220,7 +230,15 @@ fun TransferenciasPane(
                 modifier = Modifier.height(38.dp).testTag("chip_fecha_hoy")
             )
 
-            // Specific Date Selector Button
+            // Option "TODAS"
+            FilterChip(
+                selected = selectedTransferDateFilter == "TODAS",
+                onClick = { selectedTransferDateFilter = "TODAS" },
+                label = { Text("Todas", fontSize = 11.5.sp, fontWeight = FontWeight.Bold) },
+                modifier = Modifier.height(38.dp).testTag("chip_fecha_todas")
+            )
+
+            // Specific Date Selector Button ("Elegir fecha")
             Surface(
                 shape = RoundedCornerShape(8.dp),
                 color = if (selectedTransferDateFilter != "TODAS" && selectedTransferDateFilter != todayDateStr) ElQadreGold.copy(alpha = 0.15f) else Color.White,
@@ -241,15 +259,15 @@ fun TransferenciasPane(
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         Icon(Icons.Outlined.CalendarToday, contentDescription = null, modifier = Modifier.size(15.dp), tint = ElQadreNavy)
                         Text(
-                            text = if (selectedTransferDateFilter == "TODAS") "Elegir Fecha..." else selectedTransferDateFilter,
+                            text = if (selectedTransferDateFilter == "TODAS" || selectedTransferDateFilter == todayDateStr) "Elegir Fecha..." else selectedTransferDateFilter,
                             fontSize = 11.5.sp,
                             fontWeight = FontWeight.Bold,
                             color = ElQadreNavy
                         )
                     }
-                    if (selectedTransferDateFilter != "TODAS") {
+                    if (selectedTransferDateFilter != "TODAS" && selectedTransferDateFilter != todayDateStr) {
                         IconButton(
-                            onClick = { selectedTransferDateFilter = "TODAS" },
+                            onClick = { selectedTransferDateFilter = todayDateStr },
                             modifier = Modifier.size(24.dp)
                         ) {
                             Icon(Icons.Default.Close, contentDescription = "Limpiar fecha", modifier = Modifier.size(14.dp), tint = Slate500)

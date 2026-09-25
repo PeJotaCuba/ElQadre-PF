@@ -80,6 +80,9 @@ interface JornadaDao {
 
     @Query("DELETE FROM jornadas")
     suspend fun deleteAllJornadas()
+
+    @Query("DELETE FROM sqlite_sequence WHERE name = 'jornadas'")
+    suspend fun resetJornadaSequence()
 }
 
 @Dao

@@ -1796,8 +1796,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             val closedTandasForJornada = openTandas.map { tanda ->
                 val finalQty = if (tanda.actualYield > 0.0) tanda.actualYield else if (tanda.expectedYield > 0.0) tanda.expectedYield else tanda.estimatedYield
-                val rend = if (tanda.baseQuantityUsed > 0.0) finalQty / tanda.baseQuantityUsed else 0.0
                 val prod = state.products.find { it.id == tanda.productId }
+                val presEquiv = if (tanda.specialPresentationEquivalence > 0.0) tanda.specialPresentationEquivalence else {
+                    prod?.let { parsePresentacionesEspeciales(it.presentacionesEspeciales).find { p -> p.name.equals(tanda.specialPresentationName, true) }?.baseEquivalence } ?: 1.0
+                }
+                val specialUnitsEq = if (tanda.specialPresentationQty > 0.0) tanda.specialPresentationQty * presEquiv else 0.0
+                val totalYieldUnits = finalQty + specialUnitsEq
+                val expectedVal = if (tanda.expectedYield > 0.0) tanda.expectedYield else tanda.estimatedYield
+                val yieldPct = if (expectedVal > 0.0) (totalYieldUnits / expectedVal) * 100.0 else 100.0
                 val salePrice = if (tanda.salePrice > 0.0) tanda.salePrice else (prod?.price ?: 0.0)
                 val rev = finalQty * salePrice
                 val profit = rev - tanda.totalBatchCost
@@ -1808,7 +1814,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     jornadaId = currentJornada.id,
                     status = "CERRADA",
                     actualYield = finalQty,
-                    yieldPercentage = rend,
+                    yieldPercentage = yieldPct,
                     expectedRevenue = rev,
                     estimatedProfit = profit,
                     profitMargin = pMargin,
@@ -1919,17 +1925,42 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteJornada(jornadaId: Long, onComplete: () -> Unit = {}) {
         viewModelScope.launch {
-            repository.deleteJornadaById(jornadaId)
-            _uiState.update { current ->
-                val updated = current.allJornadas.filter { it.id != jornadaId }
-                val newActive = if (current.activeJornada?.id == jornadaId) null else current.activeJornada
-                current.copy(
-                    allJornadas = updated,
-                    activeJornada = newActive,
-                    successMessage = "Jornada #$jornadaId eliminada correctamente."
-                )
+            try {
+                repository.deleteJornadaById(jornadaId)
+                _uiState.update { current ->
+                    val updated = current.allJornadas.filter { it.id != jornadaId }
+                    val newActive = if (current.activeJornada?.id == jornadaId) null else current.activeJornada
+                    current.copy(
+                        allJornadas = updated,
+                        activeJornada = newActive,
+                        successMessage = "Jornada #$jornadaId eliminada correctamente."
+                    )
+                }
+                onComplete()
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "Error al eliminar jornada: ${e.message}") }
             }
-            onComplete()
+        }
+    }
+
+    fun eliminarTodasLasJornadas(onComplete: () -> Unit = {}) {
+        viewModelScope.launch {
+            try {
+                val jornadas = _uiState.value.allJornadas
+                jornadas.forEach { j ->
+                    repository.deleteJornadaById(j.id)
+                }
+                _uiState.update { current ->
+                    current.copy(
+                        allJornadas = emptyList(),
+                        activeJornada = null,
+                        successMessage = "Todas las jornadas han sido eliminadas y el contador ha sido reiniciado a JORNADA 1."
+                    )
+                }
+                onComplete()
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "Error al eliminar todas las jornadas: ${e.message}") }
+            }
         }
     }
 
@@ -4174,23 +4205,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val tandaIds = tandasList.map { it.id }.filter { it > 0 }.toSet()
                 val tandaUuids = tandasList.map { it.uuid }.filter { it.isNotBlank() }.toSet()
 
+                // Only delete the Tanda records, NEVER delete the corresponding Jornada record.
                 repository.deleteTandas(tandasList)
-                if (jornadaId > 0) {
-                    repository.deleteJornadaById(jornadaId)
-                }
 
                 _uiState.update { current ->
                     val newTandas = current.tandas.filterNot { it.id in tandaIds || (it.uuid.isNotBlank() && it.uuid in tandaUuids) }
-                    val newJornadas = if (jornadaId > 0) current.allJornadas.filterNot { it.id == jornadaId } else current.allJornadas
                     current.copy(
                         tandas = newTandas,
-                        allJornadas = newJornadas,
-                        successMessage = if (jornadaId > 0) "Jornada #$jornadaId y sus tandas fueron eliminadas del archivo." else "Tandas seleccionadas eliminadas del archivo."
+                        // Do NOT filter out the jornada from allJornadas list to keep it in AJUSTES.
+                        successMessage = "Tandas seleccionadas eliminadas del archivo."
                     )
                 }
                 onComplete()
             } catch (e: Exception) {
-                _uiState.update { it.copy(errorMessage = "Error al eliminar la jornada del archivo: ${e.message}") }
+                _uiState.update { it.copy(errorMessage = "Error al eliminar las tandas del archivo: ${e.message}") }
             }
         }
     }
@@ -4202,19 +4230,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val tandaIds = allTandasToDelete.map { it.id }.filter { it > 0 }.toSet()
                 val tandaUuids = allTandasToDelete.map { it.uuid }.filter { it.isNotBlank() }.toSet()
 
-                val jornadaIdsToDelete = archivedJornadasConTandas.map { it.first.id }.filter { it > 0 }.toSet()
-
+                // Only delete the Tanda records, NEVER delete any Jornada record.
                 repository.deleteTandas(allTandasToDelete)
-                jornadaIdsToDelete.forEach { jId ->
-                    repository.deleteJornadaById(jId)
-                }
 
                 _uiState.update { current ->
                     val newTandas = current.tandas.filterNot { it.id in tandaIds || (it.uuid.isNotBlank() && it.uuid in tandaUuids) }
-                    val newJornadas = current.allJornadas.filterNot { it.id in jornadaIdsToDelete }
                     current.copy(
                         tandas = newTandas,
-                        allJornadas = newJornadas,
+                        // Do NOT delete or filter out any Jornada to keep them operational in AJUSTES.
                         successMessage = "Todo el archivo de tandas ha sido eliminado correctamente."
                     )
                 }

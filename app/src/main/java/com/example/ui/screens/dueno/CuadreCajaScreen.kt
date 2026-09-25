@@ -975,13 +975,10 @@ fun CuadreCajaScreen(
             item.ventas * depTarifa
         }
     }
-    val pagoCajeroMercaderia = mercaderiasStates.sumOf { item ->
-        if (item.isConfitura) 0.0 else {
-            val cajTarifa = if (item.pagoCajeroUnitario > 0.0) item.pagoCajeroUnitario else uiState.tarifasPagoBebidas.calcularPagoCajero(item.price)
-            item.ventas * cajTarifa
-        }
-    }
-    val totalPagoDependiente = pagoDependienteProduccion + pagoDependienteMercaderia
+    val nDepsTop = (savedPagos?.cantidadDependientes ?: 1).coerceAtLeast(1)
+    val pagoBebidasIndividualTop = pagoDependienteMercaderia / (1 + nDepsTop)
+    val pagoCajeroMercaderia = pagoBebidasIndividualTop
+    val totalPagoDependiente = pagoDependienteProduccion + (pagoBebidasIndividualTop * nDepsTop)
     val totalPagoCajero = pagoCajeroProduccion + pagoCajeroMercaderia
     val totalPagoPersonalCalculado = totalPagoCocina + totalPagoDependiente + totalPagoCajero
     val totalPagosEfectivos = if (pagosConfirmados) totalPagosConfirmados else totalPagoPersonalCalculado
@@ -5290,25 +5287,6 @@ fun CuadrePagosTab(
     val totalVentasProduccion = produccionStates.sumOf { it.vendible }
     val totalVentasBebidas = mercaderiasStates.filter { !it.isConfitura }.sumOf { it.ventas }
 
-    val pagoCajeroProduccion = produccionStates.sumOf { item ->
-        item.vendible * item.pagoCajeroUnitario
-    }
-    val pagoCajeroMercaderia = mercaderiasStates.sumOf { item ->
-        if (item.isConfitura) 0.0 else {
-            val cajTarifa = if (item.pagoCajeroUnitario > 0.0) item.pagoCajeroUnitario else tarifasBebidas.calcularPagoCajero(item.price)
-            item.ventas * cajTarifa
-        }
-    }
-    val totalPagoCajero = pagoCajeroProduccion + pagoCajeroMercaderia
-
-    // 3. CÁLCULO DE PAGOS DEPENDIENTES (MODALIDADES: EQUITATIVO, IGUAL, REPARTICIÓN)
-    val depModalidades = remember(activeJornadaId) {
-        mutableStateMapOf<Long, ModalidadPagoDependiente>()
-    }
-    val depReparticionCantidades = remember(activeJornadaId) {
-        mutableStateMapOf<Pair<Long, Int>, String>()
-    }
-
     // Estado de dependientes: 1, 2 o 3
     var cantidadDependientes by rememberSaveable(activeJornadaId) {
         mutableStateOf(savedPagos?.cantidadDependientes ?: 1)
@@ -5321,6 +5299,22 @@ fun CuadrePagosTab(
             val depTarifa = if (item.pagoDependienteUnitario > 0.0) item.pagoDependienteUnitario else tarifasBebidas.calcularPagoDependiente(item.price)
             item.ventas * depTarifa
         }
+    }
+
+    val pagoBebidasIndividual = pagoDependienteMercaderia / (1 + nDeps)
+
+    val pagoCajeroProduccion = produccionStates.sumOf { item ->
+        item.vendible * item.pagoCajeroUnitario
+    }
+    val pagoCajeroMercaderia = pagoBebidasIndividual
+    val totalPagoCajero = pagoCajeroProduccion + pagoCajeroMercaderia
+
+    // 3. CÁLCULO DE PAGOS DEPENDIENTES (MODALIDADES: EQUITATIVO, IGUAL, REPARTICIÓN)
+    val depModalidades = remember(activeJornadaId) {
+        mutableStateMapOf<Long, ModalidadPagoDependiente>()
+    }
+    val depReparticionCantidades = remember(activeJornadaId) {
+        mutableStateMapOf<Pair<Long, Int>, String>()
     }
 
     // Productos de producción para dependientes
@@ -5395,7 +5389,7 @@ fun CuadrePagosTab(
         val unitsProdDep = produccionStates.sumOf { item ->
             getProductUnitsForDep(item, i)
         }
-        val pagoBebDep = pagoDependienteMercaderia / nDeps
+        val pagoBebDep = pagoBebidasIndividual
         val unitsBebDep = totalVentasBebidas / nDeps
 
         DependientePagoDistribucion(
@@ -5411,7 +5405,8 @@ fun CuadrePagosTab(
     val pagoDependienteProduccion = produccionStates.sumOf { item ->
         getProductTotalPago(item)
     }
-    val totalPagoDependiente = pagoDependienteProduccion + pagoDependienteMercaderia
+    val totalPagoDependienteBebidas = pagoBebidasIndividual * nDeps
+    val totalPagoDependiente = pagoDependienteProduccion + totalPagoDependienteBebidas
 
     // TOTAL GENERAL PAGADO AL PERSONAL
     val totalPagoPersonal = totalPagoCocina + totalPagoCajero + totalPagoDependiente
@@ -5575,7 +5570,7 @@ fun CuadrePagosTab(
                                     color = Color(0xFFDDD6FE)
                                 )
                                 Text(
-                                    text = "Producción ($${"%.2f".format(pagoDependienteProduccion)}) + Bebidas ($${"%.2f".format(pagoDependienteMercaderia)})",
+                                    text = "Producción ($${"%.2f".format(pagoDependienteProduccion)}) + Bebidas ($${"%.2f".format(totalPagoDependienteBebidas)})",
                                     fontSize = 10.5.sp,
                                     color = Color.White.copy(alpha = 0.85f)
                                 )
@@ -6509,7 +6504,7 @@ fun CuadrePagosTab(
                                 )
                             }
                             Text(
-                                text = "$${"%.2f".format(pagoDependienteMercaderia)} CUP",
+                                text = "$${"%.2f".format(totalPagoDependienteBebidas)} CUP",
                                 fontSize = 14.5.sp,
                                 fontWeight = FontWeight.Black,
                                 color = Slate800

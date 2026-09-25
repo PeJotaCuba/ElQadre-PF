@@ -1101,6 +1101,7 @@ class AppRepository(private val db: AppDatabase) {
     suspend fun initializeOperationalData() {
         db.withTransaction {
             db.jornadaDao().deleteAllJornadas()
+            db.jornadaDao().resetJornadaSequence()
             db.tableOrderDao().deleteAllOrders()
             db.tableOrderDao().deleteAllOrderItems()
             db.transferenciaDao().deleteAllTransferencias()
@@ -1280,5 +1281,10 @@ class AppRepository(private val db: AppDatabase) {
     suspend fun deleteAllPersonalContratado() = db.personalContratadoDao().deleteAllPersonal()
 
     suspend fun updateJornada(jornada: Jornada) = db.jornadaDao().updateJornada(jornada)
-    suspend fun deleteJornadaById(id: Long) = db.jornadaDao().deleteJornadaById(id)
+    suspend fun deleteJornadaById(id: Long) {
+        db.jornadaDao().deleteJornadaById(id)
+        if (db.jornadaDao().getAllJornadasSync().isEmpty()) {
+            db.jornadaDao().resetJornadaSequence()
+        }
+    }
 }

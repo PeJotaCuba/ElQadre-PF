@@ -758,7 +758,13 @@ val TANDA_COLOR_PALETTE = listOf(
 fun ClosedTandaCompactCard(tanda: Tanda) {
     val baseQtyStr = if (tanda.baseQuantityUsed % 1.0 == 0.0) tanda.baseQuantityUsed.toInt().toString() else "%.1f".format(tanda.baseQuantityUsed)
     val baseUnitStr = tanda.baseQuantityUnit.ifBlank { "lb" }
+    
+    val presEquiv = if (tanda.specialPresentationEquivalence > 0.0) tanda.specialPresentationEquivalence else 1.0
+    val specialUnitsEq = if (tanda.specialPresentationQty > 0.0) tanda.specialPresentationQty * presEquiv else 0.0
+    val totalYieldUnits = tanda.actualYield + specialUnitsEq
+    val totalYieldUnitsStr = if (totalYieldUnits % 1.0 == 0.0) totalYieldUnits.toInt().toString() else "%.1f".format(totalYieldUnits)
     val actualYieldStr = if (tanda.actualYield % 1.0 == 0.0) tanda.actualYield.toInt().toString() else "%.1f".format(tanda.actualYield)
+
     val prodUnitStr = tanda.productionUnit.ifBlank { "unidades" }
     val costStr = "$${"%.2f".format(tanda.totalBatchCost)}"
     val tNumFormatted = tanda.tandaNumber.padStart(2, '0')
@@ -780,8 +786,15 @@ fun ClosedTandaCompactCard(tanda: Tanda) {
                 fontWeight = FontWeight.Black,
                 color = ElQadreNavy
             )
+            val displayProductionStr = if (tanda.specialPresentationQty > 0.0) {
+                val presQtyStr = if (tanda.specialPresentationQty % 1.0 == 0.0) tanda.specialPresentationQty.toInt().toString() else "%.1f".format(tanda.specialPresentationQty)
+                val specialEqInt = if (specialUnitsEq % 1.0 == 0.0) specialUnitsEq.toInt().toString() else "%.1f".format(specialUnitsEq)
+                "$totalYieldUnitsStr $prodUnitStr ($actualYieldStr + $presQtyStr ${tanda.specialPresentationName.ifBlank { "Especial" }} [$specialEqInt])"
+            } else {
+                "$totalYieldUnitsStr $prodUnitStr"
+            }
             Text(
-                text = "$baseQtyStr $baseUnitStr → $actualYieldStr $prodUnitStr → $costStr",
+                text = "$baseQtyStr $baseUnitStr → $displayProductionStr → $costStr",
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
                 color = Slate700
@@ -897,12 +910,15 @@ fun TandasEfficiencyBarChartSection(closedTandas: List<Tanda>) {
     val efficiencyItems = closedTandas.mapIndexed { index, tanda ->
         val baseQty = tanda.baseQuantityUsed
         val actualYield = tanda.actualYield
-        val coeff = if (baseQty > 0.0) actualYield / baseQty else 0.0
+        val presEquiv = if (tanda.specialPresentationEquivalence > 0.0) tanda.specialPresentationEquivalence else 1.0
+        val specialUnitsEq = if (tanda.specialPresentationQty > 0.0) tanda.specialPresentationQty * presEquiv else 0.0
+        val totalYieldUnits = actualYield + specialUnitsEq
+        val coeff = if (baseQty > 0.0) totalYieldUnits / baseQty else 0.0
         val color = TANDA_COLOR_PALETTE[index % TANDA_COLOR_PALETTE.size]
         val pUnit = tanda.productionUnit.ifBlank { "unidades" }
         val bUnit = tanda.baseQuantityUnit.ifBlank { "lb" }
         val tNumFormatted = tanda.tandaNumber.padStart(2, '0')
-        val coeffFormatted = if (coeff % 1.0 == 0.0) coeff.toInt().toString() else "%.1f".format(coeff)
+        val coeffFormatted = if (coeff % 1.0 == 0.0) coeff.toInt().toString() else "%.2f".format(coeff)
 
         EfficiencyBarData(
             tandaLabel = "Tanda $tNumFormatted",
@@ -1835,6 +1851,14 @@ fun TandaCerradaCard(
     } else {
         "%.1f".format(actYield)
     }
+    val presEquiv = if (tanda.specialPresentationEquivalence > 0.0) tanda.specialPresentationEquivalence else 1.0
+    val specialUnitsEq = if (tanda.specialPresentationQty > 0.0) tanda.specialPresentationQty * presEquiv else 0.0
+    val totalYieldUnits = tanda.actualYield + specialUnitsEq
+    val totalYieldUnitsFormatted = if (totalYieldUnits % 1.0 == 0.0) {
+        totalYieldUnits.toInt().toString()
+    } else {
+        "%.1f".format(totalYieldUnits)
+    }
 
     Surface(
         shape = RoundedCornerShape(16.dp),
@@ -1958,14 +1982,26 @@ fun TandaCerradaCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                Column {
+                    Text(
+                        text = "Producción real",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Slate600
+                    )
+                    if (tanda.specialPresentationQty > 0.0) {
+                        val presQtyStr = if (tanda.specialPresentationQty % 1.0 == 0.0) tanda.specialPresentationQty.toInt().toString() else "%.1f".format(tanda.specialPresentationQty)
+                        val specialEqInt = if (specialUnitsEq % 1.0 == 0.0) specialUnitsEq.toInt().toString() else "%.1f".format(specialUnitsEq)
+                        Text(
+                            text = "$actYieldFormatted + $presQtyStr ${tanda.specialPresentationName.ifBlank { "Especial" }} ($specialEqInt)",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF15803D)
+                        )
+                    }
+                }
                 Text(
-                    text = "Producción real",
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Slate600
-                )
-                Text(
-                    text = "$actYieldFormatted $prodUnit",
+                    text = "$totalYieldUnitsFormatted $prodUnit",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Black,
                     color = Color(0xFF0F766E)
