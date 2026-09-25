@@ -3036,58 +3036,58 @@ fun ProductDetailDialog(
                 Column(
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    // ENCABEZADO SUPERIOR
+                    val context = androidx.compose.ui.platform.LocalContext.current
+                    val currentModo = remember(product.id) { com.example.util.ProduccionModoHelper.getModo(context, product.id) }
+                    var selectedModo by remember(product.id) { mutableStateOf(currentModo) }
+                    val isProdActive = currentProduct.isAvailable
+
+                    // CABECERA SUPERIOR: ESTRUCTURA OBLIGATORIA DEL CUADRO
                     Surface(
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
                         color = Color.White,
                         border = BorderStroke(1.5.dp, Slate200),
-                        shadowElevation = 2.dp,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 4.dp)
+                        shadowElevation = 3.dp,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Row(
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
-                            IconButton(
-                                onClick = onDismiss,
-                                colors = IconButtonDefaults.iconButtonColors(containerColor = Slate100),
-                                modifier = Modifier.size(44.dp)
+                            // FILA 1: NOMBRE DEL PRODUCTO | X
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "Cerrar",
-                                    tint = ElQadreNavy,
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
-
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier.weight(1f).padding(horizontal = 8.dp)
-                            ) {
-                                Text(
-                                    text = "DETALLE DEL PRODUCTO",
-                                    fontWeight = FontWeight.Black,
-                                    color = ElQadreNavy,
-                                    fontSize = 17.sp
-                                )
                                 Text(
                                     text = currentProduct.name,
-                                    fontWeight = FontWeight.Bold,
-                                    color = ElQadreGoldDark,
-                                    fontSize = 14.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    fontWeight = FontWeight.Black,
+                                    color = ElQadreNavy,
+                                    fontSize = 19.sp,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f).padding(end = 8.dp)
                                 )
+
+                                IconButton(
+                                    onClick = onDismiss,
+                                    colors = IconButtonDefaults.iconButtonColors(containerColor = Slate100),
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .testTag("close_product_detail_dialog")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Cerrar",
+                                        tint = ElQadreNavy,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
                             }
 
-                            // ACTIVAR / DESACTIVAR PRODUCTO DIRECTAMENTE
-                            val isProdActive = currentProduct.isAvailable
+                            // FILA 2: BOTÓN/CONTROL ACTIVAR / DESACTIVAR
                             Surface(
                                 onClick = {
                                     val newAvailable = !isProdActive
@@ -3096,44 +3096,153 @@ fun ProductDetailDialog(
                                 shape = RoundedCornerShape(12.dp),
                                 color = if (isProdActive) Emerald50 else Rose50,
                                 border = BorderStroke(1.5.dp, if (isProdActive) Emerald500 else Rose500),
-                                modifier = Modifier.testTag("toggle_product_active_detail")
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("toggle_product_active_detail")
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Box(
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(12.dp)
+                                                .clip(CircleShape)
+                                                .background(if (isProdActive) Emerald600 else Rose600)
+                                        )
+                                        Text(
+                                            text = if (isProdActive) "ESTADO: ACTIVADO" else "ESTADO: DESACTIVADO",
+                                            fontWeight = FontWeight.Black,
+                                            fontSize = 13.sp,
+                                            color = if (isProdActive) Emerald700 else Rose700
+                                        )
+                                    }
+
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (isProdActive) Emerald600 else Rose600
+                                    ) {
+                                        Text(
+                                            text = if (isProdActive) "DESACTIVAR" else "ACTIVAR",
+                                            fontWeight = FontWeight.Black,
+                                            fontSize = 11.5.sp,
+                                            color = Color.White,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            // FILA 3: BOTÓN DOBLE DE SELECCIÓN: TANDA | DIRECTO
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = Slate100,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    // POSICIÓN 1: TANDA
+                                    val isTandaSel = selectedModo != "DIRECTO"
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (isTandaSel) ElQadreNavy else Color.Transparent,
                                         modifier = Modifier
-                                            .size(10.dp)
-                                            .clip(CircleShape)
-                                            .background(if (isProdActive) Emerald600 else Rose600)
-                                    )
-                                    Text(
-                                        text = if (isProdActive) "ACTIVO" else "INACTIVO",
-                                        fontWeight = FontWeight.Black,
-                                        fontSize = 12.sp,
-                                        color = if (isProdActive) Emerald700 else Rose700
-                                    )
-                                    Switch(
-                                        checked = isProdActive,
-                                        onCheckedChange = { isChecked ->
-                                            viewModel.updateProduct(currentProduct.copy(isAvailable = isChecked))
-                                        },
-                                        colors = SwitchDefaults.colors(
-                                            checkedThumbColor = Emerald600,
-                                            checkedTrackColor = Emerald100,
-                                            uncheckedThumbColor = Slate400,
-                                            uncheckedTrackColor = Slate200
-                                        ),
-                                        modifier = Modifier.scale(0.85f)
-                                    )
+                                            .weight(1f)
+                                            .fillMaxHeight()
+                                            .clickable {
+                                                selectedModo = "POR_TANDAS"
+                                                com.example.util.ProduccionModoHelper.setModo(context, product.id, "POR_TANDAS")
+                                            }
+                                            .testTag("modo_tanda_${product.id}")
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Text(
+                                                text = "TANDA",
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = if (isTandaSel) Color.White else Slate600
+                                            )
+                                        }
+                                    }
+
+                                    // POSICIÓN 2: DIRECTO
+                                    val isDirectoSel = selectedModo == "DIRECTO"
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (isDirectoSel) ElQadreGoldDark else Color.Transparent,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .fillMaxHeight()
+                                            .clickable {
+                                                selectedModo = "DIRECTO"
+                                                com.example.util.ProduccionModoHelper.setModo(context, product.id, "DIRECTO")
+                                            }
+                                            .testTag("modo_directo_${product.id}")
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Text(
+                                                text = "DIRECTO",
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = if (isDirectoSel) Color.White else Slate600
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            // FILA 4: CATEGORÍA: Cocina o Bebidas | CÓDIGO DEL PRODUCTO
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = Slate50,
+                                border = BorderStroke(1.dp, Slate200),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text("CATEGORÍA: ", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Slate500)
+                                        Text(
+                                            text = currentProduct.category.ifBlank { "Cocina" },
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = ElQadreNavy
+                                        )
+                                    }
+
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text("CÓDIGO: ", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Slate500)
+                                        Text(
+                                            text = currentProduct.code.ifBlank { "N/A" },
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = ElQadreNavy
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
 
-                // CUERPO SCROLLABLE
+                // CUERPO SCROLLABLE (INFORMACIÓN EXISTENTE DEBAJO)
                 Column(
                     modifier = Modifier
                         .weight(1f)
@@ -3282,104 +3391,6 @@ fun ProductDetailDialog(
                                     Text(product.description, fontSize = 14.sp, color = Slate700)
                                 }
                             }
-                        }
-                    }
-
-                    // TARJETA: CONTABILIZACIÓN DE PRODUCCIÓN
-                    val context = androidx.compose.ui.platform.LocalContext.current
-                    val currentModo = remember(product.id) { com.example.util.ProduccionModoHelper.getModo(context, product.id) }
-                    var selectedModo by remember(product.id) { mutableStateOf(currentModo) }
-
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = Color.White,
-                        border = BorderStroke(1.5.dp, Slate200),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(18.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Text(
-                                text = "CONTABILIZACIÓN DE PRODUCCIÓN",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Black,
-                                color = ElQadreNavy,
-                                letterSpacing = 0.5.sp
-                            )
-
-                            HorizontalDivider(color = Slate200)
-
-                            // Control de Selección Tipo Doble: POR TANDAS | DIRECTO
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = Slate100,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(48.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(4.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    // Posición 1: POR TANDAS
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = if (selectedModo == "POR_TANDAS") ElQadreNavy else Color.Transparent,
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .fillMaxHeight()
-                                            .clickable {
-                                                selectedModo = "POR_TANDAS"
-                                                com.example.util.ProduccionModoHelper.setModo(context, product.id, "POR_TANDAS")
-                                            }
-                                            .testTag("modo_por_tandas_${product.id}")
-                                    ) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            Text(
-                                                text = "POR TANDAS",
-                                                fontSize = 12.5.sp,
-                                                fontWeight = FontWeight.Black,
-                                                color = if (selectedModo == "POR_TANDAS") Color.White else Slate600
-                                            )
-                                        }
-                                    }
-
-                                    // Posición 2: DIRECTO
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = if (selectedModo == "DIRECTO") ElQadreGoldDark else Color.Transparent,
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .fillMaxHeight()
-                                            .clickable {
-                                                selectedModo = "DIRECTO"
-                                                com.example.util.ProduccionModoHelper.setModo(context, product.id, "DIRECTO")
-                                            }
-                                            .testTag("modo_directo_${product.id}")
-                                    ) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            Text(
-                                                text = "DIRECTO",
-                                                fontSize = 12.5.sp,
-                                                fontWeight = FontWeight.Black,
-                                                color = if (selectedModo == "DIRECTO") Color.White else Slate600
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-
-                            Text(
-                                text = if (selectedModo == "POR_TANDAS")
-                                    "• Obtiene la producción desde las Tandas registradas durante la jornada."
-                                else
-                                    "• Permite registrar directamente la producción en Cuadre de Caja sin requerir Tandas.",
-                                fontSize = 11.5.sp,
-                                color = Slate600
-                            )
                         }
                     }
 

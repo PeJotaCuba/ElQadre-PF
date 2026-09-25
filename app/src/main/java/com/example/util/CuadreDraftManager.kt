@@ -46,7 +46,8 @@ data class CuadreDraftData(
     val agregadoDrafts: List<AgregadoDraftItem> = emptyList(),
     val efectivoRealStr: String = "",
     val notasCuadre: String = "",
-    val extracciones: List<ExtraccionDraftItem> = emptyList()
+    val extracciones: List<ExtraccionDraftItem> = emptyList(),
+    val otrasTransferenciasStr: String = ""
 )
 
 /**
@@ -135,7 +136,8 @@ object CuadreDraftManager {
                 agregadoDrafts = agList,
                 efectivoRealStr = obj.optString("efectivoRealStr", ""),
                 notasCuadre = obj.optString("notasCuadre", ""),
-                extracciones = extList
+                extracciones = extList,
+                otrasTransferenciasStr = obj.optString("otrasTransferenciasStr", "")
             )
         } catch (e: Exception) {
             null
@@ -201,6 +203,7 @@ object CuadreDraftManager {
 
         obj.put("efectivoRealStr", draft.efectivoRealStr)
         obj.put("notasCuadre", draft.notasCuadre)
+        obj.put("otrasTransferenciasStr", draft.otrasTransferenciasStr)
 
         prefs.edit().putString("$KEY_PREFIX${draft.jornadaId}", obj.toString()).apply()
     }
