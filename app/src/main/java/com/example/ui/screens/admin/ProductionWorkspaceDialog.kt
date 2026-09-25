@@ -3008,6 +3008,8 @@ fun ProductDetailDialog(
         parsePresentacionesEspeciales(product.presentacionesEspeciales)
     }
 
+    val currentProduct = uiState.products.find { it.id == product.id } ?: product
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
@@ -3015,66 +3017,121 @@ fun ProductDetailDialog(
             decorFitsSystemWindows = false
         )
     ) {
-        Surface(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .statusBarsPadding()
+                .windowInsetsPadding(WindowInsets.safeDrawing)
                 .imePadding(),
-            color = Color(0xFFF8FAFC)
+            contentAlignment = Alignment.Center
         ) {
-            Column(
-                modifier = Modifier.fillMaxSize()
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth(0.80f)
+                    .fillMaxHeight(0.80f),
+                shape = RoundedCornerShape(20.dp),
+                color = Color(0xFFF8FAFC),
+                border = BorderStroke(1.5.dp, Slate200),
+                shadowElevation = 8.dp
             ) {
-                // ENCABEZADO SUPERIOR PANTALLA COMPLETA
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = Color.White,
-                    border = BorderStroke(1.5.dp, Slate200),
-                    shadowElevation = 2.dp,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 4.dp)
+                Column(
+                    modifier = Modifier.fillMaxSize()
                 ) {
-                    Row(
+                    // ENCABEZADO SUPERIOR
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color.White,
+                        border = BorderStroke(1.5.dp, Slate200),
+                        shadowElevation = 2.dp,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                            .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 4.dp)
                     ) {
-                        IconButton(
-                            onClick = onDismiss,
-                            colors = IconButtonDefaults.iconButtonColors(containerColor = Slate100),
-                            modifier = Modifier.size(52.dp)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.ArrowBack,
-                                contentDescription = "Regresar",
-                                tint = ElQadreNavy,
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
+                            IconButton(
+                                onClick = onDismiss,
+                                colors = IconButtonDefaults.iconButtonColors(containerColor = Slate100),
+                                modifier = Modifier.size(44.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Cerrar",
+                                    tint = ElQadreNavy,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
 
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = "DETALLE DEL PRODUCTO",
-                                fontWeight = FontWeight.Black,
-                                color = ElQadreNavy,
-                                fontSize = 19.sp
-                            )
-                            Text(
-                                text = product.name,
-                                fontWeight = FontWeight.Bold,
-                                color = ElQadreGoldDark,
-                                fontSize = 15.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.weight(1f).padding(horizontal = 8.dp)
+                            ) {
+                                Text(
+                                    text = "DETALLE DEL PRODUCTO",
+                                    fontWeight = FontWeight.Black,
+                                    color = ElQadreNavy,
+                                    fontSize = 17.sp
+                                )
+                                Text(
+                                    text = currentProduct.name,
+                                    fontWeight = FontWeight.Bold,
+                                    color = ElQadreGoldDark,
+                                    fontSize = 14.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
 
-                        Spacer(modifier = Modifier.width(52.dp))
+                            // ACTIVAR / DESACTIVAR PRODUCTO DIRECTAMENTE
+                            val isProdActive = currentProduct.isAvailable
+                            Surface(
+                                onClick = {
+                                    val newAvailable = !isProdActive
+                                    viewModel.updateProduct(currentProduct.copy(isAvailable = newAvailable))
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (isProdActive) Emerald50 else Rose50,
+                                border = BorderStroke(1.5.dp, if (isProdActive) Emerald500 else Rose500),
+                                modifier = Modifier.testTag("toggle_product_active_detail")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(10.dp)
+                                            .clip(CircleShape)
+                                            .background(if (isProdActive) Emerald600 else Rose600)
+                                    )
+                                    Text(
+                                        text = if (isProdActive) "ACTIVO" else "INACTIVO",
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 12.sp,
+                                        color = if (isProdActive) Emerald700 else Rose700
+                                    )
+                                    Switch(
+                                        checked = isProdActive,
+                                        onCheckedChange = { isChecked ->
+                                            viewModel.updateProduct(currentProduct.copy(isAvailable = isChecked))
+                                        },
+                                        colors = SwitchDefaults.colors(
+                                            checkedThumbColor = Emerald600,
+                                            checkedTrackColor = Emerald100,
+                                            uncheckedThumbColor = Slate400,
+                                            uncheckedTrackColor = Slate200
+                                        ),
+                                        modifier = Modifier.scale(0.85f)
+                                    )
+                                }
+                            }
+                        }
                     }
-                }
 
                 // CUERPO SCROLLABLE
                 Column(
@@ -3197,19 +3254,6 @@ fun ProductDetailDialog(
                                     color = ElQadreNavy,
                                     letterSpacing = 0.5.sp
                                 )
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = if (product.isAvailable) Color(0xFFECFDF5) else Color(0xFFFEE2E2),
-                                    border = BorderStroke(1.dp, if (product.isAvailable) Emerald600 else Rose600)
-                                ) {
-                                    Text(
-                                        text = if (product.isAvailable) "ACTIVO PARA VENTA" else "INACTIVO",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = if (product.isAvailable) Emerald600 else Rose600,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                    )
-                                }
                             }
 
                             HorizontalDivider(color = Slate200)
@@ -3238,6 +3282,104 @@ fun ProductDetailDialog(
                                     Text(product.description, fontSize = 14.sp, color = Slate700)
                                 }
                             }
+                        }
+                    }
+
+                    // TARJETA: CONTABILIZACIÓN DE PRODUCCIÓN
+                    val context = androidx.compose.ui.platform.LocalContext.current
+                    val currentModo = remember(product.id) { com.example.util.ProduccionModoHelper.getModo(context, product.id) }
+                    var selectedModo by remember(product.id) { mutableStateOf(currentModo) }
+
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color.White,
+                        border = BorderStroke(1.5.dp, Slate200),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(18.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Text(
+                                text = "CONTABILIZACIÓN DE PRODUCCIÓN",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Black,
+                                color = ElQadreNavy,
+                                letterSpacing = 0.5.sp
+                            )
+
+                            HorizontalDivider(color = Slate200)
+
+                            // Control de Selección Tipo Doble: POR TANDAS | DIRECTO
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = Slate100,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    // Posición 1: POR TANDAS
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (selectedModo == "POR_TANDAS") ElQadreNavy else Color.Transparent,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .fillMaxHeight()
+                                            .clickable {
+                                                selectedModo = "POR_TANDAS"
+                                                com.example.util.ProduccionModoHelper.setModo(context, product.id, "POR_TANDAS")
+                                            }
+                                            .testTag("modo_por_tandas_${product.id}")
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Text(
+                                                text = "POR TANDAS",
+                                                fontSize = 12.5.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = if (selectedModo == "POR_TANDAS") Color.White else Slate600
+                                            )
+                                        }
+                                    }
+
+                                    // Posición 2: DIRECTO
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (selectedModo == "DIRECTO") ElQadreGoldDark else Color.Transparent,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .fillMaxHeight()
+                                            .clickable {
+                                                selectedModo = "DIRECTO"
+                                                com.example.util.ProduccionModoHelper.setModo(context, product.id, "DIRECTO")
+                                            }
+                                            .testTag("modo_directo_${product.id}")
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Text(
+                                                text = "DIRECTO",
+                                                fontSize = 12.5.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = if (selectedModo == "DIRECTO") Color.White else Slate600
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            Text(
+                                text = if (selectedModo == "POR_TANDAS")
+                                    "• Obtiene la producción desde las Tandas registradas durante la jornada."
+                                else
+                                    "• Permite registrar directamente la producción en Cuadre de Caja sin requerir Tandas.",
+                                fontSize = 11.5.sp,
+                                color = Slate600
+                            )
                         }
                     }
 
@@ -3564,6 +3706,7 @@ fun ProductDetailDialog(
                 }
             }
         }
+    }
     }
 }
 
@@ -3941,31 +4084,6 @@ fun AddEditProductoElaboradoDialog(
                             colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = ElQadreNavy, focusedLabelColor = ElQadreNavy),
                             modifier = Modifier.fillMaxWidth()
                         )
-                    }
-
-                    // ESTADO ACTIVO
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = Color.White,
-                        border = BorderStroke(1.5.dp, Slate200),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = ElQadreNavy, modifier = Modifier.size(24.dp))
-                                Text("Producto Activo (Visible en Venta)", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = ElQadreNavy)
-                            }
-                            Switch(
-                                checked = isAvailable,
-                                onCheckedChange = { isAvailable = it },
-                                colors = SwitchDefaults.colors(checkedThumbColor = ElQadreGold, checkedTrackColor = ElQadreNavy),
-                                modifier = Modifier.scale(1.2f)
-                            )
-                        }
                     }
 
                     if (showError) {

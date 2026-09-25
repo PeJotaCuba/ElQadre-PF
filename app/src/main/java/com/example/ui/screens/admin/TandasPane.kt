@@ -5710,12 +5710,19 @@ fun TandaDetailDialog(
                             }
                             val specialUnitsEq = if (tanda.specialPresentationQty > 0.0) tanda.specialPresentationQty * presEquiv else 0.0
                             val totalYieldUnits = tanda.actualYield + specialUnitsEq
+                            val rendVal = if (tanda.baseQuantityUsed > 0.0) totalYieldUnits / tanda.baseQuantityUsed else 0.0
                             val expectedVal = if (tanda.expectedYield > 0.0) tanda.expectedYield else tanda.estimatedYield
-                            val displayYieldPct = if (expectedVal > 0.0 && specialUnitsEq > 0.0) (totalYieldUnits / expectedVal) * 100.0 else tanda.yieldPercentage
+                            val displayYieldPct = if (expectedVal > 0.0) (totalYieldUnits / expectedVal) * 100.0 else tanda.yieldPercentage
 
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("Rendimiento del Lote:", fontSize = 11.sp, color = Slate600)
-                                Text("${"%.1f".format(displayYieldPct)}%", fontWeight = FontWeight.ExtraBold, fontSize = 12.sp, color = if (displayYieldPct >= 95.0) Emerald600 else Rose600)
+                                val rendValStr = if (rendVal > 0.0) {
+                                    val rendFormatted = if (rendVal % 1.0 == 0.0) rendVal.toInt().toString() else "%.2f".format(rendVal)
+                                    "$rendFormatted ${tanda.productionUnit}/${tanda.baseQuantityUnit} (${"%.1f".format(displayYieldPct)}%)"
+                                } else {
+                                    "${"%.1f".format(displayYieldPct)}%"
+                                }
+                                Text(rendValStr, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp, color = if (displayYieldPct >= 95.0) Emerald600 else Rose600)
                             }
                         }
                         HorizontalDivider(color = Slate200)

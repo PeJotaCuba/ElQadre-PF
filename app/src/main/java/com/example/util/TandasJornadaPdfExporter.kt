@@ -35,7 +35,8 @@ data class TandaPdfItem(
     val rawFinalQty: Double,
     val rawUnit: String,
     val rawBaseUnit: String,
-    val observation: String = ""
+    val observation: String = "",
+    val rawYieldUnits: Double = 0.0
 )
 
 data class ProductTandasPdfGroup(
@@ -142,7 +143,8 @@ object TandasJornadaPdfExporter {
                         rawFinalQty = finalQty,
                         rawUnit = pUnit,
                         rawBaseUnit = baseUnit,
-                        observation = tanda.observation
+                        observation = tanda.observation,
+                        rawYieldUnits = totalYieldUnits
                     )
                 }
 
@@ -533,7 +535,8 @@ object TandasJornadaPdfExporter {
                 // Barras horizontales
                 var barY = chartY + 44f
                 val maxCoeff = allTandasFlattened.maxOfOrNull {
-                    if (it.rawBaseQty > 0.0) it.rawFinalQty / it.rawBaseQty else 0.0
+                    val unitsForYield = if (it.rawYieldUnits > 0.0) it.rawYieldUnits else it.rawFinalQty
+                    if (it.rawBaseQty > 0.0) unitsForYield / it.rawBaseQty else 0.0
                 }?.coerceAtLeast(1.0) ?: 1.0
 
                 val maxBarWidth = 240f
@@ -541,7 +544,8 @@ object TandasJornadaPdfExporter {
 
                 allTandasFlattened.take(8).forEachIndexed { index, tItem ->
                     val colorInt = CHART_PALETTE[index % CHART_PALETTE.size]
-                    val coeff = if (tItem.rawBaseQty > 0.0) tItem.rawFinalQty / tItem.rawBaseQty else 0.0
+                    val unitsForYield = if (tItem.rawYieldUnits > 0.0) tItem.rawYieldUnits else tItem.rawFinalQty
+                    val coeff = if (tItem.rawBaseQty > 0.0) unitsForYield / tItem.rawBaseQty else 0.0
                     val coeffFormatted = if (coeff % 1.0 == 0.0) coeff.toInt().toString() else "%.2f".format(coeff)
                     val tLabel = if (tItem.tandaNumber == "00") "Tanda 00" else "Tanda ${tItem.tandaNumber}"
 

@@ -11,7 +11,8 @@ data class ProduccionDraftItem(
     val defectuosoStr: String = "0",
     val consumoStr: String = "0",
     val regaliaStr: String = "0",
-    val pendientesStr: String = "0"
+    val pendientesStr: String = "0",
+    val customTotalProducedStr: String = "0"
 )
 
 data class MercaderiaDraftItem(
@@ -76,7 +77,8 @@ object CuadreDraftManager {
                         defectuosoStr = p.optString("defectuosoStr", "0"),
                         consumoStr = p.optString("consumoStr", "0"),
                         regaliaStr = p.optString("regaliaStr", "0"),
-                        pendientesStr = p.optString("pendientesStr", "0")
+                        pendientesStr = p.optString("pendientesStr", "0"),
+                        customTotalProducedStr = p.optString("customTotalProducedStr", "0")
                     )
                 )
             }
@@ -156,6 +158,7 @@ object CuadreDraftManager {
             pObj.put("consumoStr", p.consumoStr)
             pObj.put("regaliaStr", p.regaliaStr)
             pObj.put("pendientesStr", p.pendientesStr)
+            pObj.put("customTotalProducedStr", p.customTotalProducedStr)
             prodArray.put(pObj)
         }
         obj.put("produccion", prodArray)

@@ -26,6 +26,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ExitToApp
 import androidx.compose.material.icons.filled.ArrowBack
@@ -2973,51 +2975,113 @@ fun DuenoProduccionSubscreen(
 
             Dialog(
                 onDismissRequest = { selectedProductForDetail = null },
-                properties = DialogProperties(usePlatformDefaultWidth = false)
+                properties = DialogProperties(
+                    usePlatformDefaultWidth = false,
+                    decorFitsSystemWindows = false
+                )
             ) {
-                Surface(
-                    shape = RoundedCornerShape(22.dp),
-                    color = Color.White,
-                    border = BorderStroke(2.dp, ElQadreNavy),
-                    shadowElevation = 10.dp,
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth(0.96f)
-                        .padding(horizontal = 8.dp, vertical = 16.dp)
+                        .fillMaxSize()
+                        .windowInsetsPadding(WindowInsets.safeDrawing)
+                        .imePadding(),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Column(
+                    val currentP = uiState.products.find { it.id == prod.id } ?: prod
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = Color.White,
+                        border = BorderStroke(1.5.dp, Slate200),
+                        shadowElevation = 8.dp,
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(22.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                            .fillMaxWidth(0.80f)
+                            .fillMaxHeight(0.80f)
                     ) {
-                        // ENCABEZADO
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(20.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = prod.name.uppercase(),
-                                    fontWeight = FontWeight.Black,
-                                    fontSize = 22.sp,
-                                    color = ElQadreNavy
-                                )
-                                Text(
-                                    text = "DETALLE DE PRODUCTO DE PRODUCCIÓN",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Slate500
-                                )
-                            }
-                            IconButton(
-                                onClick = { selectedProductForDetail = null },
-                                colors = IconButtonDefaults.iconButtonColors(containerColor = Slate100),
-                                modifier = Modifier.size(48.dp)
+                            // ENCABEZADO
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Slate700, modifier = Modifier.size(26.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = currentP.name.uppercase(),
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 19.sp,
+                                        color = ElQadreNavy,
+                                        maxLines = 1
+                                    )
+                                    Text(
+                                        text = "DETALLE DE PRODUCTO DE PRODUCCIÓN",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Slate500
+                                    )
+                                }
+
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    val isProdActive = currentP.isAvailable
+                                    Surface(
+                                        onClick = {
+                                            val newActive = !isProdActive
+                                            viewModel.updateProduct(currentP.copy(isAvailable = newActive))
+                                        },
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = if (isProdActive) Emerald50 else Rose50,
+                                        border = BorderStroke(1.5.dp, if (isProdActive) Emerald500 else Rose500),
+                                        modifier = Modifier.testTag("toggle_product_active_dueno_detail")
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(10.dp)
+                                                    .clip(CircleShape)
+                                                    .background(if (isProdActive) Emerald600 else Rose600)
+                                            )
+                                            Text(
+                                                text = if (isProdActive) "ACTIVO" else "INACTIVO",
+                                                fontWeight = FontWeight.Black,
+                                                fontSize = 12.sp,
+                                                color = if (isProdActive) Emerald700 else Rose700
+                                            )
+                                            Switch(
+                                                checked = isProdActive,
+                                                onCheckedChange = { isChecked ->
+                                                    viewModel.updateProduct(currentP.copy(isAvailable = isChecked))
+                                                },
+                                                colors = SwitchDefaults.colors(
+                                                    checkedThumbColor = Emerald600,
+                                                    checkedTrackColor = Emerald100,
+                                                    uncheckedThumbColor = Slate400,
+                                                    uncheckedTrackColor = Slate200
+                                                ),
+                                                modifier = Modifier.scale(0.85f)
+                                            )
+                                        }
+                                    }
+
+                                    IconButton(
+                                        onClick = { selectedProductForDetail = null },
+                                        colors = IconButtonDefaults.iconButtonColors(containerColor = Slate100),
+                                        modifier = Modifier.size(44.dp)
+                                    ) {
+                                        Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Slate700, modifier = Modifier.size(24.dp))
+                                    }
+                                }
                             }
-                        }
 
                         HorizontalDivider(color = Slate200, thickness = 2.dp)
 
@@ -3186,6 +3250,7 @@ fun DuenoProduccionSubscreen(
                     }
                 }
             }
+        }
         }
 
         // ==========================================================
@@ -5453,7 +5518,14 @@ fun CerrarTandaDialog(
 
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("Rendimiento del Lote:", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Slate700)
-                                Text("${"%.1f".format(yieldPct)}%", fontSize = 14.sp, fontWeight = FontWeight.Black, color = if (yieldPct >= 95.0) Color(0xFF15803D) else Amber700)
+                                val rendCalc = if (tanda.baseQuantityUsed > 0.0) unidadesTotalesRendimiento / tanda.baseQuantityUsed else 0.0
+                                val rendCalcFormatted = if (rendCalc % 1.0 == 0.0) rendCalc.toInt().toString() else "%.2f".format(rendCalc)
+                                val rendText = if (rendCalc > 0.0) {
+                                    "$rendCalcFormatted ${tanda.productionUnit}/${tanda.baseQuantityUnit} (${"%.1f".format(yieldPct)}%)"
+                                } else {
+                                    "${"%.1f".format(yieldPct)}%"
+                                }
+                                Text(rendText, fontSize = 14.sp, fontWeight = FontWeight.Black, color = if (yieldPct >= 95.0) Color(0xFF15803D) else Amber700)
                             }
 
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -8317,9 +8389,16 @@ fun TandaDetailDialog(
                                 }
                             }
                             if (tanda.status == "CERRADA") {
+                                val rendCalc = if (tanda.baseQuantityUsed > 0.0) totalYieldUnits / tanda.baseQuantityUsed else 0.0
+                                val rendCalcFormatted = if (rendCalc % 1.0 == 0.0) rendCalc.toInt().toString() else "%.2f".format(rendCalc)
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                     Text("Rendimiento del Lote:", fontSize = 14.sp, color = Slate700)
-                                    Text("${"%.1f".format(displayYieldPct)}%", fontSize = 15.sp, fontWeight = FontWeight.Black, color = if (displayYieldPct >= 95.0) Color(0xFF15803D) else Amber700)
+                                    val rendText = if (rendCalc > 0.0) {
+                                        "$rendCalcFormatted ${tanda.productionUnit}/${tanda.baseQuantityUnit} (${"%.1f".format(displayYieldPct)}%)"
+                                    } else {
+                                        "${"%.1f".format(displayYieldPct)}%"
+                                    }
+                                    Text(rendText, fontSize = 15.sp, fontWeight = FontWeight.Black, color = if (displayYieldPct >= 95.0) Color(0xFF15803D) else Amber700)
                                 }
                             }
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

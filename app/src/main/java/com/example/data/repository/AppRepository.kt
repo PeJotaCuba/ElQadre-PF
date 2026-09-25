@@ -206,8 +206,14 @@ class AppRepository(private val db: AppDatabase) {
             val allProducts = db.productDao().getAllProductsSync()
             tandasToClose.forEach { tanda ->
                 val finalQty = if (tanda.actualYield > 0.0) tanda.actualYield else if (tanda.expectedYield > 0.0) tanda.expectedYield else tanda.estimatedYield
-                val rend = if (tanda.baseQuantityUsed > 0.0) finalQty / tanda.baseQuantityUsed else 0.0
                 val prod = allProducts.find { it.id == tanda.productId }
+                val presEquiv = if (tanda.specialPresentationEquivalence > 0.0) tanda.specialPresentationEquivalence else {
+                    prod?.let { parsePresentacionesEspeciales(it.presentacionesEspeciales).find { p -> p.name.equals(tanda.specialPresentationName, true) }?.baseEquivalence } ?: 1.0
+                }
+                val specialUnitsEq = if (tanda.specialPresentationQty > 0.0) tanda.specialPresentationQty * presEquiv else 0.0
+                val totalYieldUnits = finalQty + specialUnitsEq
+                val expectedVal = if (tanda.expectedYield > 0.0) tanda.expectedYield else tanda.estimatedYield
+                val yieldPct = if (expectedVal > 0.0) (totalYieldUnits / expectedVal) * 100.0 else 100.0
                 val salePrice = if (tanda.salePrice > 0.0) tanda.salePrice else (prod?.price ?: 0.0)
                 val rev = finalQty * salePrice
                 val profit = rev - tanda.totalBatchCost
@@ -219,7 +225,7 @@ class AppRepository(private val db: AppDatabase) {
                         jornadaId = jornada.id,
                         status = "CERRADA",
                         actualYield = finalQty,
-                        yieldPercentage = rend,
+                        yieldPercentage = yieldPct,
                         expectedRevenue = rev,
                         estimatedProfit = profit,
                         profitMargin = pMargin,

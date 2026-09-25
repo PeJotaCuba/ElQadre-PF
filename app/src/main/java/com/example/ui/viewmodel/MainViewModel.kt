@@ -919,6 +919,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun saveTransferenciasClasificacion(jornadaId: Long, produccionMonto: Double, mercaderiasMonto: Double) {
+        if (jornadaId > 0) {
+            try {
+                val context = getApplication<Application>()
+                val prefs = context.getSharedPreferences("clasificacion_transferencias_prefs", Context.MODE_PRIVATE)
+                prefs.edit().putString("clasif_jornada_$jornadaId", "$produccionMonto;$mercaderiasMonto").apply()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
         _uiState.update { state ->
             val updated = state.transferenciasClasificacionMap + (jornadaId to Pair(produccionMonto, mercaderiasMonto))
             state.copy(
@@ -928,19 +937,47 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun getOrLoadTransferenciasClasificacion(jornadaId: Long): Pair<Double, Double>? {
+        if (jornadaId <= 0) return null
+        val inMemory = _uiState.value.transferenciasClasificacionMap[jornadaId]
+        if (inMemory != null) return inMemory
+
+        try {
+            val context = getApplication<Application>()
+            val prefs = context.getSharedPreferences("clasificacion_transferencias_prefs", Context.MODE_PRIVATE)
+            val saved = prefs.getString("clasif_jornada_$jornadaId", null) ?: return null
+            val parts = saved.split(";")
+            if (parts.size == 2) {
+                val prod = parts[0].toDoubleOrNull()
+                val merc = parts[1].toDoubleOrNull()
+                if (prod != null && merc != null) {
+                    val pair = Pair(prod, merc)
+                    _uiState.update { state ->
+                        state.copy(transferenciasClasificacionMap = state.transferenciasClasificacionMap + (jornadaId to pair))
+                    }
+                    return pair
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return null
+    }
+
     fun registrarNuevasTransferenciasDetectadas(
         nuevas: List<com.example.util.SearchedPagoXMovilSms>,
         onComplete: (Int) -> Unit = {}
     ) {
         viewModelScope.launch {
             val username = _uiState.value.currentUser?.username ?: "cajero"
-            val activeJornadaId = _uiState.value.activeJornada?.id ?: 0L
+            val activeJornada = withContext(Dispatchers.IO) { repository.getActiveJornadaSync() }
+            val activeJornadaId = activeJornada?.id ?: _uiState.value.activeJornada?.id ?: 0L
             val dateDisplayFormat = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault())
             var count = 0
 
             val seenTxs = mutableSetOf<String>()
             val existingInDb = withContext(Dispatchers.IO) {
-                repository.getDatabase().transferenciaDao().getAllTransferenciasSync().map { it.transactionNumber }.toSet()
+                repository.getDatabase().transferenciaDao().getAllTransferenciasSync().map { it.transactionNumber.trim() }.toSet()
             }
 
             for (item in nuevas) {
@@ -971,8 +1008,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             if (count > 0) {
+                // Ensure allTransferencias is re-synced if needed
+                val reloaded = withContext(Dispatchers.IO) {
+                    repository.getDatabase().transferenciaDao().getAllTransferenciasSync()
+                }
                 _uiState.update {
-                    it.copy(successMessage = "Se registraron $count transferencias de la jornada actual.")
+                    it.copy(
+                        allTransferencias = reloaded,
+                        successMessage = "Se registraron $count transferencias de la jornada actual."
+                    )
                 }
             }
             onComplete(count)
@@ -1660,8 +1704,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             openTandas.forEach { tanda ->
                 val finalQty = if (tanda.actualYield > 0.0) tanda.actualYield else if (tanda.expectedYield > 0.0) tanda.expectedYield else tanda.estimatedYield
-                val rend = if (tanda.baseQuantityUsed > 0.0) finalQty / tanda.baseQuantityUsed else 0.0
                 val prod = state.products.find { it.id == tanda.productId }
+                val presEquiv = if (tanda.specialPresentationEquivalence > 0.0) tanda.specialPresentationEquivalence else {
+                    prod?.let { parsePresentacionesEspeciales(it.presentacionesEspeciales).find { p -> p.name.equals(tanda.specialPresentationName, true) }?.baseEquivalence } ?: 1.0
+                }
+                val specialUnitsEq = if (tanda.specialPresentationQty > 0.0) tanda.specialPresentationQty * presEquiv else 0.0
+                val totalYieldUnits = finalQty + specialUnitsEq
+                val expectedVal = if (tanda.expectedYield > 0.0) tanda.expectedYield else tanda.estimatedYield
+                val yieldPct = if (expectedVal > 0.0) (totalYieldUnits / expectedVal) * 100.0 else 100.0
                 val salePrice = if (tanda.salePrice > 0.0) tanda.salePrice else (prod?.price ?: 0.0)
                 val rev = finalQty * salePrice
                 val profit = rev - tanda.totalBatchCost
@@ -1673,7 +1723,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         jornadaId = currentJornada.id,
                         status = "CERRADA",
                         actualYield = finalQty,
-                        yieldPercentage = rend,
+                        yieldPercentage = yieldPct,
                         expectedRevenue = rev,
                         estimatedProfit = profit,
                         profitMargin = pMargin,
@@ -4192,8 +4242,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                 val product = _uiState.value.products.find { it.id == tanda.productId }
                 val salePrice = if (product != null && product.price > 0.0) product.price else tanda.salePrice
+                val presEquiv = if (tanda.specialPresentationEquivalence > 0.0) tanda.specialPresentationEquivalence else {
+                    product?.let { parsePresentacionesEspeciales(it.presentacionesEspeciales).find { p -> p.name.equals(tanda.specialPresentationName, true) }?.baseEquivalence } ?: 1.0
+                }
+                val specialUnitsEq = if (tanda.specialPresentationQty > 0.0) tanda.specialPresentationQty * presEquiv else 0.0
+                val totalYieldUnits = actualYield + specialUnitsEq
                 val expectedYieldVal = if (tanda.expectedYield > 0.0) tanda.expectedYield else tanda.estimatedYield
-                val yieldPct = if (expectedYieldVal > 0.0) (actualYield / expectedYieldVal) * 100.0 else 100.0
+                val yieldPct = if (expectedYieldVal > 0.0) (totalYieldUnits / expectedYieldVal) * 100.0 else 100.0
                 val realRevenue = quantitySold * salePrice
                 val realUnitCost = if (actualYield > 0.0) tanda.totalBatchCost / actualYield else 0.0
                 val realProfit = realRevenue - tanda.totalBatchCost

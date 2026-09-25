@@ -497,73 +497,129 @@ fun FichaCostoDialog(
             decorFitsSystemWindows = false
         )
     ) {
-        Surface(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .windowInsetsPadding(WindowInsets.safeDrawing)
                 .imePadding(),
-            color = Color(0xFFF8FAFC)
+            contentAlignment = Alignment.Center
         ) {
-            Column(
+            Surface(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                    .fillMaxWidth(0.80f)
+                    .fillMaxHeight(0.80f),
+                shape = RoundedCornerShape(20.dp),
+                color = Color(0xFFF8FAFC),
+                border = BorderStroke(1.5.dp, Slate200),
+                shadowElevation = 8.dp
             ) {
-                // DIALOG HEADER PANTALLA COMPLETA SENIOR
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = Color.White,
-                    border = BorderStroke(1.5.dp, Slate200),
-                    shadowElevation = 1.dp,
-                    modifier = Modifier.fillMaxWidth()
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(start = 18.dp, end = 18.dp, top = 16.dp, bottom = 18.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                    // DIALOG HEADER PANTALLA COMPLETA SENIOR
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color.White,
+                        border = BorderStroke(1.5.dp, Slate200),
+                        shadowElevation = 1.dp,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        IconButton(
-                            onClick = onDismiss,
-                            colors = IconButtonDefaults.iconButtonColors(containerColor = Slate100),
-                            modifier = Modifier.size(52.dp)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.ArrowBack,
-                                contentDescription = "Regresar",
-                                tint = ElQadreNavy,
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
-
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            IconButton(
+                                onClick = onDismiss,
+                                colors = IconButtonDefaults.iconButtonColors(containerColor = Slate100),
+                                modifier = Modifier.size(44.dp)
+                            ) {
                                 Icon(
-                                    Icons.Default.ReceiptLong,
-                                    contentDescription = null,
-                                    tint = ElQadreGoldDark,
-                                    modifier = Modifier.size(26.dp)
-                                )
-                                Text(
-                                    text = "FICHA DE COSTO",
-                                    fontWeight = FontWeight.Black,
-                                    fontSize = 20.sp,
-                                    color = ElQadreNavy
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Cerrar",
+                                    tint = ElQadreNavy,
+                                    modifier = Modifier.size(24.dp)
                                 )
                             }
-                            Text(
-                                text = "${product.name} (Catálogo Cocina)",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = ElQadreGoldDark
-                            )
-                        }
 
-                        Spacer(modifier = Modifier.width(52.dp))
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.weight(1f).padding(horizontal = 8.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Icon(
+                                        Icons.Default.ReceiptLong,
+                                        contentDescription = null,
+                                        tint = ElQadreGoldDark,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                    Text(
+                                        text = "FICHA DE COSTO",
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 17.sp,
+                                        color = ElQadreNavy
+                                    )
+                                }
+                                Text(
+                                    text = "${currentProduct.name} (Catálogo Cocina)",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = ElQadreGoldDark,
+                                    maxLines = 1
+                                )
+                            }
+
+                            // ACTIVAR / DESACTIVAR PRODUCTO DIRECTAMENTE
+                            val isProdActive = currentProduct.isAvailable
+                            Surface(
+                                onClick = {
+                                    val newAvailable = !isProdActive
+                                    viewModel.updateProduct(currentProduct.copy(isAvailable = newAvailable))
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (isProdActive) Emerald50 else Rose50,
+                                border = BorderStroke(1.5.dp, if (isProdActive) Emerald500 else Rose500),
+                                modifier = Modifier.testTag("toggle_product_active_ficha")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(10.dp)
+                                            .clip(CircleShape)
+                                            .background(if (isProdActive) Emerald600 else Rose600)
+                                    )
+                                    Text(
+                                        text = if (isProdActive) "ACTIVO" else "INACTIVO",
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 12.sp,
+                                        color = if (isProdActive) Emerald700 else Rose700
+                                    )
+                                    Switch(
+                                        checked = isProdActive,
+                                        onCheckedChange = { isChecked ->
+                                            viewModel.updateProduct(currentProduct.copy(isAvailable = isChecked))
+                                        },
+                                        colors = SwitchDefaults.colors(
+                                            checkedThumbColor = Emerald600,
+                                            checkedTrackColor = Emerald100,
+                                            uncheckedThumbColor = Slate400,
+                                            uncheckedTrackColor = Slate200
+                                        ),
+                                        modifier = Modifier.scale(0.85f)
+                                    )
+                                }
+                            }
+                        }
                     }
-                }
 
                 // SCROLLABLE BODY WITH 7 SECTIONS
                 Column(
@@ -1687,6 +1743,7 @@ fun FichaCostoDialog(
             }
         }
     }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -2467,56 +2524,124 @@ fun FichaCostoMercaderiaDialog(
             decorFitsSystemWindows = false
         )
     ) {
-        Surface(
+        Box(
             modifier = Modifier
-                .fillMaxWidth(0.95f)
-                .fillMaxHeight(0.92f)
+                .fillMaxSize()
                 .windowInsetsPadding(WindowInsets.safeDrawing)
                 .imePadding(),
-            shape = RoundedCornerShape(16.dp),
-            color = Color.White
+            contentAlignment = Alignment.Center
         ) {
-            Column(
+            Surface(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(20.dp)
+                    .fillMaxWidth(0.80f)
+                    .fillMaxHeight(0.80f),
+                shape = RoundedCornerShape(20.dp),
+                color = Color.White,
+                border = BorderStroke(1.5.dp, Slate200),
+                shadowElevation = 8.dp
             ) {
-                // HEADER
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(18.dp)
                 ) {
-                    Column {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Default.ReceiptLong,
-                                contentDescription = null,
-                                tint = ElQadreGoldDark,
-                                modifier = Modifier.size(24.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
+                    val currentMerc = uiState.mercaderias.find { it.id == mercaderia.id } ?: mercaderia
+                    val currentProd = uiState.products.find { it.id == currentMerc.productId }
+                    val isMercActive = currentMerc.isActive
+
+                    // HEADER
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = onDismiss,
+                            colors = IconButtonDefaults.iconButtonColors(containerColor = Slate100),
+                            modifier = Modifier.size(44.dp).testTag("close_ficha_costo_mercaderia")
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Slate700, modifier = Modifier.size(24.dp))
+                        }
+
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.weight(1f).padding(horizontal = 8.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Icon(
+                                    Icons.Default.ReceiptLong,
+                                    contentDescription = null,
+                                    tint = ElQadreGoldDark,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                                Text(
+                                    text = "FICHA DE COSTO",
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 17.sp,
+                                    color = ElQadreNavy
+                                )
+                            }
                             Text(
-                                text = "Ficha de Costo de Mercadería",
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 18.sp,
-                                color = ElQadreNavy
+                                text = "${costSheet.product.name} • ${costSheet.product.code} (Catálogo Barra)",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ElQadreGoldDark,
+                                maxLines = 1
                             )
                         }
-                        Text(
-                            text = "${costSheet.product.name} • ${costSheet.product.code} (Catálogo Barra)",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Slate600
-                        )
+
+                        // ACTIVAR / DESACTIVAR MERCADERÍA DIRECTAMENTE
+                        Surface(
+                            onClick = {
+                                val newActive = !isMercActive
+                                viewModel.updateMercaderia(currentMerc.copy(isActive = newActive))
+                                if (currentProd != null) {
+                                    viewModel.updateProduct(currentProd.copy(isAvailable = newActive))
+                                }
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isMercActive) Emerald50 else Rose50,
+                            border = BorderStroke(1.5.dp, if (isMercActive) Emerald500 else Rose500),
+                            modifier = Modifier.testTag("toggle_mercaderia_active_ficha")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(10.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isMercActive) Emerald600 else Rose600)
+                                )
+                                Text(
+                                    text = if (isMercActive) "ACTIVO" else "INACTIVO",
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 12.sp,
+                                    color = if (isMercActive) Emerald700 else Rose700
+                                )
+                                Switch(
+                                    checked = isMercActive,
+                                    onCheckedChange = { isChecked ->
+                                        viewModel.updateMercaderia(currentMerc.copy(isActive = isChecked))
+                                        if (currentProd != null) {
+                                            viewModel.updateProduct(currentProd.copy(isAvailable = isChecked))
+                                        }
+                                    },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = Emerald600,
+                                        checkedTrackColor = Emerald100,
+                                        uncheckedThumbColor = Slate400,
+                                        uncheckedTrackColor = Slate200
+                                    ),
+                                    modifier = Modifier.scale(0.85f)
+                                )
+                            }
+                        }
                     }
 
-                    IconButton(onClick = onDismiss, modifier = Modifier.testTag("close_ficha_costo_mercaderia")) {
-                        Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Slate500)
-                    }
-                }
-
-                HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp), color = ElQadreBorderLight)
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp), color = ElQadreBorderLight)
 
                 // SCROLLABLE BODY
                 Column(
@@ -3071,6 +3196,7 @@ fun FichaCostoMercaderiaDialog(
                 }
             }
         }
+    }
     }
 }
 
