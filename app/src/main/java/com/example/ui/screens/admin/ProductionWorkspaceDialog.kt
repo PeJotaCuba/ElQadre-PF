@@ -540,10 +540,13 @@ fun ProductionWorkspaceDialog(
                 showAddProductDialog = false
                 productToEdit = null
             },
-            onConfirm = { p, ppdVal ->
+            onConfirm = { p, ppdVal, modo ->
                 if (p.id == 0L) {
-                    viewModel.createProductElaborado(p, ppdVal)
+                    viewModel.createProductElaborado(p, ppdVal) { newId ->
+                        com.example.util.ProduccionModoHelper.setModo(context, newId, modo)
+                    }
                 } else {
+                    com.example.util.ProduccionModoHelper.setModo(context, p.id, modo)
                     viewModel.updateProduct(p)
                     viewModel.updatePpd(p.id, ppdVal)
                 }
@@ -3793,12 +3796,16 @@ fun AddEditProductoElaboradoDialog(
     producto: Product?,
     uiState: MainUiState,
     onDismiss: () -> Unit,
-    onConfirm: (Product, Double) -> Unit
+    onConfirm: (Product, Double, String) -> Unit
 ) {
     val existingProdElaborado = remember(producto, uiState.productosElaborados) {
         uiState.productosElaborados.find { it.productId == producto?.id }
     }
     var name by remember { mutableStateOf(producto?.name ?: "") }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var selectedModo by remember(producto?.id) {
+        mutableStateOf(if (producto != null && producto.id > 0) com.example.util.ProduccionModoHelper.getModo(context, producto.id) else "POR_TANDAS")
+    }
     var category by remember { mutableStateOf(producto?.category ?: "Cocina") }
     var unitOfMeasure by remember { mutableStateOf(producto?.unitOfMeasure ?: "Unidad") }
     var ppdText by remember { mutableStateOf((existingProdElaborado?.effectivePpd ?: 0.0).let { if (it > 0.0) (if (it % 1.0 == 0.0) it.toLong().toString() else it.toString()) else "" }) }
@@ -3914,6 +3921,70 @@ fun AddEditProductoElaboradoDialog(
                                 .height(64.dp)
                                 .testTag("input_product_name")
                         )
+                    }
+
+                    // MODO DE CONTABILIZACIÓN: TANDA O DIRECTO
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "MODO DE CONTABILIZACIÓN (*)",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = ElQadreNavy
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Slate100,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                val isTanda = selectedModo != "DIRECTO"
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isTanda) ElQadreNavy else Color.Transparent,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                        .clickable { selectedModo = "POR_TANDAS" }
+                                        .testTag("dialog_modo_tanda")
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(
+                                            text = "TANDA",
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = if (isTanda) Color.White else Slate600
+                                        )
+                                    }
+                                }
+
+                                val isDir = selectedModo == "DIRECTO"
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isDir) Color(0xFFD97706) else Color.Transparent,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                        .clickable { selectedModo = "DIRECTO" }
+                                        .testTag("dialog_modo_directo")
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(
+                                            text = "DIRECTO",
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = if (isDir) Color.White else Slate600
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     // CATEGORÍA Y UNIDAD DE VENTA
@@ -4157,6 +4228,9 @@ fun AddEditProductoElaboradoDialog(
                                     showError = true
                                 } else {
                                     val generatedCode = producto?.code ?: com.example.util.ProductCodeHelper.generateNextProductCode("COCINA", category, uiState.products)
+                                    if (producto != null && producto.id > 0) {
+                                        com.example.util.ProduccionModoHelper.setModo(context, producto.id, selectedModo)
+                                    }
                                     onConfirm(
                                         Product(
                                             id = producto?.id ?: 0L,
@@ -4173,7 +4247,8 @@ fun AddEditProductoElaboradoDialog(
                                             presentacionesEspeciales = serializePresentacionesEspeciales(presentacionesList),
                                             isConvertedToInsumo = producto?.isConvertedToInsumo ?: false
                                         ),
-                                        ppdVal
+                                        ppdVal,
+                                        selectedModo
                                     )
                                 }
                             },

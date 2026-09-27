@@ -2555,14 +2555,47 @@ fun DuenoProduccionSubscreen(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = prod.name.uppercase(),
-                                            fontWeight = FontWeight.Black,
-                                            fontSize = 16.sp,
-                                            color = ElQadreNavy,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Text(
+                                                text = prod.name.uppercase(),
+                                                fontWeight = FontWeight.Black,
+                                                fontSize = 16.sp,
+                                                color = ElQadreNavy,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f, fill = false)
+                                            )
+                                            val isDirecto = com.example.util.ProduccionModoHelper.isDirecto(context, prod.id)
+                                            Surface(
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = if (isDirecto) Color(0xFFFEF3C7) else Color(0xFFEFF6FF),
+                                                border = BorderStroke(1.dp, if (isDirecto) Color(0xFFFDE68A) else Color(0xFFBFDBFE))
+                                            ) {
+                                                Text(
+                                                    text = if (isDirecto) "DIRECTO" else "TANDA",
+                                                    fontSize = 10.5.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    color = if (isDirecto) Color(0xFFB45309) else Color(0xFF1D4ED8),
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                            Surface(
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = if (prod.isAvailable) Color(0xFFECFDF5) else Color(0xFFFEF2F2),
+                                                border = BorderStroke(1.dp, if (prod.isAvailable) Color(0xFFA7F3D0) else Color(0xFFFECACA))
+                                            ) {
+                                                Text(
+                                                    text = if (prod.isAvailable) "ACTIVO" else "INACTIVO",
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (prod.isAvailable) Color(0xFF047857) else Color(0xFFDC2626),
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        }
                                         Spacer(modifier = Modifier.height(4.dp))
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
@@ -2967,7 +3000,7 @@ fun DuenoProduccionSubscreen(
         }
 
         // ==========================================================
-        // DETALLE MODAL: PRODUCTO
+        // DETALLE DE PRODUCTO DE PRODUCCIÓN (PANTALLA COMPLETA)
         // ==========================================================
         if (selectedProductForDetail != null) {
             val prod = selectedProductForDetail!!
@@ -2981,277 +3014,596 @@ fun DuenoProduccionSubscreen(
                     decorFitsSystemWindows = false
                 )
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .windowInsetsPadding(WindowInsets.safeDrawing)
-                        .imePadding(),
-                    contentAlignment = Alignment.Center
+                BackHandler { selectedProductForDetail = null }
+
+                val currentP = uiState.products.find { it.id == prod.id } ?: prod
+                val isProdActive = currentP.isAvailable
+                val currentModo = remember(currentP.id) { com.example.util.ProduccionModoHelper.getModo(context, currentP.id) }
+                var selectedModo by remember(currentP.id) { mutableStateOf(currentModo) }
+
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = Color(0xFFF8FAFC)
                 ) {
-                    val currentP = uiState.products.find { it.id == prod.id } ?: prod
-                    Surface(
-                        shape = RoundedCornerShape(20.dp),
-                        color = Color.White,
-                        border = BorderStroke(1.5.dp, Slate200),
-                        shadowElevation = 8.dp,
-                        modifier = Modifier
-                            .fillMaxWidth(0.80f)
-                            .fillMaxHeight(0.80f)
-                    ) {
+                    Scaffold(
+                        containerColor = Color(0xFFF8FAFC),
+                        contentWindowInsets = WindowInsets.safeDrawing,
+                        topBar = {
+                            Surface(
+                                color = Color.White,
+                                shadowElevation = 3.dp,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .statusBarsPadding()
+                                        .padding(horizontal = 20.dp, vertical = 14.dp),
+                                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                                ) {
+                                    // 2. CABECERA - LÍNEA SUPERIOR: Nombre (izq) y X (der)
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = currentP.name.uppercase(),
+                                            fontWeight = FontWeight.Black,
+                                            fontSize = 22.sp,
+                                            color = ElQadreNavy,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        IconButton(
+                                            onClick = { selectedProductForDetail = null },
+                                            colors = IconButtonDefaults.iconButtonColors(
+                                                containerColor = Slate100,
+                                                contentColor = Slate700
+                                            ),
+                                            modifier = Modifier
+                                                .size(48.dp)
+                                                .testTag("close_dueno_product_detail")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Close,
+                                                contentDescription = "Cerrar",
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                        }
+                                    }
+
+                                    // 2. CABECERA - DEBAJO: ACTIVAR/DESACTIVAR (izq) y TANDA/DIRECTO (der)
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        // BOTÓN ACTIVAR / DESACTIVAR
+                                        Surface(
+                                            onClick = {
+                                                val newActive = !isProdActive
+                                                viewModel.updateProduct(currentP.copy(isAvailable = newActive))
+                                            },
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = if (isProdActive) Emerald50 else Rose50,
+                                            border = BorderStroke(2.dp, if (isProdActive) Emerald500 else Rose500),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(48.dp)
+                                                .testTag("toggle_product_active_dueno_detail")
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .padding(horizontal = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.Center
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(12.dp)
+                                                        .clip(CircleShape)
+                                                        .background(if (isProdActive) Emerald600 else Rose600)
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = if (isProdActive) "ACTIVO" else "INACTIVO",
+                                                    fontWeight = FontWeight.Black,
+                                                    fontSize = 13.sp,
+                                                    color = if (isProdActive) Emerald700 else Rose700
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Switch(
+                                                    checked = isProdActive,
+                                                    onCheckedChange = { isChecked ->
+                                                        viewModel.updateProduct(currentP.copy(isAvailable = isChecked))
+                                                    },
+                                                    colors = SwitchDefaults.colors(
+                                                        checkedThumbColor = Emerald600,
+                                                        checkedTrackColor = Emerald100,
+                                                        uncheckedThumbColor = Slate400,
+                                                        uncheckedTrackColor = Slate200
+                                                    ),
+                                                    modifier = Modifier.scale(0.8f)
+                                                )
+                                            }
+                                        }
+
+                                        // SELECTOR TANDA / DIRECTO
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = Slate100,
+                                            border = BorderStroke(1.5.dp, Slate200),
+                                            modifier = Modifier
+                                                .weight(1.2f)
+                                                .height(48.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .padding(4.dp),
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                val isTandaSel = selectedModo != "DIRECTO"
+                                                Surface(
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    color = if (isTandaSel) ElQadreNavy else Color.Transparent,
+                                                    modifier = Modifier
+                                                        .weight(1f)
+                                                        .fillMaxHeight()
+                                                        .clickable {
+                                                            selectedModo = "POR_TANDAS"
+                                                            com.example.util.ProduccionModoHelper.setModo(context, currentP.id, "POR_TANDAS")
+                                                        }
+                                                        .testTag("modo_tanda_dueno_${currentP.id}")
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.fillMaxSize(),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.Center
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Outlined.Layers,
+                                                            contentDescription = null,
+                                                            modifier = Modifier.size(16.dp),
+                                                            tint = if (isTandaSel) Color.White else Slate600
+                                                        )
+                                                        Spacer(modifier = Modifier.width(4.dp))
+                                                        Text(
+                                                            text = "TANDA",
+                                                            fontSize = 12.sp,
+                                                            fontWeight = FontWeight.Black,
+                                                            color = if (isTandaSel) Color.White else Slate600
+                                                        )
+                                                    }
+                                                }
+
+                                                val isDirectoSel = selectedModo == "DIRECTO"
+                                                Surface(
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    color = if (isDirectoSel) Color(0xFFD97706) else Color.Transparent,
+                                                    modifier = Modifier
+                                                        .weight(1f)
+                                                        .fillMaxHeight()
+                                                        .clickable {
+                                                            selectedModo = "DIRECTO"
+                                                            com.example.util.ProduccionModoHelper.setModo(context, currentP.id, "DIRECTO")
+                                                        }
+                                                        .testTag("modo_directo_dueno_${currentP.id}")
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.fillMaxSize(),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.Center
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Outlined.FlashOn,
+                                                            contentDescription = null,
+                                                            modifier = Modifier.size(16.dp),
+                                                            tint = if (isDirectoSel) Color.White else Slate600
+                                                        )
+                                                        Spacer(modifier = Modifier.width(4.dp))
+                                                        Text(
+                                                            text = "DIRECTO",
+                                                            fontSize = 12.sp,
+                                                            fontWeight = FontWeight.Black,
+                                                            color = if (isDirectoSel) Color.White else Slate600
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        bottomBar = {
+                            Surface(
+                                color = Color.White,
+                                shadowElevation = 8.dp,
+                                border = BorderStroke(1.dp, Slate200),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .navigationBarsPadding()
+                                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        // 1. RECETA
+                                        OutlinedButton(
+                                            onClick = {
+                                                val target = prod
+                                                selectedProductForDetail = null
+                                                selectedProductForRecipe = target
+                                            },
+                                            shape = RoundedCornerShape(12.dp),
+                                            border = BorderStroke(1.5.dp, ElQadreNavy),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(52.dp)
+                                                .testTag("btn_receta_product_detail"),
+                                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+                                        ) {
+                                            Column(
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalArrangement = Arrangement.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Outlined.MenuBook,
+                                                    contentDescription = null,
+                                                    tint = ElQadreNavy,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                                Text(
+                                                    text = "RECETA",
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    color = ElQadreNavy
+                                                )
+                                            }
+                                        }
+
+                                        // 2. FICHA
+                                        Button(
+                                            onClick = {
+                                                val target = prod
+                                                selectedProductForDetail = null
+                                                selectedProductForFichaCosto = target
+                                            },
+                                            colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
+                                            shape = RoundedCornerShape(12.dp),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(52.dp)
+                                                .testTag("btn_ficha_product_detail"),
+                                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+                                        ) {
+                                            Column(
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalArrangement = Arrangement.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Outlined.Assessment,
+                                                    contentDescription = null,
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                                Text(
+                                                    text = "FICHA",
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    color = Color.White
+                                                )
+                                            }
+                                        }
+
+                                        // 3. EDICIÓN
+                                        FilledTonalButton(
+                                            onClick = {
+                                                val target = prod
+                                                selectedProductForDetail = null
+                                                selectedProductToEdit = target
+                                            },
+                                            colors = ButtonDefaults.filledTonalButtonColors(
+                                                containerColor = Slate100,
+                                                contentColor = Slate800
+                                            ),
+                                            shape = RoundedCornerShape(12.dp),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(52.dp)
+                                                .testTag("btn_edit_product_detail"),
+                                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+                                        ) {
+                                            Column(
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalArrangement = Arrangement.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Outlined.Edit,
+                                                    contentDescription = null,
+                                                    tint = Slate800,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                                Text(
+                                                    text = "EDICIÓN",
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    color = Slate800
+                                                )
+                                            }
+                                        }
+
+                                        // 4. ELIMINAR
+                                        Button(
+                                            onClick = {
+                                                val target = prod
+                                                selectedProductForDetail = null
+                                                productToDelete = target
+                                            },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = Color(0xFFFEE2E2),
+                                                contentColor = Color(0xFFDC2626)
+                                            ),
+                                            border = BorderStroke(1.5.dp, Color(0xFFFCA5A5)),
+                                            shape = RoundedCornerShape(12.dp),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(52.dp)
+                                                .testTag("btn_delete_product_detail"),
+                                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+                                        ) {
+                                            Column(
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalArrangement = Arrangement.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Outlined.Delete,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFFDC2626),
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                                Text(
+                                                    text = "ELIMINAR",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    color = Color(0xFFDC2626)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    ) { innerPadding ->
                         Column(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(20.dp),
+                                .padding(innerPadding)
+                                .verticalScroll(rememberScrollState())
+                                .padding(horizontal = 20.dp, vertical = 16.dp),
                             verticalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
-                            // ENCABEZADO
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                            // 3. INFORMACIÓN INMEDIATA (Únicamente Categoría y Código)
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color.White,
+                                border = BorderStroke(1.5.dp, Slate200),
+                                shadowElevation = 1.dp,
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = currentP.name.uppercase(),
-                                        fontWeight = FontWeight.Black,
-                                        fontSize = 19.sp,
-                                        color = ElQadreNavy,
-                                        maxLines = 1
-                                    )
-                                    Text(
-                                        text = "DETALLE DE PRODUCTO DE PRODUCCIÓN",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Slate500
-                                    )
-                                }
-
                                 Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(18.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    val isProdActive = currentP.isAvailable
-                                    Surface(
-                                        onClick = {
-                                            val newActive = !isProdActive
-                                            viewModel.updateProduct(currentP.copy(isAvailable = newActive))
-                                        },
-                                        shape = RoundedCornerShape(12.dp),
-                                        color = if (isProdActive) Emerald50 else Rose50,
-                                        border = BorderStroke(1.5.dp, if (isProdActive) Emerald500 else Rose500),
-                                        modifier = Modifier.testTag("toggle_product_active_dueno_detail")
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Categoría",
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Slate500
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = currentP.category.ifBlank { "General" },
+                                            fontSize = 18.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = Slate900
+                                        )
+                                    }
+
+                                    Box(
+                                        modifier = Modifier
+                                            .width(1.5.dp)
+                                            .height(38.dp)
+                                            .background(Slate200)
+                                    )
+
+                                    Column(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .padding(start = 18.dp)
                                     ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(10.dp)
-                                                    .clip(CircleShape)
-                                                    .background(if (isProdActive) Emerald600 else Rose600)
-                                            )
-                                            Text(
-                                                text = if (isProdActive) "ACTIVO" else "INACTIVO",
-                                                fontWeight = FontWeight.Black,
-                                                fontSize = 12.sp,
-                                                color = if (isProdActive) Emerald700 else Rose700
-                                            )
-                                            Switch(
-                                                checked = isProdActive,
-                                                onCheckedChange = { isChecked ->
-                                                    viewModel.updateProduct(currentP.copy(isAvailable = isChecked))
-                                                },
-                                                colors = SwitchDefaults.colors(
-                                                    checkedThumbColor = Emerald600,
-                                                    checkedTrackColor = Emerald100,
-                                                    uncheckedThumbColor = Slate400,
-                                                    uncheckedTrackColor = Slate200
-                                                ),
-                                                modifier = Modifier.scale(0.85f)
-                                            )
-                                        }
+                                        Text(
+                                            text = "Código",
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Slate500
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = currentP.code.ifBlank { "N/A" },
+                                            fontSize = 18.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = Color(0xFF1D4ED8)
+                                        )
                                     }
+                                }
+                            }
 
-                                    IconButton(
-                                        onClick = { selectedProductForDetail = null },
-                                        colors = IconButtonDefaults.iconButtonColors(containerColor = Slate100),
-                                        modifier = Modifier.size(44.dp)
+                            // 4. RESTO DE LA INFORMACIÓN (Precio de Venta, Rendimiento, PPD)
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color.White,
+                                border = BorderStroke(1.5.dp, Slate200),
+                                shadowElevation = 1.dp,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(18.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Slate700, modifier = Modifier.size(24.dp))
+                                        Text(
+                                            text = "Precio de Venta:",
+                                            fontSize = 16.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Slate700
+                                        )
+                                        Text(
+                                            text = "$${"%.2f".format(prod.price)} CUP / ${prod.unitOfMeasure}",
+                                            fontSize = 20.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = ElQadreNavy
+                                        )
+                                    }
+
+                                    HorizontalDivider(color = Slate200, thickness = 1.dp)
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "Rendimiento Base:",
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = Slate600
+                                        )
+                                        Text(
+                                            text = "${pe?.baseYield ?: 1.0} ${pe?.productionUnit ?: prod.unitOfMeasure} / lote",
+                                            fontSize = 16.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Slate900
+                                        )
+                                    }
+
+                                    HorizontalDivider(color = Slate200, thickness = 1.dp)
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "PPD Estimado:",
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = Slate600
+                                        )
+                                        Text(
+                                            text = "${pe?.effectivePpd ?: 10.0} ud/día",
+                                            fontSize = 16.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Slate800
+                                        )
                                     }
                                 }
                             }
 
-                        HorizontalDivider(color = Slate200, thickness = 2.dp)
-
-                        // BADGES DE CATEGORÍA Y ESTADO
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Surface(shape = RoundedCornerShape(8.dp), color = Slate100) {
-                                Text(prod.category, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Slate700, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
-                            }
-                            Surface(shape = RoundedCornerShape(8.dp), color = Color(0xFFEFF6FF)) {
-                                Text(prod.code, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1D4ED8), modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
-                            }
-                            Surface(shape = RoundedCornerShape(8.dp), color = if (prod.isAvailable) Color(0xFFECFDF5) else Color(0xFFFEF2F2)) {
-                                Text(if (prod.isAvailable) "ACTIVO" else "INACTIVO", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (prod.isAvailable) Color(0xFF047857) else Color(0xFFDC2626), modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
-                            }
-                        }
-
-                        // PRECIO Y RENDIMIENTO EN TARJETAS DESTACADAS
-                        Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = Color(0xFFF8FAFC),
-                            border = BorderStroke(1.5.dp, Slate200),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            // 4. RESTO DE LA INFORMACIÓN: RECETA / INGREDIENTES
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color.White,
+                                border = BorderStroke(1.5.dp, Slate200),
+                                shadowElevation = 1.dp,
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                                Column(
+                                    modifier = Modifier.padding(18.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    Text("Precio de Venta:", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Slate700)
-                                    Text(
-                                        "$${"%.2f".format(prod.price)} CUP / ${prod.unitOfMeasure}",
-                                        fontSize = 18.sp,
-                                        fontWeight = FontWeight.Black,
-                                        color = ElQadreNavy
-                                    )
-                                }
-                                HorizontalDivider(color = Slate200)
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text("Rendimiento Base:", fontSize = 14.sp, color = Slate600)
-                                    Text(
-                                        "${pe?.baseYield ?: 1.0} ${pe?.productionUnit ?: prod.unitOfMeasure} / lote",
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Slate800
-                                    )
-                                }
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text("PPD Estimado:", fontSize = 14.sp, color = Slate600)
-                                    Text(
-                                        "${pe?.effectivePpd ?: 10.0} ud/día",
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Slate700
-                                    )
-                                }
-                            }
-                        }
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.RestaurantMenu,
+                                            contentDescription = null,
+                                            tint = ElQadreNavy,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Text(
+                                            text = "INGREDIENTES DE LA RECETA",
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = ElQadreNavy
+                                        )
+                                    }
 
-                        // RECETA / INGREDIENTES
-                        Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = Slate50,
-                            border = BorderStroke(1.dp, Slate200),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(14.dp),
-                                verticalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Text("INGREDIENTES DE LA RECETA:", fontSize = 13.sp, fontWeight = FontWeight.Black, color = ElQadreNavy)
-                                if (peReceta.isNotEmpty()) {
-                                    peReceta.forEach { ing ->
-                                        val raw = materiasPrimas.find { it.id == ing.materiaPrimaId }
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween
+                                    HorizontalDivider(color = Slate200, thickness = 1.dp)
+
+                                    if (peReceta.isNotEmpty()) {
+                                        Column(
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
-                                            Text("• ${raw?.name ?: "Insumo"}", fontSize = 13.sp, color = Slate700)
-                                            Text("${"%.1f".format(ing.quantity)} ${ing.unit}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Slate900)
+                                            peReceta.forEach { ing ->
+                                                val raw = materiasPrimas.find { it.id == ing.materiaPrimaId }
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .background(Slate50, RoundedCornerShape(8.dp))
+                                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text(
+                                                        text = "• ${raw?.name ?: "Insumo #${ing.materiaPrimaId}"}",
+                                                        fontSize = 15.sp,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        color = Slate800
+                                                    )
+                                                    Text(
+                                                        text = "${"%.1f".format(ing.quantity)} ${ing.unit}",
+                                                        fontSize = 15.sp,
+                                                        fontWeight = FontWeight.Black,
+                                                        color = Slate900
+                                                    )
+                                                }
+                                            }
                                         }
+                                    } else {
+                                        Text(
+                                            text = "Sin ingredientes configurados en la receta",
+                                            fontSize = 14.sp,
+                                            color = Slate400,
+                                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                                            modifier = Modifier.padding(vertical = 4.dp)
+                                        )
                                     }
-                                } else {
-                                    Text(
-                                        text = "Sin ingredientes configurados en la receta",
-                                        fontSize = 13.sp,
-                                        color = Slate400,
-                                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
-                                    )
                                 }
-                            }
-                        }
-
-                        HorizontalDivider(color = Slate200, thickness = 2.dp)
-
-                        // ACCIONES ERGONÓMICAS Y VISIBLES
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = {
-                                    val target = prod
-                                    selectedProductForDetail = null
-                                    selectedProductForRecipe = target
-                                },
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.weight(1f).height(50.dp),
-                                contentPadding = PaddingValues(0.dp)
-                            ) {
-                                Text("Receta", fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                            }
-
-                            Button(
-                                onClick = {
-                                    val target = prod
-                                    selectedProductForDetail = null
-                                    selectedProductForFichaCosto = target
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.weight(1.3f).height(50.dp),
-                                contentPadding = PaddingValues(0.dp)
-                            ) {
-                                Text("Ficha Costo", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                            }
-
-                            IconButton(
-                                onClick = {
-                                    val target = prod
-                                    selectedProductForDetail = null
-                                    selectedProductToEdit = target
-                                },
-                                colors = IconButtonDefaults.iconButtonColors(containerColor = Slate100),
-                                modifier = Modifier.size(50.dp)
-                            ) {
-                                Icon(Icons.Outlined.Edit, contentDescription = "Editar", tint = ElQadreNavy, modifier = Modifier.size(22.dp))
-                            }
-
-                            IconButton(
-                                onClick = {
-                                    val target = prod
-                                    selectedProductForDetail = null
-                                    productToDelete = target
-                                },
-                                colors = IconButtonDefaults.iconButtonColors(containerColor = Color(0xFFFEE2E2)),
-                                modifier = Modifier.size(50.dp)
-                            ) {
-                                Icon(Icons.Outlined.Delete, contentDescription = "Eliminar", tint = Color(0xFFDC2626), modifier = Modifier.size(22.dp))
                             }
                         }
                     }
                 }
             }
-        }
         }
 
         // ==========================================================
@@ -3313,8 +3665,10 @@ fun DuenoProduccionSubscreen(
                 producto = null,
                 uiState = uiState,
                 onDismiss = { showNuevoProductoDialog = false },
-                onConfirm = { prod, ppdVal ->
-                    viewModel.createProductElaborado(prod, ppdVal)
+                onConfirm = { prod, ppdVal, modo ->
+                    viewModel.createProductElaborado(prod, ppdVal) { newId ->
+                        com.example.util.ProduccionModoHelper.setModo(context, newId, modo)
+                    }
                     showNuevoProductoDialog = false
                 }
             )
@@ -3325,7 +3679,8 @@ fun DuenoProduccionSubscreen(
                 producto = prod,
                 uiState = uiState,
                 onDismiss = { selectedProductToEdit = null },
-                onConfirm = { updatedProd, ppdVal ->
+                onConfirm = { updatedProd, ppdVal, modo ->
+                    com.example.util.ProduccionModoHelper.setModo(context, updatedProd.id, modo)
                     viewModel.updateProductElaboradoFull(updatedProd, ppdVal)
                     selectedProductToEdit = null
                 }

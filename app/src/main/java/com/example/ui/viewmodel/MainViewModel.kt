@@ -2606,14 +2606,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun createProductElaborado(product: Product, ppdVal: Double = 10.0) {
-        createProductElaboradoWithRecipe(product, ppdVal, emptyList())
+    fun createProductElaborado(product: Product, ppdVal: Double = 10.0, onSuccess: ((Long) -> Unit)? = null) {
+        createProductElaboradoWithRecipe(product, ppdVal, emptyList(), onSuccess)
     }
 
     fun createProductElaboradoWithRecipe(
         product: Product,
         ppdVal: Double = 10.0,
-        ingredients: List<Pair<Long, Pair<Double, String>>>
+        ingredients: List<Pair<Long, Pair<Double, String>>>,
+        onSuccess: ((Long) -> Unit)? = null
     ) {
         viewModelScope.launch {
             val dest = "COCINA"
@@ -2640,6 +2641,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
             _uiState.update { it.copy(successMessage = "Producto de producción creado ($finalCode) con receta y PPD: ${ppdVal} ud/día", errorMessage = null) }
+            onSuccess?.invoke(newId)
         }
     }
 

@@ -429,6 +429,11 @@ fun CuadreCajaScreen(
 
         grouped.forEach { (prodId, tandas) ->
             val isDirectoMode = com.example.util.ProduccionModoHelper.isDirecto(context, prodId)
+            // REGLA FUNDAMENTAL: Los productos en MODO DIRECTO no se procesan por Tandas, se incorporan exclusivamente abajo si están ACTIVOS
+            if (isDirectoMode) {
+                return@forEach
+            }
+
             val product = uiState.products.find { it.id == prodId }
             val prodElab = uiState.productosElaborados.find { it.productId == prodId }
             val presList = product?.let { com.example.data.local.model.parsePresentacionesEspeciales(it.presentacionesEspeciales) } ?: emptyList()
@@ -454,41 +459,6 @@ fun CuadreCajaScreen(
             val cantCocineros = savedPagos?.cantidadCocineros ?: fichaCocineros
             val pagoDepUnit = costSheet?.totalPagoDependienteUnitario ?: prodElab?.totalPagoDependienteUnitario ?: 0.0
             val pagoCajUnit = costSheet?.totalPagoCajeroUnitario ?: prodElab?.totalPagoCajeroUnitario ?: 0.0
-
-            if (isDirectoMode) {
-                // REGLA FUNDAMENTAL DEL MODO DIRECTO: NO UTILIZAR DATOS DE TANDAS
-                val draftItem = savedDraft?.produccionDrafts?.find {
-                    it.productId == prodId && !it.isSpecialPresentation
-                }
-                val prodName = product?.name ?: "Producto #$prodId"
-                resultList.add(
-                    ProduccionItemState(
-                        productId = prodId,
-                        productName = prodName,
-                        unit = normalUnit,
-                        price = normalPrice,
-                        tandasCount = 0,
-                        totalProduced = 0.0,
-                        qtyPerTanda = 0.0,
-                        defectuosoStr = draftItem?.defectuosoStr ?: "0",
-                        consumoStr = draftItem?.consumoStr ?: "0",
-                        regaliaStr = draftItem?.regaliaStr ?: "0",
-                        pendientesStr = draftItem?.pendientesStr ?: "0",
-                        costoUnitarioTeorico = normalCostoUnitario,
-                        pagoCocinaUnitario = pagoCocinaUnit,
-                        cantidadCocineros = cantCocineros,
-                        pagoDependienteUnitario = pagoDepUnit,
-                        pagoCajeroUnitario = pagoCajUnit,
-                        presentaciones = presList,
-                        hasTanda00 = false,
-                        isSpecialPresentation = false,
-                        specialPresentationName = "",
-                        parentProductId = prodId,
-                        isDirecto = true,
-                        customTotalProducedStr = draftItem?.customTotalProducedStr ?: "0"
-                    )
-                )
-            } else {
 
             // 1. PRESENTACIONES ESPECIALES CON PRODUCCIÓN REGISTRADA EN TANDAS
             val processedPresNames = mutableSetOf<String>()
@@ -640,9 +610,10 @@ fun CuadreCajaScreen(
                 )
             }
         }
-    }
 
-        // Agregar productos configurados en MODO DIRECTO que no tengan tandas registradas
+        // INCORPORACIÓN AUTOMÁTICA DE PRODUCTOS DIRECTOS ACTIVOS (ACTIVO + DIRECTO)
+        // Regla: Si está ACTIVO + DIRECTO, aparece automáticamente en Cuadre de Caja
+        // Si está INACTIVO + DIRECTO, no debe aparecer.
         uiState.products.forEach { prod ->
             if (prod.isAvailable && com.example.util.ProduccionModoHelper.isDirecto(context, prod.id)) {
                 if (resultList.none { it.productId == prod.id && !it.isSpecialPresentation }) {
@@ -4485,34 +4456,36 @@ fun ProduccionEditModal(
                 }
 
                 // Información de Unidades Pendientes (Tomadas de Tandas)
-                item {
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = Color(0xFFCCFBF1),
-                        border = BorderStroke(1.dp, Color(0xFF0F766E)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                if (!item.isDirecto && (item.pendientes > 0 || item.hasTanda00)) {
+                    item {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFFCCFBF1),
+                            border = BorderStroke(1.dp, Color(0xFF0F766E)),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text(
-                                text = "UNIDADES PENDIENTES (Cierre de Tanda):",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF0F766E)
-                            )
-                            Text(
-                                text = "${"%.1f".format(item.pendientes)} ${item.unit}",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Black,
-                                color = Color(0xFF0F766E)
-                            )
-                            Text(
-                                text = "Información tomada automáticamente del cierre de Tandas. Las unidades pendientes pasarán como Tanda 00 a la siguiente jornada.",
-                                fontSize = 11.sp,
-                                color = Slate600
-                            )
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = "UNIDADES PENDIENTES (Cierre de Tanda):",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF0F766E)
+                                )
+                                Text(
+                                    text = "${"%.1f".format(item.pendientes)} ${item.unit}",
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Color(0xFF0F766E)
+                                )
+                                Text(
+                                    text = "Información tomada automáticamente del cierre de Tandas. Las unidades pendientes pasarán como Tanda 00 a la siguiente jornada.",
+                                    fontSize = 11.sp,
+                                    color = Slate600
+                                )
+                            }
                         }
                     }
                 }
