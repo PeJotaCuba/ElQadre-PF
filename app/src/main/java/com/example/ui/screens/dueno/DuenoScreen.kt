@@ -1644,8 +1644,9 @@ fun DuenoInventarioView(
         "MENU" -> {
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 24.dp),
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 36.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 DuenoSubscreenHeader(
@@ -3549,8 +3550,9 @@ fun DuenoMercaderiasSubscreen(
 
     Column(
         modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 24.dp),
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 48.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         DuenoSubscreenHeader(
@@ -4562,8 +4564,9 @@ fun DuenoHistorialSubscreen(
 
     Column(
         modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 24.dp),
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 48.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         DuenoSubscreenHeader(
@@ -8453,9 +8456,26 @@ fun TandaDetailDialog(
                             border = BorderStroke(1.5.dp, Slate200),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text("INSUMOS CONSUMIDOS", fontSize = 13.sp, fontWeight = FontWeight.Black, color = ElQadreNavy)
-                                Text(tanda.ingredientsConsumedText, fontSize = 14.sp, color = Slate700)
+                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("INGREDIENTES UTILIZADOS", fontSize = 13.sp, fontWeight = FontWeight.Black, color = ElQadreNavy)
+                                val items = tanda.ingredientsConsumedText.split(Regex("[,;|\n]")).map { it.trim() }.filter { it.isNotEmpty() }
+                                items.forEach { item ->
+                                    val formattedItem = item.replace(":", " —").replace("  ", " ")
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(Slate50, RoundedCornerShape(8.dp))
+                                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = formattedItem,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Slate800
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -12985,7 +13005,7 @@ fun DuenoAjustesView(
             icon = Icons.Outlined.CloudSync
         ) {
             Text(
-                text = "Administre el respaldo y restauración integral de la base de datos local del Dueño.",
+                text = "Administre el respaldo integral del Negocio (Q_respaldo.json) y su restauración completa en la base de datos local del Dueño.",
                 fontSize = 12.sp,
                 color = Slate600
             )

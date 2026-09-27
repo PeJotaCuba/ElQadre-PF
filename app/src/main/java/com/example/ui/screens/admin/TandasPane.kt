@@ -2,6 +2,7 @@ package com.example.ui.screens.admin
 
 import android.Manifest
 import android.content.pm.PackageManager
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -24,8 +25,12 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Factory
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.HourglassTop
+import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.ReceiptLong
+import androidx.compose.material.icons.outlined.Scale
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Sms
 import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.*
@@ -56,6 +61,7 @@ import com.example.util.CandidateTandaGroup
 import com.example.util.CocinaTandasScanResult
 import com.example.util.CostCalculationHelper
 import com.example.util.ParsedTandaImport
+import com.example.util.TandasBalancePdfExporter
 import com.example.util.SmsTandaInboxMessage
 import com.example.util.SmsTandasHelper
 import com.example.util.TandasJornadaPdfExporter
@@ -89,6 +95,7 @@ fun TandasPane(
     var selectedTandaForClose by remember { mutableStateOf<Tanda?>(null) }
     var showArchivarPendientesDialog by remember { mutableStateOf(false) }
     var showHayTandasAbiertasDialog by remember { mutableStateOf(false) }
+    var showingBalanceScreen by remember { mutableStateOf(false) }
 
     // 1. DETALLE DE PRODUCTO: Pantalla completa de Tandas del producto seleccionado
     selectedProductForDetail?.let { summary ->
@@ -179,6 +186,16 @@ fun TandasPane(
                     .thenBy { it.date }
             )
         }
+    }
+
+    // 3. BALANCE GENERAL: Pantalla completa dedicada al Balance General de Tandas cerradas
+    if (showingBalanceScreen) {
+        TandasBalanceScreen(
+            closedTandas = closedTandas,
+            uiState = uiState,
+            onBack = { showingBalanceScreen = false }
+        )
+        return
     }
 
     Column(
@@ -435,8 +452,42 @@ fun TandasPane(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 closedTandas.forEach { tanda ->
-                    ClosedTandaCompactCard(tanda = tanda)
+                    ClosedTandaCompactCard(
+                        tanda = tanda,
+                        onClick = { selectedTandaForDetail = tanda }
+                    )
                 }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // BOTÓN BALANCE GENERAL DE TANDAS CERRADAS
+            Button(
+                onClick = { showingBalanceScreen = true },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = ElQadreNavy,
+                    contentColor = Color.White
+                ),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 52.dp)
+                    .testTag("btn_balance_tandas_cerradas")
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Scale,
+                    contentDescription = null,
+                    modifier = Modifier.size(22.dp),
+                    tint = ElQadreGold
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = "BALANCE",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color.White,
+                    letterSpacing = 0.8.sp
+                )
             }
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -755,7 +806,10 @@ val TANDA_COLOR_PALETTE = listOf(
 )
 
 @Composable
-fun ClosedTandaCompactCard(tanda: Tanda) {
+fun ClosedTandaCompactCard(
+    tanda: Tanda,
+    onClick: (() -> Unit)? = null
+) {
     val baseQtyStr = if (tanda.baseQuantityUsed % 1.0 == 0.0) tanda.baseQuantityUsed.toInt().toString() else "%.1f".format(tanda.baseQuantityUsed)
     val baseUnitStr = tanda.baseQuantityUnit.ifBlank { "lb" }
     
@@ -774,31 +828,68 @@ fun ClosedTandaCompactCard(tanda: Tanda) {
         color = Color.White,
         border = BorderStroke(1.dp, Slate200),
         shadowElevation = 1.dp,
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (onClick != null) {
+                    Modifier
+                        .clickable(onClick = onClick)
+                        .testTag("closed_tanda_${tanda.tandaNumber}")
+                } else Modifier
+            )
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "Tanda $tNumFormatted",
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Black,
-                color = ElQadreNavy
-            )
-            val displayProductionStr = if (tanda.specialPresentationQty > 0.0) {
-                val presQtyStr = if (tanda.specialPresentationQty % 1.0 == 0.0) tanda.specialPresentationQty.toInt().toString() else "%.1f".format(tanda.specialPresentationQty)
-                val specialEqInt = if (specialUnitsEq % 1.0 == 0.0) specialUnitsEq.toInt().toString() else "%.1f".format(specialUnitsEq)
-                "$totalYieldUnitsStr $prodUnitStr ($actualYieldStr + $presQtyStr ${tanda.specialPresentationName.ifBlank { "Especial" }} [$specialEqInt])"
-            } else {
-                "$totalYieldUnitsStr $prodUnitStr"
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = "Tanda $tNumFormatted",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Black,
+                        color = ElQadreNavy
+                    )
+                    if (tanda.productName.isNotBlank()) {
+                        Text(
+                            text = "• ${tanda.productName}",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Slate600
+                        )
+                    }
+                }
+                val displayProductionStr = if (tanda.specialPresentationQty > 0.0) {
+                    val presQtyStr = if (tanda.specialPresentationQty % 1.0 == 0.0) tanda.specialPresentationQty.toInt().toString() else "%.1f".format(tanda.specialPresentationQty)
+                    val specialEqInt = if (specialUnitsEq % 1.0 == 0.0) specialUnitsEq.toInt().toString() else "%.1f".format(specialUnitsEq)
+                    "$totalYieldUnitsStr $prodUnitStr ($actualYieldStr + $presQtyStr ${tanda.specialPresentationName.ifBlank { "Especial" }} [$specialEqInt])"
+                } else {
+                    "$totalYieldUnitsStr $prodUnitStr"
+                }
+                Text(
+                    text = "$baseQtyStr $baseUnitStr → $displayProductionStr → $costStr",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Slate700
+                )
             }
-            Text(
-                text = "$baseQtyStr $baseUnitStr → $displayProductionStr → $costStr",
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-                color = Slate700
-            )
+            if (onClick != null) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
+                    contentDescription = "Ver detalle",
+                    tint = Slate400,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
         }
     }
 }
@@ -5639,8 +5730,73 @@ fun ImportarTandasDialog(
 }
 
 // =================================================================
-// DIALOG DE DETALLE Y AUDITORÍA DE TANDA
+// HELPER Y DIALOG DE DETALLE Y AUDITORÍA DE TANDA CERRADA
 // =================================================================
+
+data class ConsumedIngredientItem(
+    val name: String,
+    val quantity: String,
+    val unit: String
+)
+
+fun parseTandaIngredientsConsumed(
+    ingredientsText: String,
+    baseName: String = "",
+    baseQty: Double = 0.0,
+    baseUnit: String = ""
+): List<ConsumedIngredientItem> {
+    if (ingredientsText.isBlank()) {
+        if (baseName.isNotBlank() && baseQty > 0.0) {
+            val qStr = if (baseQty % 1.0 == 0.0) baseQty.toInt().toString() else "%.2f".format(baseQty)
+            return listOf(ConsumedIngredientItem(baseName, qStr, baseUnit))
+        }
+        return emptyList()
+    }
+
+    val tokens = ingredientsText.split(Regex("[,;|\n]")).map { it.trim() }.filter { it.isNotEmpty() }
+    val result = mutableListOf<ConsumedIngredientItem>()
+
+    for (token in tokens) {
+        val cleanToken = token.removePrefix("Insumo base:").removePrefix("Insumo base").trim()
+        val delimiter = when {
+            cleanToken.contains("—") -> "—"
+            cleanToken.contains(":") -> ":"
+            cleanToken.contains(" - ") -> " - "
+            cleanToken.contains("=") -> "="
+            else -> null
+        }
+
+        if (delimiter != null) {
+            val parts = cleanToken.split(delimiter, limit = 2)
+            val name = parts[0].trim()
+            val right = parts.getOrNull(1)?.trim() ?: ""
+            val match = Regex("""^([\d.,]+)\s*(.*)$""").find(right)
+            if (match != null) {
+                val numStr = match.groupValues[1].replace(",", ".")
+                val unitStr = match.groupValues[2].trim()
+                val numDouble = numStr.toDoubleOrNull()
+                val finalQtyStr = if (numDouble != null) {
+                    if (numDouble % 1.0 == 0.0) numDouble.toInt().toString() else "%.2f".format(numDouble).trimEnd('0').trimEnd('.')
+                } else {
+                    numStr
+                }
+                result.add(ConsumedIngredientItem(name, finalQtyStr, unitStr))
+            } else {
+                result.add(ConsumedIngredientItem(name, right, ""))
+            }
+        } else {
+            result.add(ConsumedIngredientItem(cleanToken, "", ""))
+        }
+    }
+
+    if (result.isEmpty() && baseName.isNotBlank() && baseQty > 0.0) {
+        val qStr = if (baseQty % 1.0 == 0.0) baseQty.toInt().toString() else "%.2f".format(baseQty)
+        result.add(ConsumedIngredientItem(baseName, qStr, baseUnit))
+    }
+
+    return result
+}
+
 @Composable
 fun TandaDetailDialog(
     tanda: Tanda,
@@ -5663,16 +5819,100 @@ fun TandaDetailDialog(
         } else null
     }
 
-    val isClosed = tanda.status == "CERRADA"
+    val isClosed = tanda.status == "CERRADA" || tanda.status == "FINALIZADA" || tanda.status == "PROCESADA"
+
+    // Unidades base
+    val baseQtyStr = if (tanda.baseQuantityUsed % 1.0 == 0.0) tanda.baseQuantityUsed.toInt().toString() else "%.2f".format(tanda.baseQuantityUsed).trimEnd('0').trimEnd('.')
+    val baseUnitStr = tanda.baseQuantityUnit.ifBlank { "lb" }
+
+    // Producción esperada y real
+    val expectedYieldVal = if (tanda.expectedYield > 0.0) tanda.expectedYield else tanda.estimatedYield
+    val expectedYieldStr = if (expectedYieldVal % 1.0 == 0.0) expectedYieldVal.toInt().toString() else "%.1f".format(expectedYieldVal)
+    val actualYieldStr = if (tanda.actualYield % 1.0 == 0.0) tanda.actualYield.toInt().toString() else "%.1f".format(tanda.actualYield)
+    val prodUnitStr = tanda.productionUnit.ifBlank { "unidades" }
+
+    // Presentaciones especiales y unidades equivalentes
+    val presEquiv = if (tanda.specialPresentationEquivalence > 0.0) tanda.specialPresentationEquivalence else {
+        product?.let { p ->
+            parsePresentacionesEspeciales(p.presentacionesEspeciales).find { it.name.equals(tanda.specialPresentationName, true) }?.baseEquivalence
+        } ?: 1.0
+    }
+    val hasSpecialPres = tanda.specialPresentationQty > 0.0
+    val specialUnitsEq = if (hasSpecialPres) tanda.specialPresentationQty * presEquiv else 0.0
+    val totalYieldUnits = tanda.actualYield + specialUnitsEq
+    val presQtyStr = if (tanda.specialPresentationQty % 1.0 == 0.0) tanda.specialPresentationQty.toInt().toString() else "%.1f".format(tanda.specialPresentationQty)
+    val specialUnitsEqStr = if (specialUnitsEq % 1.0 == 0.0) specialUnitsEq.toInt().toString() else "%.1f".format(specialUnitsEq)
+    val totalYieldUnitsStr = if (totalYieldUnits % 1.0 == 0.0) totalYieldUnits.toInt().toString() else "%.1f".format(totalYieldUnits)
+
+    // Rendimiento obtenido
+    val rendVal = if (tanda.baseQuantityUsed > 0.0) totalYieldUnits / tanda.baseQuantityUsed else 0.0
+    val rendValFormatted = if (rendVal % 1.0 == 0.0) rendVal.toInt().toString() else "%.2f".format(rendVal)
+    val displayYieldPct = if (expectedYieldVal > 0.0) (totalYieldUnits / expectedYieldVal) * 100.0 else tanda.yieldPercentage
+
+    // Lista de ingredientes históricos consumidos
+    val consumedIngredients = remember(tanda.ingredientsConsumedText, tanda.baseMateriaPrimaName, tanda.baseQuantityUsed, tanda.baseQuantityUnit) {
+        parseTandaIngredientsConsumed(
+            ingredientsText = tanda.ingredientsConsumedText,
+            baseName = tanda.baseMateriaPrimaName,
+            baseQty = tanda.baseQuantityUsed,
+            baseUnit = tanda.baseQuantityUnit
+        )
+    }
+
+    val tNumFormatted = tanda.tandaNumber.padStart(2, '0')
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(Icons.Outlined.ReceiptLong, contentDescription = null, tint = ElQadreNavy)
-                Column {
-                    Text("DETALLE DE TANDA ${tanda.tandaNumber}", fontWeight = FontWeight.ExtraBold, color = ElQadreNavy, fontSize = 16.sp)
-                    Text(tanda.uuid, fontSize = 11.sp, color = Slate500)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .background(ElQadreNavy, RoundedCornerShape(10.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.ReceiptLong,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = "TANDA #$tNumFormatted",
+                            fontWeight = FontWeight.Black,
+                            color = ElQadreNavy,
+                            fontSize = 18.sp
+                        )
+                        Text(
+                            text = tanda.productName,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            color = Slate600
+                        )
+                    }
+                }
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (isClosed) Color(0xFFECFDF5) else Color(0xFFFEF3C7),
+                    border = BorderStroke(1.dp, if (isClosed) Emerald600.copy(alpha = 0.5f) else Amber700.copy(alpha = 0.5f))
+                ) {
+                    Text(
+                        text = if (isClosed) "CERRADA" else "ABIERTA",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black,
+                        color = if (isClosed) Color(0xFF047857) else Color(0xFFD97706),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
                 }
             }
         },
@@ -5683,123 +5923,378 @@ fun TandaDetailDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                // 1. INFORMACIÓN DEL LOTE Y PRODUCTO
                 Surface(
                     color = Slate50,
                     border = BorderStroke(1.dp, Slate200),
-                    shape = RoundedCornerShape(8.dp),
+                    shape = RoundedCornerShape(10.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = "INFORMACIÓN GENERAL",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = ElQadreNavy,
+                            letterSpacing = 0.5.sp
+                        )
+                        HorizontalDivider(color = Slate200)
+
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Producto: ${tanda.productName}", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = ElQadreNavy)
-                            Text(dateStr, fontSize = 10.sp, color = Slate500)
+                            Text("Producto elaborado:", fontSize = 12.sp, color = Slate600)
+                            Text(tanda.productName, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = ElQadreNavy)
                         }
-                        Text("Estado: ${tanda.status}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (isClosed) Emerald600 else Amber700)
-                        Text("Responsable: ${tanda.responsibleUser}", fontSize = 11.sp, color = Slate700)
-                        if (tanda.observation.isNotEmpty()) {
-                            Text("Observación: ${tanda.observation}", fontSize = 11.sp, color = Slate600)
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Fecha y hora:", fontSize = 12.sp, color = Slate600)
+                            Text(dateStr, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Slate800)
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Jornada:", fontSize = 12.sp, color = Slate600)
+                            Text(tanda.jornada, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Slate800)
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Responsable:", fontSize = 12.sp, color = Slate600)
+                            Text(tanda.responsibleUser, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Slate800)
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Insumo base utilizado:", fontSize = 12.sp, color = Slate600)
+                            Text(
+                                text = "${tanda.baseMateriaPrimaName} — $baseQtyStr $baseUnitStr",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp,
+                                color = ElQadreNavy
+                            )
+                        }
+                        if (tanda.uuid.isNotBlank()) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Código UUID:", fontSize = 11.sp, color = Slate400)
+                                Text(tanda.uuid, fontSize = 10.sp, color = Slate500)
+                            }
                         }
                     }
                 }
 
+                // 2. BALANCE DE PRODUCCIÓN Y RENDIMIENTO
                 Surface(
                     color = if (isClosed) ElQadreBgSecondary else Amber50,
-                    shape = RoundedCornerShape(8.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, if (isClosed) Slate200 else Amber200),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(if (isClosed) "RENDIMIENTO Y RENTABILIDAD REAL" else "RESULTADO PROVISIONAL", fontWeight = FontWeight.ExtraBold, fontSize = 11.sp, color = ElQadreNavy)
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Producción Esperada:", fontSize = 11.sp, color = Slate600)
-                            Text("${tanda.estimatedYield.toInt()} ${tanda.productionUnit}", fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                        }
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Producción Real:", fontSize = 11.sp, color = Slate600)
-                            Text(if (isClosed) "${tanda.actualYield.toInt()} ${tanda.productionUnit}" else "Pendiente de cierre", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = ElQadreNavy)
-                        }
-                        if (isClosed && tanda.specialPresentationQty > 0.0) {
-                            val presEquiv = if (tanda.specialPresentationEquivalence > 0.0) tanda.specialPresentationEquivalence else {
-                                product?.let { p ->
-                                    parsePresentacionesEspeciales(p.presentacionesEspeciales).find { it.name.equals(tanda.specialPresentationName, true) }?.baseEquivalence
-                                } ?: 1.0
-                            }
-                            val specialUnitsEq = tanda.specialPresentationQty * presEquiv
-                            val totalYieldUnits = tanda.actualYield + specialUnitsEq
-                            val presQtyStr = if (tanda.specialPresentationQty % 1.0 == 0.0) tanda.specialPresentationQty.toInt().toString() else "%.1f".format(tanda.specialPresentationQty)
-                            val specialUnitsEqStr = if (specialUnitsEq % 1.0 == 0.0) specialUnitsEq.toInt().toString() else "%.1f".format(specialUnitsEq)
-                            val totalYieldUnitsStr = if (totalYieldUnits % 1.0 == 0.0) totalYieldUnits.toInt().toString() else "%.1f".format(totalYieldUnits)
-
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Presentación Especial:", fontSize = 11.sp, color = Color(0xFF15803D), fontWeight = FontWeight.Bold)
-                                Text("$presQtyStr ${tanda.specialPresentationName}", fontWeight = FontWeight.Black, fontSize = 11.sp, color = Color(0xFF15803D))
-                            }
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Total para Rendimiento:", fontSize = 11.sp, color = Color(0xFF15803D), fontWeight = FontWeight.Bold)
-                                Text("$totalYieldUnitsStr eq. (${tanda.actualYield.toInt()} + $specialUnitsEqStr)", fontWeight = FontWeight.Black, fontSize = 11.sp, color = Color(0xFF15803D))
-                            }
-                        }
-                        if (isClosed) {
-                            val presEquiv = if (tanda.specialPresentationEquivalence > 0.0) tanda.specialPresentationEquivalence else {
-                                product?.let { p ->
-                                    parsePresentacionesEspeciales(p.presentacionesEspeciales).find { it.name.equals(tanda.specialPresentationName, true) }?.baseEquivalence
-                                } ?: 1.0
-                            }
-                            val specialUnitsEq = if (tanda.specialPresentationQty > 0.0) tanda.specialPresentationQty * presEquiv else 0.0
-                            val totalYieldUnits = tanda.actualYield + specialUnitsEq
-                            val rendVal = if (tanda.baseQuantityUsed > 0.0) totalYieldUnits / tanda.baseQuantityUsed else 0.0
-                            val expectedVal = if (tanda.expectedYield > 0.0) tanda.expectedYield else tanda.estimatedYield
-                            val displayYieldPct = if (expectedVal > 0.0) (totalYieldUnits / expectedVal) * 100.0 else tanda.yieldPercentage
-
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Rendimiento del Lote:", fontSize = 11.sp, color = Slate600)
-                                val rendValStr = if (rendVal > 0.0) {
-                                    val rendFormatted = if (rendVal % 1.0 == 0.0) rendVal.toInt().toString() else "%.2f".format(rendVal)
-                                    "$rendFormatted ${tanda.productionUnit}/${tanda.baseQuantityUnit} (${"%.1f".format(displayYieldPct)}%)"
-                                } else {
-                                    "${"%.1f".format(displayYieldPct)}%"
-                                }
-                                Text(rendValStr, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp, color = if (displayYieldPct >= 95.0) Emerald600 else Rose600)
-                            }
-                        }
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = if (isClosed) "PRODUCCIÓN Y RENDIMIENTO OBTENIDO" else "RESULTADO PROVISIONAL",
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 11.sp,
+                            color = ElQadreNavy,
+                            letterSpacing = 0.5.sp
+                        )
                         HorizontalDivider(color = Slate200)
+
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Ingreso Esperado / Real:", fontSize = 11.sp, color = Slate600)
-                            Text("$${"%.2f".format(tanda.expectedRevenue)} CUP", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Emerald700)
+                            Text("Unidades esperadas:", fontSize = 12.sp, color = Slate600)
+                            Text("$expectedYieldStr $prodUnitStr", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Slate800)
                         }
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Costo Total de Tanda:", fontSize = 11.sp, color = Slate600)
-                            Text("$${"%.2f".format(tanda.totalBatchCost)} CUP", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Rose700)
+                            Text("Unidades realmente producidas:", fontSize = 12.sp, color = Slate600)
+                            Text(
+                                text = if (isClosed) "$actualYieldStr $prodUnitStr" else "Pendiente de cierre",
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 13.sp,
+                                color = if (isClosed) ElQadreNavy else Amber700
+                            )
                         }
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Ganancia (Margen):", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = ElQadreNavy)
-                            Text("$${"%.2f".format(tanda.estimatedProfit)} CUP (${"%.1f".format(tanda.profitMargin)}%)", fontWeight = FontWeight.ExtraBold, fontSize = 12.sp, color = ElQadreGoldDark)
+
+                        if (hasSpecialPres) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color(0xFFF0FDF4),
+                                border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text("Presentación Especial:", fontSize = 11.sp, color = Color(0xFF15803D), fontWeight = FontWeight.Bold)
+                                        Text("$presQtyStr ${tanda.specialPresentationName}", fontWeight = FontWeight.Black, fontSize = 12.sp, color = Color(0xFF15803D))
+                                    }
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text("Equivalencia:", fontSize = 11.sp, color = Slate600)
+                                        Text("1 ${tanda.specialPresentationName} = ${"%.1f".format(presEquiv)} $prodUnitStr", fontSize = 11.sp, color = Slate700)
+                                    }
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text("Total para Rendimiento:", fontSize = 11.sp, color = Color(0xFF15803D), fontWeight = FontWeight.Bold)
+                                        Text("$totalYieldUnitsStr eq. ($actualYieldStr + $specialUnitsEqStr)", fontWeight = FontWeight.Black, fontSize = 12.sp, color = Color(0xFF15803D))
+                                    }
+                                }
+                            }
+                        }
+
+                        if (isClosed) {
+                            HorizontalDivider(color = Slate200)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Rendimiento del lote:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Slate700)
+                                Text(
+                                    text = "$rendValFormatted $prodUnitStr/$baseUnitStr",
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 13.sp,
+                                    color = ElQadreNavy
+                                )
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Eficiencia vs esperado:", fontSize = 12.sp, color = Slate600)
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = if (displayYieldPct >= 95.0) Color(0xFFDCFCE7) else Color(0xFFFEE2E2)
+                                ) {
+                                    Text(
+                                        text = "${"%.1f".format(displayYieldPct)}%",
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 12.sp,
+                                        color = if (displayYieldPct >= 95.0) Color(0xFF15803D) else Color(0xFFDC2626),
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                 }
 
-                Text("Ingredientes Consumidos y Descontados de Inventario:", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = ElQadreNavy)
+                // 3. INGREDIENTES Y CANTIDADES UTILIZADAS POR LA RECETA
                 Surface(
                     color = Color.White,
-                    border = BorderStroke(1.dp, ElQadreBorderLight),
-                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.5.dp, ElQadreNavy.copy(alpha = 0.15f)),
+                    shape = RoundedCornerShape(10.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
-                        text = tanda.ingredientsConsumedText,
-                        fontSize = 11.sp,
-                        color = Slate800,
-                        modifier = Modifier.padding(10.dp)
-                    )
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Factory,
+                                contentDescription = null,
+                                tint = ElQadreNavy,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = "INGREDIENTES Y CANTIDADES UTILIZADAS",
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 11.sp,
+                                color = ElQadreNavy,
+                                letterSpacing = 0.5.sp
+                            )
+                        }
+                        Text(
+                            text = "Consumo real registrado para esta tanda:",
+                            fontSize = 11.sp,
+                            color = Slate500
+                        )
+
+                        if (consumedIngredients.isNotEmpty()) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                consumedIngredients.forEach { ing ->
+                                    Surface(
+                                        color = Slate50,
+                                        border = BorderStroke(1.dp, Slate200),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(8.dp)
+                                                        .background(ElQadreNavy, RoundedCornerShape(4.dp))
+                                                )
+                                                Text(
+                                                    text = ing.name,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 13.sp,
+                                                    color = ElQadreNavy
+                                                )
+                                            }
+                                            if (ing.quantity.isNotBlank() || ing.unit.isNotBlank()) {
+                                                Text(
+                                                    text = "${ing.quantity} ${ing.unit}".trim(),
+                                                    fontWeight = FontWeight.Black,
+                                                    fontSize = 13.sp,
+                                                    color = Slate800
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        } else if (tanda.ingredientsConsumedText.isNotBlank()) {
+                            Surface(
+                                color = Slate50,
+                                border = BorderStroke(1.dp, Slate200),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = tanda.ingredientsConsumedText,
+                                    fontSize = 12.sp,
+                                    color = Slate800,
+                                    modifier = Modifier.padding(10.dp)
+                                )
+                            }
+                        } else {
+                            Surface(
+                                color = Slate50,
+                                border = BorderStroke(1.dp, Slate200),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = tanda.baseMateriaPrimaName.ifBlank { "Insumo base" },
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        color = ElQadreNavy
+                                    )
+                                    Text(
+                                        text = "$baseQtyStr $baseUnitStr",
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 13.sp,
+                                        color = Slate800
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
 
+                // 4. DATOS ECONÓMICOS Y COSTOS
+                Surface(
+                    color = Slate50,
+                    border = BorderStroke(1.dp, Slate200),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = "COSTOS Y DATOS ECONÓMICOS",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = ElQadreNavy,
+                            letterSpacing = 0.5.sp
+                        )
+                        HorizontalDivider(color = Slate200)
+
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Costo total de tanda:", fontSize = 12.sp, color = Slate600)
+                            Text("$${"%.2f".format(tanda.totalBatchCost)} CUP", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Rose700)
+                        }
+                        if (tanda.totalDirectIngredientsCost > 0.0) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Costo directo de insumos:", fontSize = 11.sp, color = Slate500)
+                                Text("$${"%.2f".format(tanda.totalDirectIngredientsCost)} CUP", fontSize = 11.sp, color = Slate700)
+                            }
+                        }
+                        if (tanda.totalLaborCost > 0.0) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Mano de obra (${tanda.laborCostType}):", fontSize = 11.sp, color = Slate500)
+                                Text("$${"%.2f".format(tanda.totalLaborCost)} CUP", fontSize = 11.sp, color = Emerald700)
+                            }
+                        }
+                        if (tanda.totalOwnerPay > 0.0) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Pago propietario (${tanda.ownerPayType}):", fontSize = 11.sp, color = Slate500)
+                                Text("$${"%.2f".format(tanda.totalOwnerPay)} CUP", fontSize = 11.sp, color = ElQadreGoldDark)
+                            }
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Costo unitario real:", fontSize = 12.sp, color = Slate600)
+                            Text("$${"%.2f".format(tanda.realUnitCost)} CUP", fontWeight = FontWeight.ExtraBold, fontSize = 12.sp, color = ElQadreNavy)
+                        }
+                        if (tanda.expectedRevenue > 0.0) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Ingreso esperado / real:", fontSize = 12.sp, color = Slate600)
+                                Text("$${"%.2f".format(tanda.expectedRevenue)} CUP", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Emerald700)
+                            }
+                        }
+                        if (tanda.estimatedProfit != 0.0 || tanda.profitMargin != 0.0) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Ganancia estimada (Margen):", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = ElQadreNavy)
+                                Text("$${"%.2f".format(tanda.estimatedProfit)} CUP (${"%.1f".format(tanda.profitMargin)}%)", fontWeight = FontWeight.ExtraBold, fontSize = 12.sp, color = ElQadreGoldDark)
+                            }
+                        }
+                    }
+                }
+
+                // 5. OBSERVACIONES
+                if (tanda.observation.isNotBlank()) {
+                    Surface(
+                        color = Slate50,
+                        border = BorderStroke(1.dp, Slate200),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text("OBSERVACIONES", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = ElQadreNavy)
+                            Text(tanda.observation, fontSize = 12.sp, color = Slate700)
+                        }
+                    }
+                }
+
+                // 6. COMPARACIÓN CON FICHA DE COSTO
                 costSheet?.let { cs ->
                     Surface(
                         color = Slate50,
                         border = BorderStroke(1.dp, Slate200),
-                        shape = RoundedCornerShape(8.dp),
+                        shape = RoundedCornerShape(10.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
                             Text("COMPARACIÓN CON FICHA DE COSTO", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = ElQadreNavy)
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("Costo Unitario Ficha (Estimado):", fontSize = 11.sp, color = Slate600)
@@ -5817,9 +6312,17 @@ fun TandaDetailDialog(
         confirmButton = {
             Button(
                 onClick = onDismiss,
-                colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy)
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = ElQadreNavy,
+                    contentColor = Color.White
+                ),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .testTag("cerrar_detalle_tanda_button")
             ) {
-                Text("Cerrar")
+                Text("Cerrar Detalle", fontWeight = FontWeight.Bold)
             }
         }
     )
@@ -5954,3 +6457,868 @@ data class BatchCalculationResult(
 )
 
 fun Double.ifZeroUse(fallback: Double): Double = if (this > 0.0) this else fallback
+
+data class ConsolidatedIngredientItem(
+    val name: String,
+    val totalQuantity: Double,
+    val unit: String,
+    val formattedText: String
+)
+
+fun calculateConsolidatedIngredients(closedTandas: List<Tanda>): List<ConsolidatedIngredientItem> {
+    if (closedTandas.isEmpty()) return emptyList()
+
+    val map = linkedMapOf<String, Triple<String, Double, String>>()
+
+    for (tanda in closedTandas) {
+        val parsedList = parseTandaIngredientsConsumed(
+            ingredientsText = tanda.ingredientsConsumedText,
+            baseName = tanda.baseMateriaPrimaName,
+            baseQty = tanda.baseQuantityUsed,
+            baseUnit = tanda.baseQuantityUnit
+        )
+
+        for (item in parsedList) {
+            val rawName = item.name.trim()
+            if (rawName.isBlank()) continue
+
+            val key = rawName.lowercase()
+            var qty = item.quantity.replace(",", ".").toDoubleOrNull() ?: 0.0
+            var unit = item.unit.trim()
+
+            // REGLA OBLIGATORIA: HARINA debe mostrarse en LIBRAS (lb), nunca en gramos
+            if (key.contains("harina")) {
+                if (unit.equals("lb", ignoreCase = true) || unit.equals("libras", ignoreCase = true)) {
+                    unit = "lb"
+                } else if (tanda.baseQuantityUsed > 0.0 && (tanda.baseMateriaPrimaName.contains("harina", ignoreCase = true) || tanda.baseQuantityUnit.equals("lb", ignoreCase = true))) {
+                    qty = tanda.baseQuantityUsed
+                    unit = "lb"
+                } else if (qty > 50.0) {
+                    // Conversión de gramos a libras (453.59g = 1 lb)
+                    qty = qty / 453.59237
+                    unit = "lb"
+                } else {
+                    unit = "lb"
+                }
+            }
+
+            val existing = map[key]
+            if (existing != null) {
+                val newQty = existing.second + qty
+                val finalUnit = if (key.contains("harina")) "lb" else if (existing.third.isNotBlank()) existing.third else unit
+                map[key] = Triple(existing.first, newQty, finalUnit)
+            } else {
+                val displayName = rawName.replaceFirstChar { if (it.isLowerCase()) it.titlecase(java.util.Locale.getDefault()) else it.toString() }
+                val finalUnit = if (key.contains("harina")) "lb" else unit
+                map[key] = Triple(displayName, qty, finalUnit)
+            }
+        }
+    }
+
+    return map.values.map { (name, totalQty, unit) ->
+        val qtyStr = if (totalQty % 1.0 == 0.0) {
+            totalQty.toInt().toString()
+        } else {
+            val formatted = "%.2f".format(totalQty).trimEnd('0').trimEnd('.')
+            if (formatted.endsWith(".00") || formatted.endsWith(",00")) formatted.substringBeforeLast('.') else formatted
+        }
+        val formattedText = if (unit.isNotBlank()) "$qtyStr $unit" else qtyStr
+        ConsolidatedIngredientItem(
+            name = name,
+            totalQuantity = totalQty,
+            unit = unit,
+            formattedText = formattedText
+        )
+    }
+}
+
+@Composable
+fun TandasBalanceScreen(
+    closedTandas: List<Tanda>,
+    uiState: MainUiState,
+    onBack: () -> Unit
+) {
+    BackHandler(onBack = onBack)
+
+    val context = LocalContext.current
+    val totalClosedCount = closedTandas.size
+    val totalActualYield = closedTandas.sumOf { it.actualYield }
+    val totalExpectedYield = closedTandas.sumOf { if (it.expectedYield > 0.0) it.expectedYield else it.estimatedYield }
+    val totalSpecialQty = closedTandas.sumOf { it.specialPresentationQty }
+    val totalSpecialUnitsEq = closedTandas.sumOf { tanda ->
+        if (tanda.specialPresentationQty > 0.0) {
+            val presEquiv = if (tanda.specialPresentationEquivalence > 0.0) tanda.specialPresentationEquivalence else 1.0
+            tanda.specialPresentationQty * presEquiv
+        } else 0.0
+    }
+    val totalYieldEquivalent = totalActualYield + totalSpecialUnitsEq
+    val hasSpecialPres = totalSpecialQty > 0.0
+
+    val prodUnit = closedTandas.firstOrNull()?.productionUnit?.ifBlank { "unidades" } ?: "unidades"
+
+    // Insumo base
+    val baseNames = closedTandas.map { it.baseMateriaPrimaName.ifBlank { "Harina" } }.distinct()
+    val baseNameDisplay = if (baseNames.isEmpty()) "Insumo base" else baseNames.joinToString(", ")
+    val totalBaseQuantity = closedTandas.sumOf { it.baseQuantityUsed }
+    val baseUnit = closedTandas.firstOrNull()?.baseQuantityUnit?.ifBlank { "lb" } ?: "lb"
+
+    // Rendimiento general usando la misma lógica de cálculo de Tandas
+    val rendGeneralVal = if (totalBaseQuantity > 0.0) totalYieldEquivalent / totalBaseQuantity else 0.0
+    val rendGeneralFormatted = if (rendGeneralVal % 1.0 == 0.0) rendGeneralVal.toInt().toString() else "%.2f".format(rendGeneralVal)
+    val displayEfficiencyPct = if (totalExpectedYield > 0.0) (totalYieldEquivalent / totalExpectedYield) * 100.0 else 100.0
+
+    // Consumo consolidado de cada ingrediente (cada uno aparece una sola vez)
+    val consolidatedIngredients = remember(closedTandas) {
+        calculateConsolidatedIngredients(closedTandas)
+    }
+
+    // Formateo de cantidades numéricas
+    val totalActualYieldStr = if (totalActualYield % 1.0 == 0.0) totalActualYield.toInt().toString() else "%.1f".format(totalActualYield)
+    val totalSpecialQtyStr = if (totalSpecialQty % 1.0 == 0.0) totalSpecialQty.toInt().toString() else "%.1f".format(totalSpecialQty)
+    val totalSpecialUnitsEqStr = if (totalSpecialUnitsEq % 1.0 == 0.0) totalSpecialUnitsEq.toInt().toString() else "%.1f".format(totalSpecialUnitsEq)
+    val totalYieldEquivalentStr = if (totalYieldEquivalent % 1.0 == 0.0) totalYieldEquivalent.toInt().toString() else "%.1f".format(totalYieldEquivalent)
+    val totalBaseQtyStr = if (totalBaseQuantity % 1.0 == 0.0) totalBaseQuantity.toInt().toString() else "%.2f".format(totalBaseQuantity).trimEnd('0').trimEnd('.')
+
+    val jornadaText = uiState.activeJornada?.let { "Jornada #${it.id}" } ?: closedTandas.firstOrNull()?.jornada ?: "Jornada Actual"
+
+    val chartPalette = listOf(
+        Color(0xFF2563EB), // Azul
+        Color(0xFF059669), // Esmeralda
+        Color(0xFFD97706), // Ámbar / Oro
+        Color(0xFF7C3AED), // Violeta
+        Color(0xFFDC2626), // Rojo
+        Color(0xFF0891B2), // Cian
+        Color(0xFF0F766E), // Teal
+        Color(0xFF64748B), // Slate
+        Color(0xFFE11D48), // Rose
+        Color(0xFF4F46E5)  // Indigo
+    )
+
+    Scaffold(
+        containerColor = Color(0xFFF8FAFC),
+        topBar = {
+            Surface(
+                color = ElQadreNavy,
+                shadowElevation = 4.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(horizontal = 8.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        IconButton(
+                            onClick = onBack,
+                            modifier = Modifier
+                                .size(48.dp)
+                                .testTag("btn_back_from_balance")
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Regresar a Tandas",
+                                tint = Color.White,
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = "BALANCE GENERAL",
+                                fontSize = 19.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color.White,
+                                letterSpacing = 0.5.sp
+                            )
+                            Text(
+                                text = "$totalClosedCount Tandas cerradas • $jornadaText",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ElQadreGold
+                            )
+                        }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFF065F46),
+                        border = BorderStroke(1.dp, Color(0xFF34D399)),
+                        modifier = Modifier.padding(end = 8.dp)
+                    ) {
+                        Text(
+                            text = "GENERAL",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color(0xFFA7F3D0),
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                        )
+                    }
+                }
+            }
+        },
+        bottomBar = {
+            Surface(
+                color = Color.White,
+                shadowElevation = 12.dp,
+                border = BorderStroke(1.dp, Slate200),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // BOTÓN PRINCIPAL: GENERAR Y COMPARTIR PDF
+                    Button(
+                        onClick = {
+                            TandasBalancePdfExporter.generateAndShareBalancePdf(
+                                context = context,
+                                closedTandas = closedTandas,
+                                jornada = uiState.activeJornada
+                            )
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF047857),
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp)
+                            .testTag("btn_generar_pdf_balance")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.PictureAsPdf,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = "GENERAR Y COMPARTIR PDF",
+                            fontWeight = FontWeight.Black,
+                            fontSize = 16.sp,
+                            letterSpacing = 0.5.sp
+                        )
+                    }
+
+                    // BOTÓN SECUNDARIO: VOLVER A TANDAS
+                    OutlinedButton(
+                        onClick = onBack,
+                        shape = RoundedCornerShape(14.dp),
+                        border = BorderStroke(1.5.dp, ElQadreNavy),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = ElQadreNavy
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp)
+                            .testTag("btn_volver_de_balance")
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = null,
+                            tint = ElQadreNavy,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "VOLVER A TANDAS",
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 15.sp
+                        )
+                    }
+                }
+            }
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .padding(horizontal = 16.dp, vertical = 14.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // 1. RESUMEN GENERAL DE RENDIMIENTO Y PRODUCCIÓN
+            Surface(
+                color = Color.White,
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.5.dp, Slate200),
+                shadowElevation = 2.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .background(ElQadreNavy, RoundedCornerShape(10.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Scale,
+                                contentDescription = null,
+                                tint = ElQadreGold,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = "1. RENDIMIENTO GENERAL Y PRODUCCIÓN",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 15.sp,
+                                color = ElQadreNavy,
+                                letterSpacing = 0.5.sp
+                            )
+                            Text(
+                                text = "Métricas consolidadas de producción de la jornada",
+                                fontSize = 12.sp,
+                                color = Slate500
+                            )
+                        }
+                    }
+
+                    HorizontalDivider(color = Slate200)
+
+                    // Fila: Cantidad Total Producida
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Cantidad total producida:",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Slate600
+                        )
+                        Text(
+                            text = "$totalActualYieldStr $prodUnit",
+                            fontWeight = FontWeight.Black,
+                            fontSize = 16.sp,
+                            color = Slate900
+                        )
+                    }
+
+                    // Bloque Presentaciones Especiales (si existen)
+                    if (hasSpecialPres) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFFF0FDF4),
+                            border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = "Presentaciones Especiales:",
+                                        fontSize = 13.sp,
+                                        color = Color(0xFF15803D),
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "$totalSpecialQtyStr un.",
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 14.sp,
+                                        color = Color(0xFF15803D)
+                                    )
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = "Unidades Equivalentes:",
+                                        fontSize = 13.sp,
+                                        color = Slate600
+                                    )
+                                    Text(
+                                        text = "+$totalSpecialUnitsEqStr $prodUnit eq.",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Slate700
+                                    )
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = "Total Producción Equivalente:",
+                                        fontSize = 13.sp,
+                                        color = Color(0xFF15803D),
+                                        fontWeight = FontWeight.ExtraBold
+                                    )
+                                    Text(
+                                        text = "$totalYieldEquivalentStr $prodUnit eq.",
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 14.sp,
+                                        color = Color(0xFF15803D)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Fila: Ingrediente Base
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Ingrediente base utilizado:",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Slate600
+                        )
+                        Text(
+                            text = baseNameDisplay,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = ElQadreNavy
+                        )
+                    }
+
+                    // Fila: Total Insumo Base Consumido
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Total ingrediente base consumido:",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Slate600
+                        )
+                        Text(
+                            text = "$totalBaseQtyStr $baseUnit",
+                            fontWeight = FontWeight.Black,
+                            fontSize = 16.sp,
+                            color = ElQadreNavy
+                        )
+                    }
+
+                    HorizontalDivider(color = Slate200)
+
+                    // Tarjeta destacada de Rendimiento General
+                    Surface(
+                        color = Color(0xFFF1F5F9),
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, Slate300),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Rendimiento General:",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ElQadreNavy
+                            )
+                            Text(
+                                text = "$rendGeneralFormatted $prodUnit / $baseUnit",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 16.sp,
+                                color = ElQadreNavy
+                            )
+                        }
+                    }
+
+                    // Fila: Eficiencia vs esperado
+                    if (totalExpectedYield > 0.0) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Eficiencia global vs esperado:",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Slate600
+                            )
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = if (displayEfficiencyPct >= 95.0) Color(0xFFDCFCE7) else Color(0xFFFEE2E2)
+                            ) {
+                                Text(
+                                    text = "${"%.1f".format(displayEfficiencyPct)}%",
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 13.sp,
+                                    color = if (displayEfficiencyPct >= 95.0) Color(0xFF15803D) else Color(0xFFDC2626),
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 2. CONSUMO GENERAL CONSOLIDADO DE INGREDIENTES
+            Surface(
+                color = Color.White,
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.5.dp, Slate200),
+                shadowElevation = 2.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .background(ElQadreNavy, RoundedCornerShape(10.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Inventory2,
+                                contentDescription = null,
+                                tint = ElQadreGold,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = "2. CONSUMO GENERAL CONSOLIDADO",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 15.sp,
+                                color = ElQadreNavy,
+                                letterSpacing = 0.5.sp
+                            )
+                            Text(
+                                text = "Cada ingrediente acumula el consumo de todas las tandas cerradas",
+                                fontSize = 12.sp,
+                                color = Slate500
+                            )
+                        }
+                    }
+
+                    HorizontalDivider(color = Slate200)
+
+                    if (consolidatedIngredients.isNotEmpty()) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            consolidatedIngredients.forEachIndexed { index, ing ->
+                                val pColor = chartPalette[index % chartPalette.size]
+                                Surface(
+                                    color = Color(0xFFF8FAFC),
+                                    border = BorderStroke(1.dp, Slate200),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(12.dp)
+                                                    .background(pColor, RoundedCornerShape(4.dp))
+                                            )
+                                            Text(
+                                                text = ing.name,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 15.sp,
+                                                color = ElQadreNavy
+                                            )
+                                        }
+
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Text(
+                                                text = "→",
+                                                fontSize = 15.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Slate400
+                                            )
+                                            Text(
+                                                text = ing.formattedText,
+                                                fontWeight = FontWeight.Black,
+                                                fontSize = 15.sp,
+                                                color = Slate900
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        Surface(
+                            color = Color(0xFFF8FAFC),
+                            border = BorderStroke(1.dp, Slate200),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = baseNameDisplay,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp,
+                                    color = ElQadreNavy
+                                )
+                                Text(
+                                    text = "→ $totalBaseQtyStr $baseUnit",
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 15.sp,
+                                    color = Slate900
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 3. GRÁFICO DE PASTEL — PARTICIPACIÓN DE CONSUMO
+            val ingredientsForCharts = if (consolidatedIngredients.isNotEmpty()) {
+                consolidatedIngredients
+            } else {
+                listOf(ConsolidatedIngredientItem(baseNameDisplay, totalBaseQuantity, baseUnit, "$totalBaseQtyStr $baseUnit"))
+            }
+            val totalSumForCharts = ingredientsForCharts.sumOf { it.totalQuantity }.coerceAtLeast(0.0001)
+
+            Surface(
+                color = Color.White,
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.5.dp, Slate200),
+                shadowElevation = 2.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Text(
+                        text = "3. PARTICIPACIÓN DE CONSUMO (GRÁFICO DE PASTEL)",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Black,
+                        color = ElQadreNavy,
+                        letterSpacing = 0.5.sp
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        // Canvas Donut Chart
+                        Box(
+                            modifier = Modifier
+                                .size(140.dp)
+                                .padding(4.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Canvas(modifier = Modifier.fillMaxSize()) {
+                                var startAngle = -90f
+                                ingredientsForCharts.forEachIndexed { index, ing ->
+                                    val color = chartPalette[index % chartPalette.size]
+                                    val sweepAngle = ((ing.totalQuantity / totalSumForCharts) * 360f).toFloat().coerceAtLeast(1.5f)
+                                    drawArc(
+                                        color = color,
+                                        startAngle = startAngle,
+                                        sweepAngle = sweepAngle,
+                                        useCenter = false,
+                                        style = Stroke(width = 28.dp.toPx())
+                                    )
+                                    startAngle += sweepAngle
+                                }
+                            }
+
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = "${ingredientsForCharts.size}",
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 18.sp,
+                                    color = ElQadreNavy
+                                )
+                                Text(
+                                    text = "insumos",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Slate500
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        // Leyenda de ingredientes
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            ingredientsForCharts.take(6).forEachIndexed { index, ing ->
+                                val color = chartPalette[index % chartPalette.size]
+                                val percentage = (ing.totalQuantity / totalSumForCharts) * 100.0
+
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(10.dp)
+                                            .clip(RoundedCornerShape(3.dp))
+                                            .background(color)
+                                    )
+                                    Text(
+                                        text = ing.name,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Slate800,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Text(
+                                        text = "${"%.1f".format(percentage)}%",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = Emerald700
+                                    )
+                                }
+                            }
+
+                            if (ingredientsForCharts.size > 6) {
+                                Text(
+                                    text = "+ ${ingredientsForCharts.size - 6} insumos más",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Slate500,
+                                    modifier = Modifier.padding(top = 2.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 4. GRÁFICO DE BARRAS — CONSUMO COMPARATIVO
+            val maxQuantity = ingredientsForCharts.maxOfOrNull { it.totalQuantity }?.coerceAtLeast(0.001) ?: 1.0
+
+            Surface(
+                color = Color.White,
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.5.dp, Slate200),
+                shadowElevation = 2.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "4. CONSUMO COMPARATIVO (GRÁFICO DE BARRAS)",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Black,
+                        color = ElQadreNavy,
+                        letterSpacing = 0.5.sp
+                    )
+
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        ingredientsForCharts.take(8).forEachIndexed { index, ing ->
+                            val color = chartPalette[index % chartPalette.size]
+                            val fraction = (ing.totalQuantity / maxQuantity).toFloat().coerceIn(0.05f, 1f)
+
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = ing.name,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ElQadreNavy
+                                    )
+                                    Text(
+                                        text = ing.formattedText,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = Slate800
+                                    )
+                                }
+
+                                // Barra con track de fondo
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(14.dp)
+                                        .background(Color(0xFFE2E8F0), RoundedCornerShape(7.dp))
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth(fraction)
+                                            .fillMaxHeight()
+                                            .background(color, RoundedCornerShape(7.dp))
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+    }
+}

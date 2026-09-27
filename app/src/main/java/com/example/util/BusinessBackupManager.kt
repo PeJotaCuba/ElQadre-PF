@@ -27,6 +27,7 @@ data class BackupSummary(
     val productsCount: Int,
     val productosElaboradosCount: Int,
     val recetaIngredientesCount: Int,
+    val tandasCount: Int = 0,
     val mercaderiasCount: Int,
     val categoriesCount: Int,
     val personalCount: Int,
@@ -34,7 +35,9 @@ data class BackupSummary(
     val jornadasCount: Int,
     val ordersCount: Int,
     val gastosCount: Int,
-    val inversionesCount: Int
+    val inversionesCount: Int,
+    val transferenciasCount: Int = 0,
+    val smsQueueCount: Int = 0
 )
 
 data class LegacyImportSummary(
@@ -62,40 +65,65 @@ object BusinessBackupManager {
         val root = JSONObject()
         root.put("identificador_archivo", APP_IDENTIFIER)
         root.put("formatIdentifier", FORMAT_IDENTIFIER)
-        root.put("version", 1)
+        root.put("nombre_archivo", "Q_respaldo.json")
+        root.put("version", 2)
         root.put("timestamp", System.currentTimeMillis())
         root.put("codigoNegocio", currentBizCode)
         root.put("nombreNegocio", uiState.businessConfig?.nombreNegocio ?: "El Qadre POS")
 
-        // Configuracion Negocio
-        uiState.businessConfig?.let { cfg ->
-            val obj = JSONObject().apply {
+        // 1. Configuracion Negocio (Ajustes -> Preferencias / General)
+        val cfgNegocioObj = uiState.businessConfig?.let { cfg ->
+            JSONObject().apply {
                 put("id", cfg.id)
                 put("nombreNegocio", cfg.nombreNegocio)
                 put("direccion", cfg.direccion)
                 put("telefono", cfg.telefono)
-                put("codigoNegocio", currentBizCode)
+                put("codigoNegocio", cfg.codigoNegocio)
+                put("logoPath", cfg.logoPath ?: JSONObject.NULL)
+                put("fechaCreacion", cfg.fechaCreacion)
+                put("fechaActualizacion", cfg.fechaActualizacion)
             }
-            root.put("configuracionNegocio", obj)
         }
 
-        // Configuracion General
-        uiState.generalConfig?.let { cfg ->
-            val obj = JSONObject().apply {
+        // 2. Configuracion General y Divisas (Ajustes -> Preferencias)
+        val cfgGeneralObj = uiState.generalConfig?.let { cfg ->
+            JSONObject().apply {
                 put("id", cfg.id)
                 put("moneda", cfg.moneda)
                 put("metodosPago", cfg.metodosPago)
+                put("parametrosJornada", cfg.parametrosJornada)
+                put("denominacionesCaja", cfg.denominacionesCaja)
                 put("tasaUsd", cfg.tasaUsd)
                 put("tasaEur", cfg.tasaEur)
                 put("telefonoDueno", cfg.telefonoDueno)
                 put("telefonoCajero", cfg.telefonoCajero)
                 put("telefonoAdmin", cfg.telefonoAdmin)
+                put("urlUsuariosJson", cfg.urlUsuariosJson)
+                put("lastUserUpdateDate", cfg.lastUserUpdateDate)
+                put("lastUserUpdateStatus", cfg.lastUserUpdateStatus)
+                put("lastUserUpdateVersion", cfg.lastUserUpdateVersion)
+                put("urlCatalogoJson", cfg.urlCatalogoJson)
+                put("lastCatalogoUpdateDate", cfg.lastCatalogoUpdateDate)
+                put("lastCatalogoUpdateStatus", cfg.lastCatalogoUpdateStatus)
+                put("lastCatalogoUpdateVersion", cfg.lastCatalogoUpdateVersion)
+                put("urlMercainvJson", cfg.urlMercainvJson)
+                put("lastMercainvUpdateDate", cfg.lastMercainvUpdateDate)
+                put("lastMercainvUpdateStatus", cfg.lastMercainvUpdateStatus)
+                put("lastMercainvUpdateVersion", cfg.lastMercainvUpdateVersion)
+                put("urlQDuenoJson", cfg.urlQDuenoJson)
+                put("urlVersionJson", cfg.urlVersionJson)
+                put("lastQDuenoUpdateDate", cfg.lastQDuenoUpdateDate)
+                put("lastQDuenoUpdateStatus", cfg.lastQDuenoUpdateStatus)
+                put("lastQDuenoUpdateVersion", cfg.lastQDuenoUpdateVersion)
+                put("lastQDuenoUpdateFechaPublicacion", cfg.lastQDuenoUpdateFechaPublicacion)
             }
-            root.put("configuracionGeneral", obj)
         }
 
-        // Materias Primas (Insumos)
+        // 3. Materias Primas / Insumos y Agregados (Ajustes -> Gestión -> Inventario -> Producción)
         val mpArr = JSONArray()
+        val b1InsumosArr = JSONArray()
+        val b1AgregadosArr = JSONArray()
+
         uiState.materiasPrimas.forEach { mp ->
             val obj = JSONObject().apply {
                 put("id", mp.id)
@@ -109,13 +137,49 @@ object BusinessBackupManager {
                 put("purchaseUnit", mp.purchaseUnit)
                 put("purchaseQuantity", mp.purchaseQuantity)
                 put("productId", mp.productId ?: JSONObject.NULL)
+                put("isAgregado", mp.isAgregado)
+                put("rationQuantity", mp.rationQuantity)
+                put("rationUnit", mp.rationUnit)
+                put("suggestedPrice", mp.suggestedPrice)
+                put("salePrice", mp.salePrice)
+                put("stockEnVenta", mp.stockEnVenta)
+                put("racionesEnVenta", mp.racionesEnVenta)
+                put("purchaseMode", mp.purchaseMode)
+                put("purchaseLotUnits", mp.purchaseLotUnits)
+                put("purchaseLotQuantity", mp.purchaseLotQuantity)
+                put("purchaseLotPrice", mp.purchaseLotPrice)
             }
             mpArr.put(obj)
+            if (mp.isAgregado) {
+                b1AgregadosArr.put(obj)
+            } else {
+                b1InsumosArr.put(obj)
+            }
         }
-        root.put("materiasPrimas", mpArr)
 
-        // Products
+        // Movimientos Materia Prima
+        val mmpArr = JSONArray()
+        uiState.movimientosMateriaPrima.forEach { mmp ->
+            val obj = JSONObject().apply {
+                put("id", mmp.id)
+                put("materiaPrimaId", mmp.materiaPrimaId)
+                put("materiaPrimaName", mmp.materiaPrimaName)
+                put("type", mmp.type)
+                put("quantity", mmp.quantity)
+                put("unit", mmp.unit)
+                put("date", mmp.date)
+                put("responsibleUser", mmp.responsibleUser)
+                put("notes", mmp.notes)
+                put("resultingStock", mmp.resultingStock)
+            }
+            mmpArr.put(obj)
+        }
+
+        // 4. Products / Catálogo (Ajustes -> Gestión -> Catálogo)
         val prodArr = JSONArray()
+        val prodProduccionArr = JSONArray()
+        val prodMercaderiasArr = JSONArray()
+
         uiState.products.forEach { p ->
             val obj = JSONObject().apply {
                 put("id", p.id)
@@ -137,10 +201,16 @@ object BusinessBackupManager {
                 put("presentacionesEspeciales", p.presentacionesEspeciales)
             }
             prodArr.put(obj)
+            val isMercaderia = p.destination.equals("BARRA", ignoreCase = true) ||
+                    uiState.mercaderias.any { it.productId == p.id }
+            if (isMercaderia) {
+                prodMercaderiasArr.put(obj)
+            } else {
+                prodProduccionArr.put(obj)
+            }
         }
-        root.put("products", prodArr)
 
-        // Productos Elaborados
+        // 5. Productos Elaborados (Ajustes -> Gestión -> Inventario -> Producción)
         val peArr = JSONArray()
         uiState.productosElaborados.forEach { pe ->
             val obj = JSONObject().apply {
@@ -157,12 +227,16 @@ object BusinessBackupManager {
                 put("precioDefinitivo", pe.precioDefinitivo)
                 put("hasPrecioDefinitivo", pe.hasPrecioDefinitivo)
                 put("targetMarginPct", pe.targetMarginPct)
+                put("pagoCocinaUnitario", pe.pagoCocinaUnitario)
+                put("cantidadCocineros", pe.cantidadCocineros)
+                put("isPagoCocinaFijo", pe.isPagoCocinaFijo)
+                put("pagoDependienteUnitario", pe.pagoDependienteUnitario)
+                put("pagoCajeroUnitario", pe.pagoCajeroUnitario)
             }
             peArr.put(obj)
         }
-        root.put("productosElaborados", peArr)
 
-        // Receta Ingredientes
+        // 6. Receta Ingredientes (Ajustes -> Gestión -> Inventario -> Producción)
         val riArr = JSONArray()
         uiState.recetaIngredientes.forEach { ri ->
             val obj = JSONObject().apply {
@@ -174,9 +248,67 @@ object BusinessBackupManager {
             }
             riArr.put(obj)
         }
-        root.put("recetaIngredientes", riArr)
 
-        // Production Batches (Tandas)
+        // 7. Tandas (Ajustes -> Gestión -> Inventario -> Tandas)
+        val tandasArr = JSONArray()
+        val tandasJornadaArr = JSONArray()
+        val tandasCerradasArr = JSONArray()
+
+        uiState.tandas.forEach { t ->
+            val obj = JSONObject().apply {
+                put("id", t.id)
+                put("uuid", t.uuid)
+                put("productId", t.productId)
+                put("productName", t.productName)
+                put("date", t.date)
+                put("responsibleUser", t.responsibleUser)
+                put("baseMateriaPrimaId", t.baseMateriaPrimaId)
+                put("baseMateriaPrimaName", t.baseMateriaPrimaName)
+                put("baseQuantityUsed", t.baseQuantityUsed)
+                put("baseQuantityUnit", t.baseQuantityUnit)
+                put("productionFactor", t.productionFactor)
+                put("estimatedYield", t.estimatedYield)
+                put("productionUnit", t.productionUnit)
+                put("ingredientsConsumedText", t.ingredientsConsumedText)
+                put("status", t.status)
+                put("jornada", t.jornada)
+                put("jornadaId", t.jornadaId)
+                put("observation", t.observation)
+                put("laborCostType", t.laborCostType)
+                put("laborCostValue", t.laborCostValue)
+                put("totalLaborCost", t.totalLaborCost)
+                put("totalDirectIngredientsCost", t.totalDirectIngredientsCost)
+                put("totalIndirectCostAllocated", t.totalIndirectCostAllocated)
+                put("totalBatchCost", t.totalBatchCost)
+                put("realUnitCost", t.realUnitCost)
+                put("tandaNumber", t.tandaNumber)
+                put("expectedYield", t.expectedYield)
+                put("actualYield", t.actualYield)
+                put("yieldPercentage", t.yieldPercentage)
+                put("expectedRevenue", t.expectedRevenue)
+                put("estimatedProfit", t.estimatedProfit)
+                put("profitMargin", t.profitMargin)
+                put("inventoryDeducted", t.inventoryDeducted)
+                put("ownerPayType", t.ownerPayType)
+                put("ownerPayValue", t.ownerPayValue)
+                put("totalOwnerPay", t.totalOwnerPay)
+                put("quantitySold", t.quantitySold)
+                put("salePrice", t.salePrice)
+                put("realRevenue", t.realRevenue)
+                put("deviceId", t.deviceId)
+                put("specialPresentationName", t.specialPresentationName)
+                put("specialPresentationQty", t.specialPresentationQty)
+                put("specialPresentationEquivalence", t.specialPresentationEquivalence)
+            }
+            tandasArr.put(obj)
+            if (t.status.equals("CERRADA", ignoreCase = true)) {
+                tandasCerradasArr.put(obj)
+            } else {
+                tandasJornadaArr.put(obj)
+            }
+        }
+
+        // 8. Production Batches
         val pbArr = JSONArray()
         uiState.productionBatches.forEach { pb ->
             val obj = JSONObject().apply {
@@ -191,9 +323,8 @@ object BusinessBackupManager {
             }
             pbArr.put(obj)
         }
-        root.put("productionBatches", pbArr)
 
-        // Mercaderias
+        // 10. Mercaderias (Ajustes -> Gestión -> Inventario -> Mercaderías)
         val mercArr = JSONArray()
         uiState.mercaderias.forEach { m ->
             val obj = JSONObject().apply {
@@ -208,12 +339,33 @@ object BusinessBackupManager {
                 put("purchaseMode", m.purchaseMode)
                 put("purchasePrice", m.purchasePrice)
                 put("unitsPerLot", m.unitsPerLot)
+                put("dailySalesAverage", m.dailySalesAverage)
             }
             mercArr.put(obj)
         }
-        root.put("mercaderias", mercArr)
 
-        // Stock Movements
+        // 11. Movimientos Mercaderia
+        val mmArr = JSONArray()
+        uiState.movimientosMercaderia.forEach { mm ->
+            val obj = JSONObject().apply {
+                put("id", mm.id)
+                put("mercaderiaId", mm.mercaderiaId)
+                put("type", mm.type)
+                put("quantity", mm.quantity)
+                put("date", mm.date)
+                put("responsibleAdmin", mm.responsibleAdmin)
+                put("notes", mm.notes)
+                put("quantitySold", mm.quantitySold)
+                put("salePrice", mm.salePrice)
+                put("acquisitionCost", mm.acquisitionCost)
+                put("realRevenue", mm.realRevenue)
+                put("jornadaId", mm.jornadaId)
+                put("deviceId", mm.deviceId)
+            }
+            mmArr.put(obj)
+        }
+
+        // 12. Stock Movements
         val smArr = JSONArray()
         uiState.stockMovements.forEach { sm ->
             val obj = JSONObject().apply {
@@ -229,9 +381,8 @@ object BusinessBackupManager {
             }
             smArr.put(obj)
         }
-        root.put("stockMovements", smArr)
 
-        // Categories
+        // 13. Categories (Ajustes -> Gestión -> Catálogo)
         val catArr = JSONArray()
         uiState.categories.forEach { c ->
             val obj = JSONObject().apply {
@@ -242,9 +393,8 @@ object BusinessBackupManager {
             }
             catArr.put(obj)
         }
-        root.put("categories", catArr)
 
-        // Personal Contratado
+        // 14. Personal Contratado (Ajustes -> Gestión -> Personal)
         val pcArr = JSONArray()
         uiState.personalContratado.forEach { pc ->
             val obj = JSONObject().apply {
@@ -269,9 +419,8 @@ object BusinessBackupManager {
             }
             pcArr.put(obj)
         }
-        root.put("personalContratado", pcArr)
 
-        // Users (Exclude SuperAdmin)
+        // 15. Users (Ajustes -> Preferencias / Seguridad)
         val userArr = JSONArray()
         uiState.users.filter { !it.username.equals("superadmin", ignoreCase = true) }.forEach { u ->
             val obj = JSONObject().apply {
@@ -291,9 +440,8 @@ object BusinessBackupManager {
             }
             userArr.put(obj)
         }
-        root.put("users", userArr)
 
-        // Gastos Generales
+        // 16. Gastos Generales (Ajustes -> Gestión -> Gastos)
         val ggArr = JSONArray()
         uiState.gastosGenerales.forEach { gg ->
             val obj = JSONObject().apply {
@@ -315,9 +463,8 @@ object BusinessBackupManager {
             }
             ggArr.put(obj)
         }
-        root.put("gastosGenerales", ggArr)
 
-        // Inversiones
+        // 17. Inversiones (Ajustes -> Gestión -> Inversiones)
         val invArr = JSONArray()
         uiState.inversiones.forEach { inv ->
             val obj = JSONObject().apply {
@@ -338,12 +485,13 @@ object BusinessBackupManager {
                 put("originalAmount", inv.originalAmount)
                 put("exchangeRate", inv.exchangeRate)
                 put("convertedAmount", inv.convertedAmount)
+                put("method", inv.method)
+                put("dailyAmount", inv.dailyAmount)
             }
             invArr.put(obj)
         }
-        root.put("inversiones", invArr)
 
-        // Jornadas
+        // 18. Jornadas / Archivo de Jornadas (Ajustes -> Preferencias -> Archivo de Jornadas & Control de Negocio)
         val jArr = JSONArray()
         uiState.allJornadas.forEach { j ->
             val obj = JSONObject().apply {
@@ -362,12 +510,30 @@ object BusinessBackupManager {
                 put("closedBy", j.closedBy ?: JSONObject.NULL)
                 put("utilidadSalonMontoUnitario", j.utilidadSalonMontoUnitario)
                 put("deviceId", j.deviceId)
+                put("realSalesProduccion", j.realSalesProduccion)
+                put("realCostProduccion", j.realCostProduccion)
+                put("gastosProduccion", j.gastosProduccion)
+                put("inversionesProduccion", j.inversionesProduccion)
+                put("resultadoProduccion", j.resultadoProduccion)
+                put("realSalesMercaderias", j.realSalesMercaderias)
+                put("realCostMercaderias", j.realCostMercaderias)
+                put("gastosMercaderias", j.gastosMercaderias)
+                put("inversionesMercaderias", j.inversionesMercaderias)
+                put("resultadoMercaderias", j.resultadoMercaderias)
+                put("totalIngresos", j.totalIngresos)
+                put("totalCostos", j.totalCostos)
+                put("totalGastos", j.totalGastos)
+                put("totalInversiones", j.totalInversiones)
+                put("utilidadDelDia", j.utilidadDelDia)
+                put("modulosUtilizados", j.modulosUtilizados)
+                put("snapshotJson", j.snapshotJson)
+                put("extracciones", j.extracciones)
+                put("liquidezFinal", j.liquidezFinal)
             }
             jArr.put(obj)
         }
-        root.put("jornadas", jArr)
 
-        // Table Orders
+        // 19. Table Orders (Ajustes -> Gestión -> Control del Negocio)
         val oArr = JSONArray()
         uiState.allOrders.forEach { o ->
             val obj = JSONObject().apply {
@@ -385,6 +551,13 @@ object BusinessBackupManager {
                 put("comandaNumber", o.comandaNumber)
                 put("cocinaNumber", o.cocinaNumber)
                 put("barraNumber", o.barraNumber)
+                put("totalCocina", o.totalCocina)
+                put("totalBarra", o.totalBarra)
+                put("cashReceived", o.cashReceived)
+                put("changeGiven", o.changeGiven)
+                put("confirmedAt", o.confirmedAt ?: JSONObject.NULL)
+                put("servedAt", o.servedAt ?: JSONObject.NULL)
+                put("serviceDurationSeconds", o.serviceDurationSeconds)
                 put("currency", o.currency)
                 put("exchangeRate", o.exchangeRate)
                 put("originalAmount", o.originalAmount)
@@ -392,9 +565,8 @@ object BusinessBackupManager {
             }
             oArr.put(obj)
         }
-        root.put("tableOrders", oArr)
 
-        // Order Items
+        // 20. Order Items (Ajustes -> Gestión -> Control del Negocio)
         val oiArr = JSONArray()
         uiState.allOrderItems.forEach { item ->
             val obj = JSONObject().apply {
@@ -411,9 +583,8 @@ object BusinessBackupManager {
             }
             oiArr.put(obj)
         }
-        root.put("orderItems", oiArr)
 
-        // Transferencias
+        // 21. Transferencias (Ajustes -> Gestión -> Control del Negocio)
         val trArr = JSONArray()
         uiState.allTransferencias.forEach { tr ->
             val obj = JSONObject().apply {
@@ -438,9 +609,8 @@ object BusinessBackupManager {
             }
             trArr.put(obj)
         }
-        root.put("transferencias", trArr)
 
-        // Bitacora
+        // 22. Bitacora (Ajustes -> Gestión -> Control del Negocio)
         val bitArr = JSONArray()
         uiState.bitacoraEntries.forEach { b ->
             val obj = JSONObject().apply {
@@ -454,9 +624,8 @@ object BusinessBackupManager {
             }
             bitArr.put(obj)
         }
-        root.put("bitacoraEntries", bitArr)
 
-        // Consumo Personal
+        // 23. Consumo Personal (Ajustes -> Gestión -> Control del Negocio)
         val cpArr = JSONArray()
         uiState.consumoPersonalList.forEach { cp ->
             val obj = JSONObject().apply {
@@ -472,9 +641,8 @@ object BusinessBackupManager {
             }
             cpArr.put(obj)
         }
-        root.put("consumoPersonalList", cpArr)
 
-        // Payment Proposals
+        // 24. Payment Proposals (Ajustes -> Gestión -> Personal)
         val ppArr = JSONArray()
         uiState.paymentProposals.forEach { pp ->
             val obj = JSONObject().apply {
@@ -488,19 +656,330 @@ object BusinessBackupManager {
             }
             ppArr.put(obj)
         }
+
+        // 25. SMS Comandas Queue (Control del Negocio / Mensajería)
+        val smsQueueArr = JSONArray()
+        try {
+            val db = AppDatabase.getDatabase(context)
+            val queueItems = kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+                db.smsComandaQueueDao().getAllComandasQueueSync()
+            }
+            queueItems.forEach { sq ->
+                val obj = JSONObject().apply {
+                    put("id", sq.id)
+                    put("senderPhone", sq.senderPhone)
+                    put("smsText", sq.smsText)
+                    put("receivedAt", sq.receivedAt)
+                    put("estado", sq.estado)
+                    put("jornadaId", sq.jornadaId)
+                    put("comandaNumber", sq.comandaNumber)
+                }
+                smsQueueArr.put(obj)
+            }
+        } catch (e: Exception) {
+            // ignore if database not accessible synchronously
+        }
+
+        // 26. Cuadre Pagos por Jornada
+        val cuadrePagosArr = JSONArray()
+        uiState.allJornadas.forEach { j ->
+            val pagos = CuadrePagosManager.getPagosJornada(context, j.id)
+            if (pagos != null) {
+                val pObj = JSONObject().apply {
+                    put("jornadaId", pagos.jornadaId)
+                    put("isConfirmed", pagos.isConfirmed)
+                    put("confirmedAt", pagos.confirmedAt)
+                    put("confirmedBy", pagos.confirmedBy)
+                    put("totalPagos", pagos.totalPagos)
+                    put("totalCocina", pagos.totalCocina)
+                    put("totalCajero", pagos.totalCajero)
+                    put("totalDependiente", pagos.totalDependiente)
+                    put("cantidadDependientes", pagos.cantidadDependientes)
+                    put("distributionMode", pagos.distributionMode)
+                    put("efectivoContado", pagos.efectivoContado)
+                    put("dineroFinalEnCaja", pagos.dineroFinalEnCaja)
+                    put("cantidadCocineros", pagos.cantidadCocineros)
+                    put("spaguettiPago", pagos.spaguettiPago)
+                    val depsArr = JSONArray()
+                    pagos.dependientes.forEach { d ->
+                        depsArr.put(JSONObject().apply {
+                            put("id", d.id)
+                            put("name", d.name)
+                            put("username", d.username)
+                            put("ventasProduccion", d.ventasProduccion)
+                            put("ventasBebidas", d.ventasBebidas)
+                            put("ventasTotales", d.ventasTotales)
+                            put("montoPago", d.montoPago)
+                        })
+                    }
+                    put("dependientes", depsArr)
+                }
+                cuadrePagosArr.put(pObj)
+            }
+        }
+
+        // 27. Preferencias Locales y Parámetros de Funcionamiento (Ajustes -> Preferencias)
+        val prefsObj = JSONObject()
+        val tarifasBebidas = BebidasTarifasPreferences.getTarifas(context)
+        prefsObj.put("tarifasPagoBebidas", JSONObject().apply {
+            put("pagoDependientePorUnidad", tarifasBebidas.pagoDependientePorUnidad)
+            put("pagoCajeroPorUnidad", tarifasBebidas.pagoCajeroPorUnidad)
+            put("pagoDependienteModalidad", tarifasBebidas.pagoDependienteModalidad)
+            put("pagoDependienteValor", tarifasBebidas.pagoDependienteValor)
+            put("pagoCajeroModalidad", tarifasBebidas.pagoCajeroModalidad)
+            put("pagoCajeroValor", tarifasBebidas.pagoCajeroValor)
+        })
+
+        // Modos Producción
+        val modosArr = JSONArray()
+        uiState.products.forEach { prod ->
+            val modo = ProduccionModoHelper.getModo(context, prod.id)
+            if (modo != "POR_TANDAS") {
+                modosArr.put(JSONObject().apply {
+                    put("productId", prod.id)
+                    put("modo", modo)
+                })
+            }
+        }
+        prefsObj.put("modosProduccion", modosArr)
+
+        // Clasificacion Transferencias
+        val clasifPrefs = context.getSharedPreferences("clasificacion_transferencias_prefs", Context.MODE_PRIVATE)
+        val clasifArr = JSONArray()
+        uiState.allJornadas.forEach { j ->
+            val key = "clasif_jornada_${j.id}"
+            val valStr = clasifPrefs.getString(key, null)
+            if (valStr != null) {
+                clasifArr.put(JSONObject().apply {
+                    put("jornadaId", j.id)
+                    put("clasificacion", valStr)
+                })
+            }
+        }
+        prefsObj.put("clasificacionTransferencias", clasifArr)
+
+        // Módulos Visibles Dueño
+        val visibleModules = DuenoSessionPreferences.getVisibleModules(context, uiState.currentUser?.username)
+        val vmArr = JSONArray()
+        visibleModules.forEach { vmArr.put(it) }
+        prefsObj.put("modulosVisiblesDueno", vmArr)
+
+        // Límites de Transferencia para Salón por Producto (Ajustes -> Catálogo / Transferencias)
+        val salonTransferPrefs = context.getSharedPreferences("SalonTransferPrefs", Context.MODE_PRIVATE)
+        val salonLimitsObj = JSONObject()
+        salonTransferPrefs.all.forEach { (k, v) ->
+            if (v is Int) {
+                salonLimitsObj.put(k, v)
+            }
+        }
+        prefsObj.put("limitesTransferenciaSalon", salonLimitsObj)
+
+        // Sincronización de Marcas de Tiempo
+        val syncPrefs = context.getSharedPreferences("elqadre_json_sync", Context.MODE_PRIVATE)
+        val syncObj = JSONObject()
+        syncPrefs.all.forEach { (k, v) ->
+            if (v is Long) {
+                syncObj.put(k, v)
+            }
+        }
+        prefsObj.put("jsonSyncTimestamps", syncObj)
+
+        // -----------------------------------------------------------------
+        // CONSTRUCCIÓN DE LOS 7 BLOQUES OBLIGATORIOS DE Q_respaldo.json
+        // -----------------------------------------------------------------
+
+        // BLOQUE 1: INSUMOS Y AGREGADOS
+        val bloque1 = JSONObject().apply {
+            put("titulo", "INSUMOS Y AGREGADOS")
+            put("totalInsumos", b1InsumosArr.length())
+            put("totalAgregados", b1AgregadosArr.length())
+            put("totalMateriasPrimas", mpArr.length())
+            put("insumos", b1InsumosArr)
+            put("agregados", b1AgregadosArr)
+            put("materiasPrimas", mpArr)
+            put("movimientosMateriaPrima", mmpArr)
+        }
+
+        // BLOQUE 2: PRODUCTOS
+        val bloque2 = JSONObject().apply {
+            put("titulo", "PRODUCTOS")
+            put("totalProductos", prodArr.length())
+            put("totalProductosProduccion", prodProduccionArr.length())
+            put("totalProductosMercaderias", prodMercaderiasArr.length())
+            put("products", prodArr)
+            put("productosProduccion", prodProduccionArr)
+            put("productosMercaderias", prodMercaderiasArr)
+            put("productosElaborados", peArr)
+            put("recetaIngredientes", riArr)
+            put("mercaderias", mercArr)
+            put("movimientosMercaderia", mmArr)
+            put("stockMovements", smArr)
+            put("categories", catArr)
+        }
+
+        // BLOQUE 3: TANDAS
+        val bloque3 = JSONObject().apply {
+            put("titulo", "TANDAS")
+            put("totalTandas", tandasArr.length())
+            put("totalTandasJornada", tandasJornadaArr.length())
+            put("totalTandasCerradas", tandasCerradasArr.length())
+            put("tandas", tandasArr)
+            put("tandasJornada", tandasJornadaArr)
+            put("tandasCerradas", tandasCerradasArr)
+            put("archivoTandas", tandasArr)
+            put("productionBatches", pbArr)
+        }
+
+        // BLOQUE 4: PREFERENCIAS
+        val bloque4 = JSONObject().apply {
+            put("titulo", "PREFERENCIAS")
+            if (cfgNegocioObj != null) put("configuracionNegocio", cfgNegocioObj)
+            if (cfgGeneralObj != null) put("configuracionGeneral", cfgGeneralObj)
+            put("preferenciasLocales", prefsObj)
+        }
+
+        // BLOQUE 5: GESTIÓN
+        val bloque5 = JSONObject().apply {
+            put("titulo", "GESTIÓN")
+            put("personalContratado", pcArr)
+            put("users", userArr)
+            put("paymentProposals", ppArr)
+            put("gastosGenerales", ggArr)
+            put("inversiones", invArr)
+        }
+
+        // BLOQUE 6: INFORMES
+        val bloque6 = JSONObject().apply {
+            put("titulo", "INFORMES")
+            put("jornadas", jArr)
+            put("tableOrders", oArr)
+            put("orderItems", oiArr)
+            put("transferencias", trArr)
+            put("bitacoraEntries", bitArr)
+            put("consumoPersonalList", cpArr)
+            put("cuadrePagos", cuadrePagosArr)
+            put("smsComandaQueue", smsQueueArr)
+        }
+
+        // BLOQUE 7: CUADRE DE CAJA — ÚNICAMENTE MERCADERÍAS
+        // Exclusivamente Inicio y Entradas de Mercaderías.
+        // No incluye Producción, ventas, gastos, créditos, efectivo, transferencias, diferencias ni estados/cierres.
+        val bloque7 = JSONObject().apply {
+            put("titulo", "CUADRE DE CAJA — ÚNICAMENTE MERCADERÍAS")
+            put(
+                "descripcion",
+                "Exclusivamente Inicio y Entradas de productos de Mercaderías desde Cuadre de Caja. " +
+                        "No contiene producción, ventas de producción, ventas de mercaderías, gastos, créditos, " +
+                        "efectivo, transferencias, diferencias, estados de caja ni cierres de caja."
+            )
+
+            val draftPrefs = context.getSharedPreferences("elqadre_cuadre_draft_prefs", Context.MODE_PRIVATE)
+            val currentJornadaId = uiState.activeJornada?.id ?: uiState.allJornadas.maxOfOrNull { it.id } ?: 0L
+            val currentDraft = if (currentJornadaId > 0) CuadreDraftManager.getDraft(context, currentJornadaId) else null
+
+            val mercaderiasCuadreArr = JSONArray()
+            uiState.mercaderias.forEach { merc ->
+                val prod = uiState.products.find { it.id == merc.productId }
+                val draftItem = currentDraft?.mercaderiaDrafts?.find { it.mercaderiaId == merc.id }
+                val inicioStr = draftItem?.existenciaInicialStr?.ifBlank { null }
+                    ?: (if (merc.initialStock > 0.0) "%.1f".format(merc.initialStock).replace(',', '.') else "0")
+                val entradasStr = draftItem?.entradasStr?.ifBlank { "0" } ?: "0"
+
+                mercaderiasCuadreArr.put(JSONObject().apply {
+                    put("mercaderiaId", merc.id)
+                    put("productId", merc.productId)
+                    put("productName", prod?.name ?: "Mercadería #${merc.id}")
+                    put("inicio", inicioStr)
+                    put("entradas", entradasStr)
+                })
+            }
+            put("mercaderias", mercaderiasCuadreArr)
+
+            val porJornadaArr = JSONArray()
+            draftPrefs.all.forEach { (k, v) ->
+                if (k.startsWith("draft_jornada_") && v is String) {
+                    val jId = k.removePrefix("draft_jornada_").toLongOrNull() ?: 0L
+                    if (jId > 0) {
+                        val d = CuadreDraftManager.getDraft(context, jId)
+                        if (d != null && d.mercaderiaDrafts.isNotEmpty()) {
+                            val jObj = JSONObject().apply {
+                                put("jornadaId", jId)
+                                val itemsArr = JSONArray()
+                                d.mercaderiaDrafts.forEach { m ->
+                                    val merc = uiState.mercaderias.find { it.id == m.mercaderiaId }
+                                    val prod = uiState.products.find { it.id == merc?.productId }
+                                    itemsArr.put(JSONObject().apply {
+                                        put("mercaderiaId", m.mercaderiaId)
+                                        put("productId", merc?.productId ?: 0L)
+                                        put("productName", prod?.name ?: "")
+                                        put("inicio", m.existenciaInicialStr.ifBlank { "0" })
+                                        put("entradas", m.entradasStr.ifBlank { "0" })
+                                    })
+                                }
+                                put("mercaderias", itemsArr)
+                            }
+                            porJornadaArr.put(jObj)
+                        }
+                    }
+                }
+            }
+            put("porJornada", porJornadaArr)
+        }
+
+        // -----------------------------------------------------------------
+        // INSERCIÓN DE LOS 7 BLOQUES EN EL NODO RAÍZ DE Q_respaldo.json
+        // -----------------------------------------------------------------
+        root.put("bloque_1_insumos_y_agregados", bloque1)
+        root.put("bloque_2_productos", bloque2)
+        root.put("bloque_3_tandas", bloque3)
+        root.put("bloque_4_preferencias", bloque4)
+        root.put("bloque_5_gestion", bloque5)
+        root.put("bloque_6_informes", bloque6)
+        root.put("bloque_7_cuadre_caja_mercaderias", bloque7)
+
+        // Alias canónicos para acceso directo y compatibilidad semántica
+        root.put("insumos_y_agregados", bloque1)
+        root.put("productos", bloque2)
+        root.put("tandas_bloque", bloque3)
+        root.put("preferencias", bloque4)
+        root.put("gestion", bloque5)
+        root.put("informes", bloque6)
+        root.put("cuadre_de_caja_mercaderias", bloque7)
+
+        // Compatibilidad raíz con la base de datos local y parsers existentes
+        if (cfgNegocioObj != null) root.put("configuracionNegocio", cfgNegocioObj)
+        if (cfgGeneralObj != null) root.put("configuracionGeneral", cfgGeneralObj)
+        root.put("materiasPrimas", mpArr)
+        root.put("products", prodArr)
+        root.put("productosElaborados", peArr)
+        root.put("recetaIngredientes", riArr)
+        root.put("tandas", tandasArr)
+        root.put("productionBatches", pbArr)
+        root.put("movimientosMateriaPrima", mmpArr)
+        root.put("mercaderias", mercArr)
+        root.put("movimientosMercaderia", mmArr)
+        root.put("stockMovements", smArr)
+        root.put("categories", catArr)
+        root.put("personalContratado", pcArr)
+        root.put("users", userArr)
+        root.put("gastosGenerales", ggArr)
+        root.put("inversiones", invArr)
+        root.put("jornadas", jArr)
+        root.put("tableOrders", oArr)
+        root.put("orderItems", oiArr)
+        root.put("transferencias", trArr)
+        root.put("bitacoraEntries", bitArr)
+        root.put("consumoPersonalList", cpArr)
         root.put("paymentProposals", ppArr)
+        root.put("smsComandaQueue", smsQueueArr)
+        root.put("preferenciasLocales", prefsObj)
 
         return root.toString(2)
     }
 
     fun exportAndShareBackup(context: Context, uiState: MainUiState): Boolean {
         return try {
-            val currentBizCode = BusinessCodeHelper.resolveBusinessCode(
-                context = context,
-                configNegocio = uiState.businessConfig,
-                configGeneral = uiState.generalConfig
-            )
-            val fileName = "Q_${currentBizCode}respaldo.json"
+            val fileName = "Q_respaldo.json"
             val jsonString = createBackupJson(context, uiState)
 
             val file = File(context.cacheDir, fileName)
@@ -516,7 +995,7 @@ object BusinessBackupManager {
             val intent = Intent(Intent.ACTION_SEND).apply {
                 type = "application/json"
                 putExtra(Intent.EXTRA_STREAM, uri)
-                putExtra(Intent.EXTRA_SUBJECT, "Respaldo Completo Negocio Q_$currentBizCode")
+                putExtra(Intent.EXTRA_SUBJECT, "Respaldo Completo Negocio (Q_respaldo.json)")
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             context.startActivity(Intent.createChooser(intent, "Compartir Respaldo del Negocio ($fileName)"))
@@ -542,37 +1021,50 @@ object BusinessBackupManager {
             val rawBizCode = root.optString("codigoNegocio").ifBlank {
                 root.optString("businessCode", "001")
             }
-            val backupBizCode = BusinessCodeHelper.formatCode(rawBizCode)
-            val deviceBizCode = BusinessCodeHelper.resolveBusinessCode(context)
-
-            // VALIDATE BUSINESS CODE MATCH
-            if (!BusinessCodeHelper.matches(backupBizCode, deviceBizCode)) {
-                return Result.failure(
-                    Exception(
-                        "RESPALDO RECHAZADO:\n\n" +
-                        "El archivo pertenece al Negocio $backupBizCode, pero este dispositivo está autorizado únicamente para el Negocio $deviceBizCode.\n\n" +
-                        "No se modificó ni eliminó ningún dato operativo."
-                    )
-                )
-            }
+            val backupBizCode = if (rawBizCode.isNotBlank()) BusinessCodeHelper.formatCode(rawBizCode) else "001"
 
             val nombreNegocio = root.optString("nombreNegocio", "El Qadre POS")
             val timestamp = root.optLong("timestamp", System.currentTimeMillis())
             val dateStr = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date(timestamp))
-            val version = root.optString("version", "1")
+            val version = root.optString("version", "2")
 
-            val mpCount = root.optJSONArray("materiasPrimas")?.length() ?: 0
-            val prodCount = root.optJSONArray("products")?.length() ?: 0
-            val peCount = root.optJSONArray("productosElaborados")?.length() ?: 0
-            val riCount = root.optJSONArray("recetaIngredientes")?.length() ?: 0
-            val mercCount = root.optJSONArray("mercaderias")?.length() ?: 0
-            val catCount = root.optJSONArray("categories")?.length() ?: 0
-            val pcCount = root.optJSONArray("personalContratado")?.length() ?: 0
-            val userCount = root.optJSONArray("users")?.length() ?: 0
-            val jCount = root.optJSONArray("jornadas")?.length() ?: 0
-            val oCount = root.optJSONArray("tableOrders")?.length() ?: 0
-            val ggCount = root.optJSONArray("gastosGenerales")?.length() ?: 0
-            val invCount = root.optJSONArray("inversiones")?.length() ?: 0
+            val b1 = root.optJSONObject("bloque_1_insumos_y_agregados") ?: root.optJSONObject("insumos_y_agregados")
+            val b2 = root.optJSONObject("bloque_2_productos") ?: root.optJSONObject("productos")
+            val b3 = root.optJSONObject("bloque_3_tandas") ?: root.optJSONObject("tandas_bloque")
+            val b5 = root.optJSONObject("bloque_5_gestion") ?: root.optJSONObject("gestion")
+            val b6 = root.optJSONObject("bloque_6_informes") ?: root.optJSONObject("informes")
+
+            val mpCount = root.optJSONArray("materiasPrimas")?.length()
+                ?: b1?.optJSONArray("materiasPrimas")?.length() ?: 0
+            val prodCount = root.optJSONArray("products")?.length()
+                ?: b2?.optJSONArray("products")?.length() ?: 0
+            val peCount = root.optJSONArray("productosElaborados")?.length()
+                ?: b2?.optJSONArray("productosElaborados")?.length() ?: 0
+            val riCount = root.optJSONArray("recetaIngredientes")?.length()
+                ?: b2?.optJSONArray("recetaIngredientes")?.length() ?: 0
+            val tandasCount = root.optJSONArray("tandas")?.length()
+                ?: b3?.optJSONArray("tandas")?.length()
+                ?: (root.optJSONArray("productionBatches")?.length() ?: b3?.optJSONArray("productionBatches")?.length() ?: 0)
+            val mercCount = root.optJSONArray("mercaderias")?.length()
+                ?: b2?.optJSONArray("mercaderias")?.length() ?: 0
+            val catCount = root.optJSONArray("categories")?.length()
+                ?: b2?.optJSONArray("categories")?.length() ?: 0
+            val pcCount = root.optJSONArray("personalContratado")?.length()
+                ?: b5?.optJSONArray("personalContratado")?.length() ?: 0
+            val userCount = root.optJSONArray("users")?.length()
+                ?: b5?.optJSONArray("users")?.length() ?: 0
+            val jCount = root.optJSONArray("jornadas")?.length()
+                ?: b6?.optJSONArray("jornadas")?.length() ?: 0
+            val oCount = root.optJSONArray("tableOrders")?.length()
+                ?: b6?.optJSONArray("tableOrders")?.length() ?: 0
+            val ggCount = root.optJSONArray("gastosGenerales")?.length()
+                ?: b5?.optJSONArray("gastosGenerales")?.length() ?: 0
+            val invCount = root.optJSONArray("inversiones")?.length()
+                ?: b5?.optJSONArray("inversiones")?.length() ?: 0
+            val trCount = root.optJSONArray("transferencias")?.length()
+                ?: b6?.optJSONArray("transferencias")?.length() ?: 0
+            val smsCount = root.optJSONArray("smsComandaQueue")?.length()
+                ?: b6?.optJSONArray("smsComandaQueue")?.length() ?: 0
 
             val summary = BackupSummary(
                 codigoNegocio = backupBizCode,
@@ -584,6 +1076,7 @@ object BusinessBackupManager {
                 productsCount = prodCount,
                 productosElaboradosCount = peCount,
                 recetaIngredientesCount = riCount,
+                tandasCount = tandasCount,
                 mercaderiasCount = mercCount,
                 categoriesCount = catCount,
                 personalCount = pcCount,
@@ -591,7 +1084,9 @@ object BusinessBackupManager {
                 jornadasCount = jCount,
                 ordersCount = oCount,
                 gastosCount = ggCount,
-                inversionesCount = invCount
+                inversionesCount = invCount,
+                transferenciasCount = trCount,
+                smsQueueCount = smsCount
             )
             Result.success(summary)
         } catch (e: Exception) {
@@ -605,21 +1100,19 @@ object BusinessBackupManager {
             return Result.failure(summaryRes.exceptionOrNull() ?: Exception("Validación de respaldo fallida."))
         }
         val s = summaryRes.getOrNull()!!
-        val text = "Respaldo Negocio ${s.codigoNegocio} - ${s.nombreNegocio}\n" +
+        var text = "Respaldo: ${s.nombreNegocio}\n" +
                 "Fecha: ${s.dateStr}\n\n" +
-                "Contenido a restaurar:\n" +
-                "• Insumos / Materias Primas: ${s.materiasPrimasCount}\n" +
-                "• Productos de Cocina/Barra: ${s.productsCount}\n" +
-                "• Fichas de Producto Elaborado: ${s.productosElaboradosCount}\n" +
-                "• Ingredientes de Recetas: ${s.recetaIngredientesCount}\n" +
-                "• Mercaderías: ${s.mercaderiasCount}\n" +
-                "• Categorías: ${s.categoriesCount}\n" +
-                "• Personal Contratado: ${s.personalCount}\n" +
-                "• Cuentas de Usuarios: ${s.usersCount}\n" +
-                "• Jornadas registradas: ${s.jornadasCount}\n" +
-                "• Comandas registradas: ${s.ordersCount}\n" +
-                "• Gastos Generales: ${s.gastosCount}\n" +
-                "• Inversiones: ${s.inversionesCount}"
+                "Contenido de Q_respaldo.json (7 Bloques):\n" +
+                "• Bloque 1 - Insumos y Agregados: ${s.materiasPrimasCount}\n" +
+                "• Bloque 2 - Productos (Cocina / Barra / Mercaderías): ${s.productsCount}\n" +
+                "• Bloque 3 - Tandas y Archivo de Producción: ${s.tandasCount}\n" +
+                "• Bloque 4 - Preferencias de Dueño: Integradas\n" +
+                "• Bloque 5 - Gestión (Personal: ${s.personalCount}, Gastos: ${s.gastosCount}, Inversiones: ${s.inversionesCount})\n" +
+                "• Bloque 6 - Informes (Jornadas: ${s.jornadasCount}, Ventas: ${s.ordersCount}, Transferencias: ${s.transferenciasCount})\n" +
+                "• Bloque 7 - Cuadre de Caja (Inicio y Entradas de Mercaderías): Integrado"
+        if (s.smsQueueCount > 0) {
+            text += "\n• Mensajes SMS en cola: ${s.smsQueueCount}"
+        }
         return Result.success(text)
     }
 
@@ -632,6 +1125,13 @@ object BusinessBackupManager {
 
         return try {
             val root = JSONObject(jsonString)
+            val b1 = root.optJSONObject("bloque_1_insumos_y_agregados") ?: root.optJSONObject("insumos_y_agregados")
+            val b2 = root.optJSONObject("bloque_2_productos") ?: root.optJSONObject("productos")
+            val b3 = root.optJSONObject("bloque_3_tandas") ?: root.optJSONObject("tandas_bloque")
+            val b4 = root.optJSONObject("bloque_4_preferencias") ?: root.optJSONObject("preferencias")
+            val b5 = root.optJSONObject("bloque_5_gestion") ?: root.optJSONObject("gestion")
+            val b6 = root.optJSONObject("bloque_6_informes") ?: root.optJSONObject("informes")
+            val b7 = root.optJSONObject("bloque_7_cuadre_caja_mercaderias") ?: root.optJSONObject("cuadre_de_caja_mercaderias")
 
             db.withTransaction {
                 // Clear existing business tables
@@ -639,6 +1139,7 @@ object BusinessBackupManager {
                 db.productDao().deleteAllProducts()
                 db.productoElaboradoDao().deleteAll()
                 db.recetaIngredienteDao().deleteAll()
+                db.tandaDao().deleteAllTandas()
                 db.productionBatchDao().deleteAllBatches()
                 db.movimientoMateriaPrimaDao().deleteAllMovimientosMateriaPrima()
                 db.mercaderiaDao().deleteAllMercaderias()
@@ -656,9 +1157,10 @@ object BusinessBackupManager {
                 db.bitacoraDao().deleteAllEntries()
                 db.consumoPersonalDao().deleteAllConsumoPersonal()
                 db.paymentProposalDao().deleteAllProposals()
+                db.smsComandaQueueDao().deleteAll()
 
                 // Insert Materias Primas
-                root.optJSONArray("materiasPrimas")?.let { arr ->
+                (root.optJSONArray("materiasPrimas") ?: b1?.optJSONArray("materiasPrimas"))?.let { arr ->
                     for (i in 0 until arr.length()) {
                         val o = arr.getJSONObject(i)
                         db.materiaPrimaDao().insert(
@@ -673,14 +1175,25 @@ object BusinessBackupManager {
                                 purchasePrice = o.optDouble("purchasePrice", 0.0),
                                 purchaseUnit = o.optString("purchaseUnit", "g"),
                                 purchaseQuantity = o.optDouble("purchaseQuantity", 1.0),
-                                productId = if (o.isNull("productId")) null else o.getLong("productId")
+                                productId = if (o.isNull("productId")) null else o.getLong("productId"),
+                                isAgregado = o.optBoolean("isAgregado", false),
+                                rationQuantity = o.optDouble("rationQuantity", 0.0),
+                                rationUnit = o.optString("rationUnit", ""),
+                                suggestedPrice = o.optDouble("suggestedPrice", 0.0),
+                                salePrice = o.optDouble("salePrice", 0.0),
+                                stockEnVenta = o.optDouble("stockEnVenta", 0.0),
+                                racionesEnVenta = o.optDouble("racionesEnVenta", 0.0),
+                                purchaseMode = o.optString("purchaseMode", "POR UNIDAD"),
+                                purchaseLotUnits = o.optDouble("purchaseLotUnits", 0.0),
+                                purchaseLotQuantity = o.optDouble("purchaseLotQuantity", 1.0),
+                                purchaseLotPrice = o.optDouble("purchaseLotPrice", 0.0)
                             )
                         )
                     }
                 }
 
                 // Insert Products
-                root.optJSONArray("products")?.let { arr ->
+                (root.optJSONArray("products") ?: b2?.optJSONArray("products"))?.let { arr ->
                     for (i in 0 until arr.length()) {
                         val o = arr.getJSONObject(i)
                         db.productDao().insertProduct(
@@ -708,7 +1221,7 @@ object BusinessBackupManager {
                 }
 
                 // Insert Productos Elaborados
-                root.optJSONArray("productosElaborados")?.let { arr ->
+                (root.optJSONArray("productosElaborados") ?: b2?.optJSONArray("productosElaborados"))?.let { arr ->
                     for (i in 0 until arr.length()) {
                         val o = arr.getJSONObject(i)
                         db.productoElaboradoDao().insert(
@@ -725,14 +1238,19 @@ object BusinessBackupManager {
                                 ppd = o.optDouble("ppd", 10.0),
                                 precioDefinitivo = o.optDouble("precioDefinitivo", 0.0),
                                 hasPrecioDefinitivo = o.optBoolean("hasPrecioDefinitivo", false),
-                                targetMarginPct = o.optDouble("targetMarginPct", 30.0)
+                                targetMarginPct = o.optDouble("targetMarginPct", 30.0),
+                                pagoCocinaUnitario = o.optDouble("pagoCocinaUnitario", 0.0),
+                                cantidadCocineros = o.optInt("cantidadCocineros", 1),
+                                isPagoCocinaFijo = o.optBoolean("isPagoCocinaFijo", false),
+                                pagoDependienteUnitario = o.optDouble("pagoDependienteUnitario", 0.0),
+                                pagoCajeroUnitario = o.optDouble("pagoCajeroUnitario", 0.0)
                             )
                         )
                     }
                 }
 
                 // Insert Receta Ingredientes
-                root.optJSONArray("recetaIngredientes")?.let { arr ->
+                (root.optJSONArray("recetaIngredientes") ?: b2?.optJSONArray("recetaIngredientes"))?.let { arr ->
                     for (i in 0 until arr.length()) {
                         val o = arr.getJSONObject(i)
                         db.recetaIngredienteDao().insert(
@@ -747,8 +1265,62 @@ object BusinessBackupManager {
                     }
                 }
 
+                // Insert Tandas (Ajustes -> Gestión -> Inventario -> Tandas)
+                (root.optJSONArray("tandas") ?: b3?.optJSONArray("tandas") ?: b3?.optJSONArray("tandasCerradas"))?.let { arr ->
+                    for (i in 0 until arr.length()) {
+                        val o = arr.getJSONObject(i)
+                        db.tandaDao().insert(
+                            Tanda(
+                                id = o.optLong("id", 0L),
+                                uuid = o.optString("uuid", ""),
+                                productId = o.optLong("productId", 0L),
+                                productName = o.optString("productName", ""),
+                                date = o.optLong("date", System.currentTimeMillis()),
+                                responsibleUser = o.optString("responsibleUser", ""),
+                                baseMateriaPrimaId = o.optLong("baseMateriaPrimaId", 0L),
+                                baseMateriaPrimaName = o.optString("baseMateriaPrimaName", ""),
+                                baseQuantityUsed = o.optDouble("baseQuantityUsed", 0.0),
+                                baseQuantityUnit = o.optString("baseQuantityUnit", "g"),
+                                productionFactor = o.optDouble("productionFactor", 1.0),
+                                estimatedYield = o.optDouble("estimatedYield", 0.0),
+                                productionUnit = o.optString("productionUnit", "unidades"),
+                                ingredientsConsumedText = o.optString("ingredientsConsumedText", ""),
+                                status = o.optString("status", "ACTIVADA"),
+                                jornada = o.optString("jornada", "Jornada Unica"),
+                                jornadaId = o.optLong("jornadaId", 0L),
+                                observation = o.optString("observation", ""),
+                                laborCostType = o.optString("laborCostType", "NINGUNO"),
+                                laborCostValue = o.optDouble("laborCostValue", 0.0),
+                                totalLaborCost = o.optDouble("totalLaborCost", 0.0),
+                                totalDirectIngredientsCost = o.optDouble("totalDirectIngredientsCost", 0.0),
+                                totalIndirectCostAllocated = o.optDouble("totalIndirectCostAllocated", 0.0),
+                                totalBatchCost = o.optDouble("totalBatchCost", 0.0),
+                                realUnitCost = o.optDouble("realUnitCost", 0.0),
+                                tandaNumber = o.optString("tandaNumber", "01"),
+                                expectedYield = o.optDouble("expectedYield", 0.0),
+                                actualYield = o.optDouble("actualYield", 0.0),
+                                yieldPercentage = o.optDouble("yieldPercentage", 100.0),
+                                expectedRevenue = o.optDouble("expectedRevenue", 0.0),
+                                estimatedProfit = o.optDouble("estimatedProfit", 0.0),
+                                profitMargin = o.optDouble("profitMargin", 0.0),
+                                inventoryDeducted = o.optBoolean("inventoryDeducted", true),
+                                ownerPayType = o.optString("ownerPayType", "NINGUNO"),
+                                ownerPayValue = o.optDouble("ownerPayValue", 0.0),
+                                totalOwnerPay = o.optDouble("totalOwnerPay", 0.0),
+                                quantitySold = o.optDouble("quantitySold", 0.0),
+                                salePrice = o.optDouble("salePrice", 0.0),
+                                realRevenue = o.optDouble("realRevenue", 0.0),
+                                deviceId = o.optString("deviceId", "DISPOSITIVO-LOCAL"),
+                                specialPresentationName = o.optString("specialPresentationName", ""),
+                                specialPresentationQty = o.optDouble("specialPresentationQty", 0.0),
+                                specialPresentationEquivalence = o.optDouble("specialPresentationEquivalence", 1.0)
+                            )
+                        )
+                    }
+                }
+
                 // Insert Production Batches
-                root.optJSONArray("productionBatches")?.let { arr ->
+                (root.optJSONArray("productionBatches") ?: b3?.optJSONArray("productionBatches"))?.let { arr ->
                     for (i in 0 until arr.length()) {
                         val o = arr.getJSONObject(i)
                         db.productionBatchDao().insertBatch(
@@ -766,8 +1338,29 @@ object BusinessBackupManager {
                     }
                 }
 
+                // Insert Movimientos Materia Prima
+                (root.optJSONArray("movimientosMateriaPrima") ?: b1?.optJSONArray("movimientosMateriaPrima"))?.let { arr ->
+                    for (i in 0 until arr.length()) {
+                        val o = arr.getJSONObject(i)
+                        db.movimientoMateriaPrimaDao().insert(
+                            MovimientoMateriaPrima(
+                                id = o.optLong("id", 0L),
+                                materiaPrimaId = o.optLong("materiaPrimaId", 0L),
+                                materiaPrimaName = o.optString("materiaPrimaName", ""),
+                                type = o.optString("type", "ENTRADA"),
+                                quantity = o.optDouble("quantity", 0.0),
+                                unit = o.optString("unit", "g"),
+                                date = o.optLong("date", System.currentTimeMillis()),
+                                responsibleUser = o.optString("responsibleUser", ""),
+                                notes = o.optString("notes", ""),
+                                resultingStock = o.optDouble("resultingStock", 0.0)
+                            )
+                        )
+                    }
+                }
+
                 // Insert Mercaderias
-                root.optJSONArray("mercaderias")?.let { arr ->
+                (root.optJSONArray("mercaderias") ?: b2?.optJSONArray("mercaderias"))?.let { arr ->
                     for (i in 0 until arr.length()) {
                         val o = arr.getJSONObject(i)
                         db.mercaderiaDao().insert(
@@ -782,14 +1375,39 @@ object BusinessBackupManager {
                                 directExpensesDetails = o.optString("directExpensesDetails", "[]"),
                                 purchaseMode = o.optString("purchaseMode", "POR UNIDAD"),
                                 purchasePrice = o.optDouble("purchasePrice", 0.0),
-                                unitsPerLot = o.optDouble("unitsPerLot", 1.0)
+                                unitsPerLot = o.optDouble("unitsPerLot", 1.0),
+                                dailySalesAverage = o.optDouble("dailySalesAverage", 1.0)
+                            )
+                        )
+                    }
+                }
+
+                // Insert Movimientos Mercaderia
+                (root.optJSONArray("movimientosMercaderia") ?: b2?.optJSONArray("movimientosMercaderia"))?.let { arr ->
+                    for (i in 0 until arr.length()) {
+                        val o = arr.getJSONObject(i)
+                        db.mercaderiaDao().insertMovimiento(
+                            MovimientoMercaderia(
+                                id = o.optLong("id", 0L),
+                                mercaderiaId = o.optLong("mercaderiaId", 0L),
+                                type = o.optString("type", "ENTRADA"),
+                                quantity = o.optDouble("quantity", 0.0),
+                                date = o.optLong("date", System.currentTimeMillis()),
+                                responsibleAdmin = o.optString("responsibleAdmin", ""),
+                                notes = o.optString("notes", ""),
+                                quantitySold = o.optDouble("quantitySold", 0.0),
+                                salePrice = o.optDouble("salePrice", 0.0),
+                                acquisitionCost = o.optDouble("acquisitionCost", 0.0),
+                                realRevenue = o.optDouble("realRevenue", 0.0),
+                                jornadaId = o.optLong("jornadaId", 0L),
+                                deviceId = o.optString("deviceId", "DISPOSITIVO-LOCAL")
                             )
                         )
                     }
                 }
 
                 // Insert Stock Movements
-                root.optJSONArray("stockMovements")?.let { arr ->
+                (root.optJSONArray("stockMovements") ?: b2?.optJSONArray("stockMovements"))?.let { arr ->
                     for (i in 0 until arr.length()) {
                         val o = arr.getJSONObject(i)
                         db.stockMovementDao().insertMovement(
@@ -809,7 +1427,7 @@ object BusinessBackupManager {
                 }
 
                 // Insert Categories
-                root.optJSONArray("categories")?.let { arr ->
+                (root.optJSONArray("categories") ?: b2?.optJSONArray("categories"))?.let { arr ->
                     for (i in 0 until arr.length()) {
                         val o = arr.getJSONObject(i)
                         db.categoryDao().insertCategory(
@@ -824,7 +1442,7 @@ object BusinessBackupManager {
                 }
 
                 // Insert Personal Contratado
-                root.optJSONArray("personalContratado")?.let { arr ->
+                (root.optJSONArray("personalContratado") ?: b5?.optJSONArray("personalContratado"))?.let { arr ->
                     for (i in 0 until arr.length()) {
                         val o = arr.getJSONObject(i)
                         db.personalContratadoDao().insertPersonal(
@@ -853,7 +1471,7 @@ object BusinessBackupManager {
                 }
 
                 // Insert Users (Excluding SuperAdmin)
-                root.optJSONArray("users")?.let { arr ->
+                (root.optJSONArray("users") ?: b5?.optJSONArray("users"))?.let { arr ->
                     for (i in 0 until arr.length()) {
                         val o = arr.getJSONObject(i)
                         val roleStr = o.optString("role", "DUENO")
@@ -887,7 +1505,7 @@ object BusinessBackupManager {
                 }
 
                 // Insert Gastos Generales
-                root.optJSONArray("gastosGenerales")?.let { arr ->
+                (root.optJSONArray("gastosGenerales") ?: b5?.optJSONArray("gastosGenerales"))?.let { arr ->
                     for (i in 0 until arr.length()) {
                         val o = arr.getJSONObject(i)
                         db.gastoGeneralDao().insert(
@@ -913,7 +1531,7 @@ object BusinessBackupManager {
                 }
 
                 // Insert Inversiones
-                root.optJSONArray("inversiones")?.let { arr ->
+                (root.optJSONArray("inversiones") ?: b5?.optJSONArray("inversiones"))?.let { arr ->
                     for (i in 0 until arr.length()) {
                         val o = arr.getJSONObject(i)
                         db.inversionDao().insert(
@@ -934,14 +1552,16 @@ object BusinessBackupManager {
                                 currency = o.optString("currency", "CUP"),
                                 originalAmount = o.optDouble("originalAmount", o.getDouble("amount")),
                                 exchangeRate = o.optDouble("exchangeRate", 1.0),
-                                convertedAmount = o.optDouble("convertedAmount", o.getDouble("amount"))
+                                convertedAmount = o.optDouble("convertedAmount", o.getDouble("amount")),
+                                method = o.optString("method", "VIDA_UTIL"),
+                                dailyAmount = o.optDouble("dailyAmount", 0.0)
                             )
                         )
                     }
                 }
 
                 // Insert Jornadas
-                root.optJSONArray("jornadas")?.let { arr ->
+                (root.optJSONArray("jornadas") ?: b6?.optJSONArray("jornadas"))?.let { arr ->
                     for (i in 0 until arr.length()) {
                         val o = arr.getJSONObject(i)
                         db.jornadaDao().insertJornada(
@@ -960,14 +1580,33 @@ object BusinessBackupManager {
                                 openedBy = o.optString("openedBy", "admin"),
                                 closedBy = if (o.isNull("closedBy")) null else o.optString("closedBy"),
                                 utilidadSalonMontoUnitario = o.optDouble("utilidadSalonMontoUnitario", 0.0),
-                                deviceId = o.optString("deviceId", "DISPOSITIVO-LOCAL")
+                                deviceId = o.optString("deviceId", "DISPOSITIVO-LOCAL"),
+                                realSalesProduccion = o.optDouble("realSalesProduccion", 0.0),
+                                realCostProduccion = o.optDouble("realCostProduccion", 0.0),
+                                gastosProduccion = o.optDouble("gastosProduccion", 0.0),
+                                inversionesProduccion = o.optDouble("inversionesProduccion", 0.0),
+                                resultadoProduccion = o.optDouble("resultadoProduccion", 0.0),
+                                realSalesMercaderias = o.optDouble("realSalesMercaderias", 0.0),
+                                realCostMercaderias = o.optDouble("realCostMercaderias", 0.0),
+                                gastosMercaderias = o.optDouble("gastosMercaderias", 0.0),
+                                inversionesMercaderias = o.optDouble("inversionesMercaderias", 0.0),
+                                resultadoMercaderias = o.optDouble("resultadoMercaderias", 0.0),
+                                totalIngresos = o.optDouble("totalIngresos", 0.0),
+                                totalCostos = o.optDouble("totalCostos", 0.0),
+                                totalGastos = o.optDouble("totalGastos", 0.0),
+                                totalInversiones = o.optDouble("totalInversiones", 0.0),
+                                utilidadDelDia = o.optDouble("utilidadDelDia", 0.0),
+                                modulosUtilizados = o.optString("modulosUtilizados", "PRODUCCION,MERCADERIAS"),
+                                snapshotJson = o.optString("snapshotJson", ""),
+                                extracciones = o.optDouble("extracciones", 0.0),
+                                liquidezFinal = o.optDouble("liquidezFinal", 0.0)
                             )
                         )
                     }
                 }
 
                 // Insert Table Orders
-                root.optJSONArray("tableOrders")?.let { arr ->
+                (root.optJSONArray("tableOrders") ?: b6?.optJSONArray("tableOrders"))?.let { arr ->
                     for (i in 0 until arr.length()) {
                         val o = arr.getJSONObject(i)
                         db.tableOrderDao().insertOrder(
@@ -986,6 +1625,13 @@ object BusinessBackupManager {
                                 comandaNumber = o.optInt("comandaNumber", 0),
                                 cocinaNumber = o.optInt("cocinaNumber", 0),
                                 barraNumber = o.optInt("barraNumber", 0),
+                                totalCocina = o.optDouble("totalCocina", 0.0),
+                                totalBarra = o.optDouble("totalBarra", 0.0),
+                                cashReceived = o.optDouble("cashReceived", 0.0),
+                                changeGiven = o.optDouble("changeGiven", 0.0),
+                                confirmedAt = if (o.isNull("confirmedAt")) null else o.optLong("confirmedAt"),
+                                servedAt = if (o.isNull("servedAt")) null else o.optLong("servedAt"),
+                                serviceDurationSeconds = o.optLong("serviceDurationSeconds", 0L),
                                 currency = o.optString("currency", "CUP"),
                                 exchangeRate = o.optDouble("exchangeRate", 1.0),
                                 originalAmount = o.optDouble("originalAmount", o.optDouble("totalAmount", 0.0)),
@@ -996,7 +1642,7 @@ object BusinessBackupManager {
                 }
 
                 // Insert Order Items
-                root.optJSONArray("orderItems")?.let { arr ->
+                (root.optJSONArray("orderItems") ?: b6?.optJSONArray("orderItems"))?.let { arr ->
                     for (i in 0 until arr.length()) {
                         val o = arr.getJSONObject(i)
                         db.tableOrderDao().insertOrderItem(
@@ -1017,7 +1663,7 @@ object BusinessBackupManager {
                 }
 
                 // Insert Transferencias
-                root.optJSONArray("transferencias")?.let { arr ->
+                (root.optJSONArray("transferencias") ?: b6?.optJSONArray("transferencias"))?.let { arr ->
                     for (i in 0 until arr.length()) {
                         val o = arr.getJSONObject(i)
                         db.transferenciaDao().insertTransferencias(
@@ -1048,7 +1694,7 @@ object BusinessBackupManager {
                 }
 
                 // Insert Bitacora Entries
-                root.optJSONArray("bitacoraEntries")?.let { arr ->
+                (root.optJSONArray("bitacoraEntries") ?: b6?.optJSONArray("bitacoraEntries"))?.let { arr ->
                     for (i in 0 until arr.length()) {
                         val o = arr.getJSONObject(i)
                         db.bitacoraDao().insertEntry(
@@ -1066,7 +1712,7 @@ object BusinessBackupManager {
                 }
 
                 // Insert Consumo Personal
-                root.optJSONArray("consumoPersonalList")?.let { arr ->
+                (root.optJSONArray("consumoPersonalList") ?: b6?.optJSONArray("consumoPersonalList"))?.let { arr ->
                     for (i in 0 until arr.length()) {
                         val o = arr.getJSONObject(i)
                         db.consumoPersonalDao().insertConsumoPersonal(
@@ -1086,7 +1732,7 @@ object BusinessBackupManager {
                 }
 
                 // Insert Payment Proposals
-                root.optJSONArray("paymentProposals")?.let { arr ->
+                (root.optJSONArray("paymentProposals") ?: b5?.optJSONArray("paymentProposals"))?.let { arr ->
                     for (i in 0 until arr.length()) {
                         val o = arr.getJSONObject(i)
                         val roleStr = o.optString("role", "DUENO")
@@ -1109,50 +1755,68 @@ object BusinessBackupManager {
                     }
                 }
 
-                // Restore ConfiguracionNegocio without overriding commercial parameters
-                root.optJSONObject("configuracionNegocio")?.let { o ->
+                // Restore SmsComandaQueue
+                (root.optJSONArray("smsComandaQueue") ?: b6?.optJSONArray("smsComandaQueue"))?.let { arr ->
+                    for (i in 0 until arr.length()) {
+                        val o = arr.getJSONObject(i)
+                        db.smsComandaQueueDao().insertSmsComanda(
+                            SmsComandaQueue(
+                                id = o.optLong("id", 0L),
+                                senderPhone = o.optString("senderPhone", ""),
+                                smsText = o.optString("smsText", ""),
+                                receivedAt = o.optLong("receivedAt", System.currentTimeMillis()),
+                                estado = o.optString("estado", "PENDIENTE"),
+                                jornadaId = o.optLong("jornadaId", 0L),
+                                comandaNumber = o.optInt("comandaNumber", 0)
+                            )
+                        )
+                    }
+                }
+
+                // Restore ConfiguracionNegocio
+                (root.optJSONObject("configuracionNegocio") ?: b4?.optJSONObject("configuracionNegocio") ?: b5?.optJSONObject("configuracionNegocio"))?.let { o ->
                     val existing = db.configuracionNegocioDao().getConfigSync()
                     val newConfig = ConfiguracionNegocio(
                         id = 1,
                         nombreNegocio = o.optString("nombreNegocio", existing?.nombreNegocio ?: "El Qadre POS"),
-                        logoPath = existing?.logoPath,
+                        logoPath = if (o.isNull("logoPath")) existing?.logoPath else o.optString("logoPath", existing?.logoPath ?: ""),
                         direccion = o.optString("direccion", existing?.direccion ?: ""),
                         telefono = o.optString("telefono", existing?.telefono ?: ""),
-                        codigoNegocio = summary.codigoNegocio,
-                        fechaCreacion = existing?.fechaCreacion ?: System.currentTimeMillis(),
+                        codigoNegocio = o.optString("codigoNegocio", existing?.codigoNegocio ?: summary.codigoNegocio),
+                        fechaCreacion = o.optLong("fechaCreacion", existing?.fechaCreacion ?: System.currentTimeMillis()),
                         fechaActualizacion = System.currentTimeMillis()
                     )
                     db.configuracionNegocioDao().insertConfig(newConfig)
                 }
 
-                // Restore ConfiguracionGeneral without overriding licensing URLs
-                root.optJSONObject("configuracionGeneral")?.let { o ->
+                // Restore ConfiguracionGeneral
+                (root.optJSONObject("configuracionGeneral") ?: b4?.optJSONObject("configuracionGeneral"))?.let { o ->
                     val existing = db.configuracionGeneralDao().getConfigSync()
                     val newGen = ConfiguracionGeneral(
                         id = 1,
                         moneda = o.optString("moneda", existing?.moneda ?: "CUP"),
                         metodosPago = o.optString("metodosPago", existing?.metodosPago ?: "Efectivo"),
-                        parametrosJornada = existing?.parametrosJornada ?: "",
-                        denominacionesCaja = existing?.denominacionesCaja ?: "20000,10000,5000,2000,1000,500,200,100,50,20,10,5",
+                        parametrosJornada = o.optString("parametrosJornada", existing?.parametrosJornada ?: ""),
+                        denominacionesCaja = o.optString("denominacionesCaja", existing?.denominacionesCaja ?: "20000,10000,5000,2000,1000,500,200,100,50,20,10,5"),
                         tasaUsd = o.optDouble("tasaUsd", existing?.tasaUsd ?: 0.0),
                         tasaEur = o.optDouble("tasaEur", existing?.tasaEur ?: 0.0),
-                        urlUsuariosJson = existing?.urlUsuariosJson ?: "",
+                        urlUsuariosJson = existing?.urlUsuariosJson ?: o.optString("urlUsuariosJson", ""),
                         lastUserUpdateDate = existing?.lastUserUpdateDate ?: 0L,
                         lastUserUpdateStatus = existing?.lastUserUpdateStatus ?: "PENDIENTE",
                         lastUserUpdateVersion = existing?.lastUserUpdateVersion ?: "",
-                        urlCatalogoJson = existing?.urlCatalogoJson ?: "",
+                        urlCatalogoJson = existing?.urlCatalogoJson ?: o.optString("urlCatalogoJson", ""),
                         lastCatalogoUpdateDate = existing?.lastCatalogoUpdateDate ?: 0L,
                         lastCatalogoUpdateStatus = existing?.lastCatalogoUpdateStatus ?: "PENDIENTE",
                         lastCatalogoUpdateVersion = existing?.lastCatalogoUpdateVersion ?: "",
-                        urlMercainvJson = existing?.urlMercainvJson ?: "",
+                        urlMercainvJson = existing?.urlMercainvJson ?: o.optString("urlMercainvJson", ""),
                         lastMercainvUpdateDate = existing?.lastMercainvUpdateDate ?: 0L,
                         lastMercainvUpdateStatus = existing?.lastMercainvUpdateStatus ?: "PENDIENTE",
                         lastMercainvUpdateVersion = existing?.lastMercainvUpdateVersion ?: "",
                         telefonoDueno = o.optString("telefonoDueno", existing?.telefonoDueno ?: ""),
                         telefonoCajero = o.optString("telefonoCajero", existing?.telefonoCajero ?: ""),
                         telefonoAdmin = o.optString("telefonoAdmin", existing?.telefonoAdmin ?: ""),
-                        urlQDuenoJson = existing?.urlQDuenoJson ?: "",
-                        urlVersionJson = existing?.urlVersionJson ?: "",
+                        urlQDuenoJson = existing?.urlQDuenoJson ?: o.optString("urlQDuenoJson", ""),
+                        urlVersionJson = existing?.urlVersionJson ?: o.optString("urlVersionJson", ""),
                         lastQDuenoUpdateDate = existing?.lastQDuenoUpdateDate ?: 0L,
                         lastQDuenoUpdateStatus = existing?.lastQDuenoUpdateStatus ?: "PENDIENTE",
                         lastQDuenoUpdateVersion = existing?.lastQDuenoUpdateVersion ?: "",
@@ -1162,7 +1826,216 @@ object BusinessBackupManager {
                 }
             }
 
-            Result.success("Restauración completada con éxito. Se han reconstruido todos los datos operativos del Negocio ${summary.codigoNegocio}.")
+            // Restore Preferencias Locales y Parámetros
+            (root.optJSONObject("preferenciasLocales") ?: b4?.optJSONObject("preferenciasLocales"))?.let { pObj ->
+                // 1. Tarifas Pago Bebidas
+                pObj.optJSONObject("tarifasPagoBebidas")?.let { tObj ->
+                    val tarifas = TarifasPagoBebidas(
+                        pagoDependientePorUnidad = tObj.optDouble("pagoDependientePorUnidad", 0.0),
+                        pagoCajeroPorUnidad = tObj.optDouble("pagoCajeroPorUnidad", 0.0),
+                        pagoDependienteModalidad = tObj.optString("pagoDependienteModalidad", "FIJO"),
+                        pagoDependienteValor = tObj.optDouble("pagoDependienteValor", 0.0),
+                        pagoCajeroModalidad = tObj.optString("pagoCajeroModalidad", "FIJO"),
+                        pagoCajeroValor = tObj.optDouble("pagoCajeroValor", 0.0)
+                    )
+                    BebidasTarifasPreferences.saveTarifas(context, tarifas)
+                }
+
+                // 2. Modos Producción
+                pObj.optJSONArray("modosProduccion")?.let { arr ->
+                    for (i in 0 until arr.length()) {
+                        val mObj = arr.getJSONObject(i)
+                        val pId = mObj.optLong("productId", 0L)
+                        val modo = mObj.optString("modo", "POR_TANDAS")
+                        if (pId > 0) {
+                            ProduccionModoHelper.setModo(context, pId, modo)
+                        }
+                    }
+                }
+
+                // 3. Cuadre Pagos
+                pObj.optJSONArray("cuadrePagos")?.let { arr ->
+                    for (i in 0 until arr.length()) {
+                        val obj = arr.getJSONObject(i)
+                        val jId = obj.optLong("jornadaId", 0L)
+                        if (jId > 0) {
+                            val depsArray = obj.optJSONArray("dependientes") ?: JSONArray()
+                            val depsList = mutableListOf<DependientePagoDistribucion>()
+                            for (j in 0 until depsArray.length()) {
+                                val dObj = depsArray.getJSONObject(j)
+                                depsList.add(
+                                    DependientePagoDistribucion(
+                                        id = dObj.optInt("id", j + 1),
+                                        name = dObj.optString("name", "Dependiente ${j + 1}"),
+                                        username = dObj.optString("username", ""),
+                                        ventasProduccion = dObj.optDouble("ventasProduccion", 0.0),
+                                        ventasBebidas = dObj.optDouble("ventasBebidas", 0.0),
+                                        ventasTotales = dObj.optDouble("ventasTotales", 0.0),
+                                        montoPago = dObj.optDouble("montoPago", 0.0)
+                                    )
+                                )
+                            }
+                            val cpj = CuadrePagosJornada(
+                                jornadaId = jId,
+                                isConfirmed = obj.optBoolean("isConfirmed", false),
+                                confirmedAt = obj.optLong("confirmedAt", 0L),
+                                confirmedBy = obj.optString("confirmedBy", ""),
+                                totalPagos = obj.optDouble("totalPagos", 0.0),
+                                totalCocina = obj.optDouble("totalCocina", 0.0),
+                                totalCajero = obj.optDouble("totalCajero", 0.0),
+                                totalDependiente = obj.optDouble("totalDependiente", 0.0),
+                                cantidadDependientes = obj.optInt("cantidadDependientes", 1),
+                                dependientes = depsList,
+                                distributionMode = obj.optString("distributionMode", "CATEGORIA"),
+                                efectivoContado = obj.optDouble("efectivoContado", 0.0),
+                                dineroFinalEnCaja = obj.optDouble("dineroFinalEnCaja", 0.0),
+                                cantidadCocineros = obj.optInt("cantidadCocineros", 1),
+                                spaguettiPago = obj.optDouble("spaguettiPago", 0.0)
+                            )
+                            CuadrePagosManager.savePagosJornada(context, cpj)
+                        }
+                    }
+                }
+
+                // 4. Clasificación Transferencias
+                pObj.optJSONArray("clasificacionTransferencias")?.let { arr ->
+                    val clasifPrefs = context.getSharedPreferences("clasificacion_transferencias_prefs", Context.MODE_PRIVATE)
+                    val editor = clasifPrefs.edit()
+                    for (i in 0 until arr.length()) {
+                        val cObj = arr.getJSONObject(i)
+                        val jId = cObj.optLong("jornadaId", 0L)
+                        val clasif = cObj.optString("clasificacion", "")
+                        if (jId > 0 && clasif.isNotBlank()) {
+                            editor.putString("clasif_jornada_$jId", clasif)
+                        }
+                    }
+                    editor.apply()
+                }
+
+                // 5. Módulos Visibles Dueño
+                val modulosArray = pObj.optJSONArray("modulosVisiblesDueno") ?: pObj.optJSONArray("modosVisiblesDueno")
+                modulosArray?.let { arr ->
+                    val set = mutableSetOf<String>()
+                    for (i in 0 until arr.length()) {
+                        set.add(arr.getString(i))
+                    }
+                    if (set.isNotEmpty()) {
+                        DuenoSessionPreferences.setVisibleModules(context, null, set)
+                        DuenoSessionPreferences.setVisibleModules(context, "dueno", set)
+                    }
+                }
+
+                // 6. Límites de Transferencia para Salón por Producto
+                pObj.optJSONObject("limitesTransferenciaSalon")?.let { stObj ->
+                    val salonTransferPrefs = context.getSharedPreferences("SalonTransferPrefs", Context.MODE_PRIVATE)
+                    val editor = salonTransferPrefs.edit()
+                    editor.clear()
+                    val keys = stObj.keys()
+                    while (keys.hasNext()) {
+                        val k = keys.next()
+                        editor.putInt(k, stObj.optInt(k, 0))
+                    }
+                    editor.apply()
+                }
+
+                // 7. Borradores Activos de Cuadre de Caja (Legacy)
+                pObj.optJSONArray("cuadreDrafts")?.let { dArr ->
+                    val draftPrefs = context.getSharedPreferences("elqadre_cuadre_draft_prefs", Context.MODE_PRIVATE)
+                    val editor = draftPrefs.edit()
+                    for (i in 0 until dArr.length()) {
+                        val dObj = dArr.getJSONObject(i)
+                        val jId = dObj.optLong("jornadaId", 0L)
+                        if (jId > 0) {
+                            editor.putString("draft_jornada_$jId", dObj.toString())
+                        }
+                    }
+                    editor.apply()
+                }
+
+                // 8. Timestamps de Sincronización
+                pObj.optJSONObject("jsonSyncTimestamps")?.let { sObj ->
+                    val syncPrefs = context.getSharedPreferences("elqadre_json_sync", Context.MODE_PRIVATE)
+                    val editor = syncPrefs.edit()
+                    val keys = sObj.keys()
+                    while (keys.hasNext()) {
+                        val k = keys.next()
+                        editor.putLong(k, sObj.optLong(k, 0L))
+                    }
+                    editor.apply()
+                }
+            }
+
+            // Restore Bloque 7: Cuadre de Caja — Únicamente Mercaderías (Inicio y Entradas)
+            b7?.let { blk7 ->
+                val porJornada = blk7.optJSONArray("porJornada")
+                if (porJornada != null && porJornada.length() > 0) {
+                    for (i in 0 until porJornada.length()) {
+                        val jObj = porJornada.getJSONObject(i)
+                        val jId = jObj.optLong("jornadaId", 0L)
+                        val mercsArr = jObj.optJSONArray("mercaderias")
+                        if (jId > 0 && mercsArr != null) {
+                            val draft = CuadreDraftManager.getDraft(context, jId) ?: CuadreDraftData(jornadaId = jId)
+                            val updatedMercDrafts = draft.mercaderiaDrafts.toMutableList()
+                            for (mIdx in 0 until mercsArr.length()) {
+                                val mItem = mercsArr.getJSONObject(mIdx)
+                                val mercId = mItem.optLong("mercaderiaId", 0L)
+                                val inicio = mItem.optString("inicio", "0")
+                                val entradas = mItem.optString("entradas", "0")
+                                val existingIdx = updatedMercDrafts.indexOfFirst { it.mercaderiaId == mercId }
+                                if (existingIdx >= 0) {
+                                    val existing = updatedMercDrafts[existingIdx]
+                                    updatedMercDrafts[existingIdx] = existing.copy(
+                                        existenciaInicialStr = inicio,
+                                        entradasStr = entradas
+                                    )
+                                } else {
+                                    updatedMercDrafts.add(
+                                        MercaderiaDraftItem(
+                                            mercaderiaId = mercId,
+                                            existenciaInicialStr = inicio,
+                                            entradasStr = entradas
+                                        )
+                                    )
+                                }
+                            }
+                            CuadreDraftManager.saveDraft(context, draft.copy(mercaderiaDrafts = updatedMercDrafts))
+                        }
+                    }
+                } else {
+                    val mercsArr = blk7.optJSONArray("mercaderias")
+                    if (mercsArr != null && mercsArr.length() > 0) {
+                        val activeJornada = db.jornadaDao().getActiveJornadaSync()
+                        val targetJId = activeJornada?.id ?: 1L
+                        val draft = CuadreDraftManager.getDraft(context, targetJId) ?: CuadreDraftData(jornadaId = targetJId)
+                        val updatedMercDrafts = draft.mercaderiaDrafts.toMutableList()
+                        for (mIdx in 0 until mercsArr.length()) {
+                            val mItem = mercsArr.getJSONObject(mIdx)
+                            val mercId = mItem.optLong("mercaderiaId", 0L)
+                            val inicio = mItem.optString("inicio", "0")
+                            val entradas = mItem.optString("entradas", "0")
+                            val existingIdx = updatedMercDrafts.indexOfFirst { it.mercaderiaId == mercId }
+                            if (existingIdx >= 0) {
+                                val existing = updatedMercDrafts[existingIdx]
+                                updatedMercDrafts[existingIdx] = existing.copy(
+                                    existenciaInicialStr = inicio,
+                                    entradasStr = entradas
+                                )
+                            } else {
+                                updatedMercDrafts.add(
+                                    MercaderiaDraftItem(
+                                        mercaderiaId = mercId,
+                                        existenciaInicialStr = inicio,
+                                        entradasStr = entradas
+                                    )
+                                )
+                            }
+                        }
+                        CuadreDraftManager.saveDraft(context, draft.copy(mercaderiaDrafts = updatedMercDrafts))
+                    }
+                }
+            }
+
+            Result.success("Restauración completada con éxito. Se han reconstruido todos los datos operativos y de Ajustes del Negocio.")
         } catch (e: Exception) {
             e.printStackTrace()
             Result.failure(Exception("Error al restaurar los datos en base de datos: ${e.localizedMessage}"))

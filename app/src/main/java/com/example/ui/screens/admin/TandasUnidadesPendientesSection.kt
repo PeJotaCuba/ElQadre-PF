@@ -664,7 +664,7 @@ fun ConfirmConversionDialog(
                             color = Color(0xFF92400E)
                         )
                         Text(
-                            text = "• Numeración obligatoria 00.\n• Procede de unidades pendientes (no representa nueva producción).\n• NO descuenta insumos ni genera nuevo consumo de receta.\n• Insumo base calculado estrictamente informativo y analítico.\n• Conserva la referencia a la jornada de origen.",
+                            text = "• Numeración obligatoria 00.\n• Se crea y CIERRA AUTOMÁTICAMENTE con las unidades pendientes.\n• Procede de la jornada anterior (no representa nueva producción).\n• NO descuenta insumos ni genera nuevo consumo de inventario.\n• Queda disponible de inmediato como tanda cerrada para ventas y Cuadre de Caja.",
                             fontSize = 11.sp,
                             color = Color(0xFF78350F),
                             lineHeight = 15.sp
@@ -688,7 +688,7 @@ fun ConfirmConversionDialog(
                             color = Slate800
                         )
                         Text(
-                            text = "Unidades disponibles: $pendingUnitsStr $productionUnitStr",
+                            text = "Unidades a incorporar: $pendingUnitsStr $productionUnitStr",
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp,
                             color = Color(0xFFB45309)
@@ -706,14 +706,15 @@ fun ConfirmConversionDialog(
                             color = ElQadreNavy
                         )
                         Surface(
-                            color = Color(0xFFFEF3C7),
-                            shape = RoundedCornerShape(6.dp)
+                            color = Color(0xFFDCFCE7),
+                            shape = RoundedCornerShape(6.dp),
+                            border = BorderStroke(1.dp, Color(0xFF86EFAC))
                         ) {
                             Text(
-                                text = "Identificador asignado: TANDA 00",
+                                text = "Estado: SE CREA Y CIERRA AUTOMÁTICAMENTE",
                                 fontWeight = FontWeight.ExtraBold,
-                                fontSize = 13.sp,
-                                color = Color(0xFF92400E),
+                                fontSize = 12.sp,
+                                color = Color(0xFF15803D),
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                             )
                         }
@@ -768,7 +769,7 @@ fun ConfirmConversionDialog(
                         estimatedYield = pendingUnits,
                         productionUnit = productionUnitStr,
                         ingredientsConsumedText = "Insumo base equivalente: ${item.baseIngredientName}: $calculatedBaseIngFormatted ${item.baseQuantityUnit} (Solo informativo - Sin descuento de inventario)",
-                        status = "ABIERTA",
+                        status = "CERRADA",
                         jornada = "Jornada #${activeJornada.id}",
                         jornadaId = activeJornada.id,
                         observation = fullObs,
@@ -781,7 +782,7 @@ fun ConfirmConversionDialog(
                         realUnitCost = unitCost,
                         tandaNumber = "00",
                         expectedYield = pendingUnits,
-                        actualYield = 0.0,
+                        actualYield = pendingUnits,
                         yieldPercentage = 100.0,
                         expectedRevenue = pendingUnits * salePrice,
                         estimatedProfit = (pendingUnits * salePrice) - totalCost,
@@ -792,11 +793,14 @@ fun ConfirmConversionDialog(
                         totalOwnerPay = 0.0,
                         quantitySold = 0.0,
                         salePrice = salePrice,
-                        realRevenue = 0.0,
-                        deviceId = "DISPOSITIVO-LOCAL"
+                        realRevenue = pendingUnits * salePrice,
+                        deviceId = "DISPOSITIVO-LOCAL",
+                        specialPresentationName = if (isPresentation && presentation != null) presentation.name else "",
+                        specialPresentationQty = if (isPresentation && presentation != null) pendingUnits else 0.0,
+                        specialPresentationEquivalence = if (isPresentation && presentation != null) presentation.baseEquivalence else 1.0
                     )
 
-                    // Se convierte a Tanda 00 y se marcan las tandas previas como YA CONVERTIDAS en Room
+                    // Se convierte a Tanda 00 (cerrada automáticamente) y se marcan las tandas previas como YA CONVERTIDAS en Room
                     viewModel.convertirPendientesATanda00(newTanda, item.sourceTandas)
                     onDismiss()
                 },
@@ -804,7 +808,7 @@ fun ConfirmConversionDialog(
                 shape = RoundedCornerShape(10.dp),
                 modifier = Modifier.testTag("btn_confirmar_convertir_tanda_00")
             ) {
-                Text("CONVERTIR EN TANDA", fontWeight = FontWeight.Bold, color = Color.White)
+                Text("CREAR Y CERRAR TANDA 00", fontWeight = FontWeight.Bold, color = Color.White)
             }
         },
         dismissButton = {

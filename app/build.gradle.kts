@@ -1,9 +1,23 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
 }
+
+val versionPropsFile = rootProject.file("version.properties")
+val versionProps = Properties()
+if (versionPropsFile.exists()) {
+    FileInputStream(versionPropsFile).use { stream ->
+        versionProps.load(stream)
+    }
+}
+val appVersionCode = (versionProps.getProperty("VERSION_CODE") ?: "2").toInt()
+val appVersionName = versionProps.getProperty("VERSION_NAME") ?: "1.1.0"
+val currentStageRole = versionProps.getProperty("CURRENT_STAGE_ROLE") ?: "DUEÑO"
 
 android {
     namespace = "com.example"
@@ -13,8 +27,11 @@ android {
         applicationId = "com.aistudio.elqadre.vuno"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = appVersionCode
+        versionName = appVersionName
+
+        buildConfigField("String", "CURRENT_STAGE_ROLE", "\"$currentStageRole\"")
+        buildConfigField("String", "PROJECT_VERSION_NAME", "\"$appVersionName\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

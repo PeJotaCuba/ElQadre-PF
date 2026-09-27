@@ -3899,12 +3899,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     return@launch
                 }
 
-                // 1. Guardar la Tanda 00 en Room vinculada a la jornada abierta
+                // 1. Guardar la Tanda 00 en Room vinculada a la jornada abierta como CERRADA automáticamente
+                val finalActualYield = if (tanda00.actualYield > 0.0) tanda00.actualYield else if (tanda00.expectedYield > 0.0) tanda00.expectedYield else tanda00.estimatedYield
                 val tandaToInsert = tanda00.copy(
                     jornada = "Jornada #${activeJornada.id}",
                     jornadaId = activeJornada.id,
-                    status = "ABIERTA",
+                    status = "CERRADA",
                     tandaNumber = "00",
+                    actualYield = finalActualYield,
+                    expectedYield = if (tanda00.expectedYield > 0.0) tanda00.expectedYield else finalActualYield,
+                    estimatedYield = if (tanda00.estimatedYield > 0.0) tanda00.estimatedYield else finalActualYield,
+                    yieldPercentage = 100.0,
                     inventoryDeducted = true
                 )
                 val generatedId = repository.insertTanda(tandaToInsert)
@@ -3939,7 +3944,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val withTanda00 = currentTandas.filter { it.uuid != finalTanda00.uuid && it.id != finalTanda00.id } + finalTanda00
                     state.copy(
                         tandas = withTanda00,
-                        successMessage = "Tanda 00 creada exitosamente para las unidades pendientes.",
+                        successMessage = "Tanda 00 creada y cerrada automáticamente (${finalTanda00.actualYield.toInt()} ${finalTanda00.productionUnit}).",
                         errorMessage = null
                     )
                 }
@@ -3947,8 +3952,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 // 4. Bitácora
                 repository.insertBitacora(
                     BitacoraEntry(
-                        title = "Registro de Tanda 00 (Unidades Pendientes)",
-                        content = "Tanda 00 de ${finalTanda00.productName} registrada en Jornada #${activeJornada.id} procedente de la jornada anterior. Unidades: ${finalTanda00.estimatedYield.toInt()} ${finalTanda00.productionUnit}. Insumo base equivalente (solo informativo): ${finalTanda00.baseQuantityUsed} ${finalTanda00.baseQuantityUnit}. Sin consumo ni descuento de inventario.",
+                        title = "Registro y Cierre Automático de Tanda 00",
+                        content = "Tanda 00 de ${finalTanda00.productName} creada y cerrada automáticamente en Jornada #${activeJornada.id} procedente de unidades pendientes de la jornada anterior. Unidades disponibles: ${finalTanda00.actualYield.toInt()} ${finalTanda00.productionUnit}. Insumo base equivalente (informativo): ${finalTanda00.baseQuantityUsed} ${finalTanda00.baseQuantityUnit}. Sin consumo ni descuento de inventario.",
                         category = "PRODUCCIÓN",
                         authorUsername = finalTanda00.responsibleUser
                     )

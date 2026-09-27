@@ -15,7 +15,8 @@ import androidx.core.content.FileProvider
 import com.example.data.local.model.Jornada
 import com.example.data.local.model.Product
 import com.example.data.local.model.Tanda
-import com.example.data.local.model.parsePresentacionesEspeciales
+import com.example.ui.screens.admin.ConsolidatedIngredientItem
+import com.example.ui.screens.admin.calculateConsolidatedIngredients
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
@@ -24,19 +25,24 @@ import java.util.Locale
 
 data class TandaPdfItem(
     val tandaNumber: String,
+    val isTanda00: Boolean,
+    val dateStr: String,
+    val baseMateriaPrimaName: String,
     val baseQuantityFormatted: String,
     val finalQuantityFormatted: String,
+    val specialPresentationDetail: String,
     val rendimientoFormatted: String,
     val costFormatted: String,
+    val unitCostFormatted: String,
     val potentialRevenueFormatted: String,
     val rawCost: Double,
     val rawPotentialRevenue: Double,
     val rawBaseQty: Double,
     val rawFinalQty: Double,
+    val rawYieldUnits: Double,
     val rawUnit: String,
     val rawBaseUnit: String,
-    val observation: String = "",
-    val rawYieldUnits: Double = 0.0
+    val observation: String = ""
 )
 
 data class ProductTandasPdfGroup(
@@ -45,6 +51,17 @@ data class ProductTandasPdfGroup(
     val tandas: List<TandaPdfItem>
 )
 
+/**
+ * Generador de PDF oficial para INFORME DE JORNADA DE TANDAS
+ * Exporta fielmente:
+ * - DATOS HISTÓRICOS REGISTRADOS: No recalcula con recetas o precios posteriores.
+ * - IDENTIFICACIÓN DE JORNADA: Número, fechas, responsables, totales.
+ * - DETALLE DE TANDAS: Números, insumos, cantidades, presentaciones especiales, unidades equivalentes, rendimiento, costos e ingresos.
+ * - CONSUMO CONSOLIDADO DE INGREDIENTES de la jornada (Harina en lb, sin duplicados).
+ * - UNIDADES PENDIENTES AL CIERRE.
+ * - TOTALES Y GRÁFICOS ANALÍTICOS (Pastel de producción y Rendimiento por tanda).
+ * - Manejo robusto de múltiples páginas sin cortes.
+ */
 object TandasJornadaPdfExporter {
 
     private val CHART_PALETTE = intArrayOf(
@@ -87,8 +104,9 @@ object TandasJornadaPdfExporter {
 
             val dateFormatter = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
             val dateOnlyFormatter = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+            val hourOnlyFormatter = SimpleDateFormat("HH:mm", Locale.getDefault())
 
-            // Agrupar tandas por producto ordenadamente
+            // Agrupar tandas por producto conservando datos históricos
             val productMap = products.associateBy { it.id }
             val groups = tandas.groupBy { it.productId }.map { (prodId, prodTandas) ->
                 val prod = productMap[prodId]
@@ -100,51 +118,73 @@ object TandasJornadaPdfExporter {
                         .thenBy { it.tandaNumber }
                         .thenBy { it.date }
                 ).map { tanda ->
+                    val isTanda00 = tanda.tandaNumber == "00"
                     val baseUnit = tanda.baseQuantityUnit.ifBlank { "lb" }
                     val bQtyFormatted = if (tanda.baseQuantityUsed % 1.0 == 0.0) {
                         tanda.baseQuantityUsed.toInt().toString()
                     } else {
-                        "%.2f".format(tanda.baseQuantityUsed)
+                        "%.2f".format(tanda.baseQuantityUsed).trimEnd('0').trimEnd('.')
                     }
 
                     val finalQty = if (tanda.actualYield > 0.0) tanda.actualYield else if (tanda.expectedYield > 0.0) tanda.expectedYield else tanda.estimatedYield
                     val fQtyFormatted = if (finalQty % 1.0 == 0.0) finalQty.toInt().toString() else "%.1f".format(finalQty)
 
-                    val presEquiv = if (tanda.specialPresentationEquivalence > 0.0) tanda.specialPresentationEquivalence else {
-                        prod?.let { p ->
-                            parsePresentacionesEspeciales(p.presentacionesEspeciales).find { it.name.equals(tanda.specialPresentationName, true) }?.baseEquivalence
-                        } ?: 1.0
-                    }
+                    // Preservar equivalencia histórica almacenada en la tanda
+                    val presEquiv = if (tanda.specialPresentationEquivalence > 0.0) tanda.specialPresentationEquivalence else 1.0
                     val specialUnitsEq = if (tanda.specialPresentationQty > 0.0) tanda.specialPresentationQty * presEquiv else 0.0
                     val totalYieldUnits = finalQty + specialUnitsEq
 
+                    val specialPresDetail = if (tanda.specialPresentationQty > 0.0) {
+                        val sQtyStr = if (tanda.specialPresentationQty % 1.0 == 0.0) tanda.specialPresentationQty.toInt().toString() else "%.1f".format(tanda.specialPresentationQty)
+                        val sEqStr = if (specialUnitsEq % 1.0 == 0.0) specialUnitsEq.toInt().toString() else "%.1f".format(specialUnitsEq)
+                        "+ $sQtyStr ${tanda.specialPresentationName.ifBlank { "Esp." }} ($sEqStr eq.)"
+                    } else ""
+
                     val rendVal = if (tanda.baseQuantityUsed > 0.0) totalYieldUnits / tanda.baseQuantityUsed else 0.0
                     val rendFormatted = if (rendVal % 1.0 == 0.0) rendVal.toInt().toString() else "%.2f".format(rendVal)
-                    val rendFullText = if (specialUnitsEq > 0.0) {
+                    val rendFullText = if (isTanda00) {
+                        "Tanda 00 (Pendiente)"
+                    } else if (specialUnitsEq > 0.0) {
                         val totEqFormatted = if (totalYieldUnits % 1.0 == 0.0) totalYieldUnits.toInt().toString() else "%.1f".format(totalYieldUnits)
                         "$totEqFormatted eq. ÷ $bQtyFormatted $baseUnit = $rendFormatted"
                     } else {
                         "$fQtyFormatted $pUnit ÷ $bQtyFormatted $baseUnit = $rendFormatted"
                     }
 
-                    val salePrice = resolveSalePrice(prod, tanda)
-                    val potRev = finalQty * salePrice
+                    // Precios e ingresos históricos registrados
+                    val effectiveSalePrice = if (tanda.salePrice > 0.0) {
+                        tanda.salePrice
+                    } else {
+                        prod?.price ?: resolveSalePrice(prod, tanda)
+                    }
+                    val potRev = if (tanda.expectedRevenue > 0.0 && tanda.actualYield == (if (tanda.expectedYield > 0.0) tanda.expectedYield else tanda.estimatedYield)) {
+                        tanda.expectedRevenue
+                    } else {
+                        finalQty * effectiveSalePrice
+                    }
+
+                    val dateStr = if (tanda.date > 0) hourOnlyFormatter.format(Date(tanda.date)) else ""
 
                     TandaPdfItem(
                         tandaNumber = tanda.tandaNumber,
-                        baseQuantityFormatted = "$bQtyFormatted $baseUnit",
+                        isTanda00 = isTanda00,
+                        dateStr = dateStr,
+                        baseMateriaPrimaName = tanda.baseMateriaPrimaName.ifBlank { "Harina" },
+                        baseQuantityFormatted = if (isTanda00) "0 $baseUnit (Pend.)" else "$bQtyFormatted $baseUnit",
                         finalQuantityFormatted = "$fQtyFormatted $pUnit",
+                        specialPresentationDetail = specialPresDetail,
                         rendimientoFormatted = rendFullText,
                         costFormatted = "$${"%.2f".format(tanda.totalBatchCost)}",
+                        unitCostFormatted = if (tanda.realUnitCost > 0.0) "$${"%.2f".format(tanda.realUnitCost)}/u" else "",
                         potentialRevenueFormatted = "$${"%.2f".format(potRev)}",
                         rawCost = tanda.totalBatchCost,
                         rawPotentialRevenue = potRev,
                         rawBaseQty = tanda.baseQuantityUsed,
                         rawFinalQty = finalQty,
+                        rawYieldUnits = totalYieldUnits,
                         rawUnit = pUnit,
                         rawBaseUnit = baseUnit,
-                        observation = tanda.observation,
-                        rawYieldUnits = totalYieldUnits
+                        observation = tanda.observation
                     )
                 }
 
@@ -158,52 +198,66 @@ object TandasJornadaPdfExporter {
             val totalTandasCount = groups.sumOf { it.tandas.size }
             val totalCostAll = groups.sumOf { g -> g.tandas.sumOf { it.rawCost } }
             val totalRevAll = groups.sumOf { g -> g.tandas.sumOf { it.rawPotentialRevenue } }
+            val consolidatedJornadaIngredients = calculateConsolidatedIngredients(tandas)
 
             fun drawHeader(titleSuffix: String = "INFORME OFICIAL DE TANDAS POR JORNADA") {
-                paint.color = Color.WHITE
-                canvas.drawRect(0f, 0f, pageWidth.toFloat(), pageHeight.toFloat(), paint)
-
                 // Header Banner Navy
-                paint.color = Color.parseColor("#1E293B")
-                canvas.drawRect(30f, 25f, (pageWidth - 30).toFloat(), 88f, paint)
+                paint.color = Color.parseColor("#0F172A")
+                canvas.drawRect(0f, 0f, pageWidth.toFloat(), 56f, paint)
 
                 // Business Name & Title
-                paint.color = Color.WHITE
-                paint.textSize = 14f
+                paint.color = Color.parseColor("#F59E0B")
+                paint.textSize = 15f
                 paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                canvas.drawText(businessName.ifBlank { "EL QADRE" }.uppercase(), 45f, 50f, paint)
+                canvas.drawText(businessName.ifBlank { "EL QADRE" }.uppercase(), 30f, 26f, paint)
 
+                paint.color = Color.WHITE
                 paint.textSize = 10f
                 paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-                canvas.drawText(titleSuffix, 45f, 70f, paint)
+                canvas.drawText(titleSuffix, 30f, 44f, paint)
 
                 // Right side
-                paint.textAlign = Paint.Align.RIGHT
-                paint.textSize = 9f
+                paint.color = Color.parseColor("#94A3B8")
+                paint.textSize = 8.5f
                 val fechaJornadaStr = if (jornada.openedAt > 0) dateOnlyFormatter.format(Date(jornada.openedAt)) else dateOnlyFormatter.format(Date())
-                canvas.drawText("Jornada: #${jornada.id} | Fecha: $fechaJornadaStr", (pageWidth - 45).toFloat(), 50f, paint)
-                canvas.drawText("Página $pageNumber", (pageWidth - 45).toFloat(), 70f, paint)
-                paint.textAlign = Paint.Align.LEFT
+                canvas.drawText("Jornada: #${jornada.id} ($fechaJornadaStr)", (pageWidth - 210).toFloat(), 26f, paint)
+                canvas.drawText("Página $pageNumber", (pageWidth - 210).toFloat(), 44f, paint)
+
+                // Franja decorativa dorada
+                paint.color = Color.parseColor("#F59E0B")
+                canvas.drawRect(0f, 56f, pageWidth.toFloat(), 59f, paint)
+            }
+
+            fun drawFooter(curPage: Int) {
+                paint.color = Color.parseColor("#64748B")
+                paint.textSize = 7.5f
+                paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+                canvas.drawText("El Qadre • Informe Histórico de Producción y Tandas", 30f, pageHeight - 20f, paint)
+                val pageStr = "Página $curPage"
+                val pWidth = paint.measureText(pageStr)
+                canvas.drawText(pageStr, pageWidth - 30f - pWidth, pageHeight - 20f, paint)
+                canvas.drawLine(30f, pageHeight - 28f, pageWidth - 30f, pageHeight - 28f, linePaint)
             }
 
             fun checkNewPage(neededHeight: Float, curY: Float): Float {
                 if (curY + neededHeight > pageHeight - 45f) {
+                    drawFooter(pageNumber)
                     pdfDocument.finishPage(page)
                     pageNumber++
                     pageInfo = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create()
                     page = pdfDocument.startPage(pageInfo)
                     canvas = page.canvas
                     drawHeader()
-                    return 105f
+                    return 78f
                 }
                 return curY
             }
 
             // ==========================================
-            // PÁGINA 1: TABLAS Y DATOS
+            // PÁGINA 1: IDENTIFICACIÓN Y TABLAS DE TANDAS
             // ==========================================
             drawHeader()
-            var y = 105f
+            var y = 74f
 
             // 1. IDENTIFICACIÓN DE LA JORNADA
             paint.color = Color.parseColor("#F8FAFC")
@@ -222,7 +276,7 @@ object TandasJornadaPdfExporter {
             canvas.drawText("JORNADA #${jornada.id}  •  Apertura: $apStr  •  Cierre: $ciStr", 42f, y + 18f, paint)
 
             paint.color = Color.parseColor("#475569")
-            paint.textSize = 9f
+            paint.textSize = 8.5f
             paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
             val respOpen = jornada.openedBy.ifBlank { "admin" }
             val respClose = jornada.closedBy?.ifBlank { null } ?: "Pendiente"
@@ -232,14 +286,14 @@ object TandasJornadaPdfExporter {
             paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             canvas.drawText("Total Productos: ${groups.size}   |   Total Tandas: $totalTandasCount   |   Costo Total: $${"%.2f".format(totalCostAll)} CUP   |   Ing. Potenciales: $${"%.2f".format(totalRevAll)} CUP", 42f, y + 54f, paint)
 
-            y += 82f
+            y += 80f
 
             // 2. PRODUCTOS Y SUS TANDAS
             if (groups.isEmpty()) {
                 paint.color = Color.parseColor("#64748B")
-                paint.textSize = 11f
+                paint.textSize = 10.5f
                 canvas.drawText("No se registraron tandas de producción durante esta jornada.", 42f, y + 20f, paint)
-                y += 40f
+                y += 36f
             } else {
                 for (group in groups) {
                     y = checkNewPage(85f, y)
@@ -258,13 +312,13 @@ object TandasJornadaPdfExporter {
                     canvas.drawRect(30f, y, (pageWidth - 30).toFloat(), y + 18f, paint)
 
                     paint.color = Color.parseColor("#1E293B")
-                    paint.textSize = 8.5f
+                    paint.textSize = 8f
                     paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
 
                     canvas.drawText("TANDA", 38f, y + 12f, paint)
                     canvas.drawText("INSUMO BASE", 95f, y + 12f, paint)
-                    canvas.drawText("CANT. FINAL", 175f, y + 12f, paint)
-                    canvas.drawText("RENDIMIENTO (FÓRMULA)", 255f, y + 12f, paint)
+                    canvas.drawText("PRODUCCIÓN", 175f, y + 12f, paint)
+                    canvas.drawText("RENDIMIENTO (FÓRMULA)", 265f, y + 12f, paint)
                     paint.textAlign = Paint.Align.RIGHT
                     canvas.drawText("COSTO", 475f, y + 12f, paint)
                     canvas.drawText("ING. POTENCIAL", (pageWidth - 38).toFloat(), y + 12f, paint)
@@ -274,50 +328,60 @@ object TandasJornadaPdfExporter {
 
                     // Filas de cada tanda
                     var isEven = false
-                    for (tanda in group.tandas) {
-                        y = checkNewPage(20f, y)
+                    for (tItem in group.tandas) {
+                        val rowHeight = if (tItem.specialPresentationDetail.isNotBlank() || tItem.observation.isNotBlank()) 28f else 18f
+                        y = checkNewPage(rowHeight, y)
 
                         if (isEven) {
                             paint.color = Color.parseColor("#F8FAFC")
-                            canvas.drawRect(30f, y, (pageWidth - 30).toFloat(), y + 18f, paint)
+                            canvas.drawRect(30f, y, (pageWidth - 30).toFloat(), y + rowHeight, paint)
                         }
                         isEven = !isEven
 
-                        paint.color = Color.parseColor("#0F172A")
+                        paint.color = if (tItem.isTanda00) Color.parseColor("#92400E") else Color.parseColor("#0F172A")
                         paint.textSize = 8.5f
                         paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                        val tNumLabel = if (tanda.tandaNumber == "00") "Tanda 00 (Pend.)" else "Tanda ${tanda.tandaNumber}"
+                        val tNumLabel = if (tItem.isTanda00) "Tanda 00" else "Tanda ${tItem.tandaNumber}"
                         canvas.drawText(tNumLabel, 38f, y + 12f, paint)
 
                         paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
                         paint.color = Color.parseColor("#334155")
-                        canvas.drawText(tanda.baseQuantityFormatted, 95f, y + 12f, paint)
+                        canvas.drawText(tItem.baseQuantityFormatted, 95f, y + 12f, paint)
 
                         paint.color = Color.parseColor("#0284C7")
                         paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                        canvas.drawText(tanda.finalQuantityFormatted, 175f, y + 12f, paint)
+                        canvas.drawText(tItem.finalQuantityFormatted, 175f, y + 12f, paint)
+
+                        if (tItem.specialPresentationDetail.isNotBlank()) {
+                            paint.color = Color.parseColor("#15803D")
+                            paint.textSize = 7f
+                            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+                            canvas.drawText(tItem.specialPresentationDetail, 175f, y + 22f, paint)
+                        }
 
                         paint.color = Color.parseColor("#0F766E")
+                        paint.textSize = 8f
                         paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                        canvas.drawText(tanda.rendimientoFormatted, 255f, y + 12f, paint)
+                        canvas.drawText(tItem.rendimientoFormatted, 265f, y + 12f, paint)
 
                         paint.textAlign = Paint.Align.RIGHT
                         paint.color = Color.parseColor("#BE123C")
                         paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                        canvas.drawText(tanda.costFormatted, 475f, y + 12f, paint)
+                        canvas.drawText(tItem.costFormatted, 475f, y + 12f, paint)
 
                         paint.color = Color.parseColor("#047857")
-                        canvas.drawText(tanda.potentialRevenueFormatted, (pageWidth - 38).toFloat(), y + 12f, paint)
+                        canvas.drawText(tItem.potentialRevenueFormatted, (pageWidth - 38).toFloat(), y + 12f, paint)
                         paint.textAlign = Paint.Align.LEFT
 
                         // Línea divisoria fina
-                        canvas.drawLine(30f, y + 18f, (pageWidth - 30).toFloat(), y + 18f, linePaint)
-                        y += 18f
+                        canvas.drawLine(30f, y + rowHeight, (pageWidth - 30).toFloat(), y + rowHeight, linePaint)
+                        y += rowHeight
                     }
 
                     // Subtotal del producto
                     val prodCost = group.tandas.sumOf { it.rawCost }
                     val prodRev = group.tandas.sumOf { it.rawPotentialRevenue }
+                    val prodUnitsTot = group.tandas.sumOf { it.rawFinalQty }
                     y = checkNewPage(22f, y)
 
                     paint.color = Color.parseColor("#F1F5F9")
@@ -326,7 +390,8 @@ object TandasJornadaPdfExporter {
                     paint.color = Color.parseColor("#1E293B")
                     paint.textSize = 8.5f
                     paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                    canvas.drawText("Subtotal ${group.productName}:", 38f, y + 12f, paint)
+                    val prodTotStr = if (prodUnitsTot % 1.0 == 0.0) prodUnitsTot.toInt().toString() else "%.1f".format(prodUnitsTot)
+                    canvas.drawText("Subtotal ${group.productName} ($prodTotStr ${group.productionUnit}):", 38f, y + 12f, paint)
 
                     paint.textAlign = Paint.Align.RIGHT
                     paint.color = Color.parseColor("#BE123C")
@@ -336,11 +401,59 @@ object TandasJornadaPdfExporter {
                     canvas.drawText("$${"%.2f".format(prodRev)} CUP", (pageWidth - 38).toFloat(), y + 12f, paint)
                     paint.textAlign = Paint.Align.LEFT
 
-                    y += 28f
+                    y += 26f
                 }
             }
 
-            // 3. UNIDADES PENDIENTES AL CIERRE
+            // 3. CONSUMO CONSOLIDADO DE INGREDIENTES EN LA JORNADA
+            if (consolidatedJornadaIngredients.isNotEmpty()) {
+                y = checkNewPage(80f, y)
+
+                paint.color = Color.parseColor("#0F172A")
+                canvas.drawRect(30f, y, (pageWidth - 30).toFloat(), y + 20f, paint)
+                paint.color = Color.WHITE
+                paint.textSize = 9f
+                paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                canvas.drawText("CONSUMO CONSOLIDADO DE INGREDIENTES EN LA JORNADA", 38f, y + 14f, paint)
+                y += 20f
+
+                paint.color = Color.parseColor("#E2E8F0")
+                canvas.drawRect(30f, y, (pageWidth - 30).toFloat(), y + 16f, paint)
+                paint.color = Color.parseColor("#1E293B")
+                paint.textSize = 8f
+                paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                canvas.drawText("N°", 38f, y + 11f, paint)
+                canvas.drawText("INGREDIENTE", 75f, y + 11f, paint)
+                canvas.drawText("CANTIDAD TOTAL CONSUMIDA", 250f, y + 11f, paint)
+                canvas.drawText("UNIDAD", 440f, y + 11f, paint)
+                y += 16f
+
+                consolidatedJornadaIngredients.forEachIndexed { idx, ing ->
+                    y = checkNewPage(18f, y)
+                    val isEven = idx % 2 == 0
+                    paint.color = if (isEven) Color.parseColor("#FFFFFF") else Color.parseColor("#F8FAFC")
+                    canvas.drawRect(30f, y, (pageWidth - 30).toFloat(), y + 16f, paint)
+
+                    paint.color = Color.parseColor("#0F172A")
+                    paint.textSize = 8f
+                    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                    canvas.drawText("${idx + 1}", 38f, y + 11f, paint)
+                    canvas.drawText(ing.name, 75f, y + 11f, paint)
+
+                    val qtyFormatted = if (ing.totalQuantity % 1.0 == 0.0) ing.totalQuantity.toInt().toString() else "%.2f".format(ing.totalQuantity).trimEnd('0').trimEnd('.')
+                    canvas.drawText(qtyFormatted, 250f, y + 11f, paint)
+
+                    paint.color = Color.parseColor("#475569")
+                    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+                    canvas.drawText(ing.unit.ifBlank { "u" }, 440f, y + 11f, paint)
+
+                    canvas.drawLine(30f, y + 16f, (pageWidth - 30).toFloat(), y + 16f, linePaint)
+                    y += 16f
+                }
+                y += 10f
+            }
+
+            // 4. UNIDADES PENDIENTES AL CIERRE
             y = checkNewPage(60f, y)
 
             paint.color = Color.parseColor("#334155")
@@ -373,7 +486,7 @@ object TandasJornadaPdfExporter {
                 paint.color = Color.parseColor("#64748B")
                 paint.textSize = 9f
                 paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                canvas.drawText("Sin unidades pendientes.", 38f, y + 14f, paint)
+                canvas.drawText("Sin unidades pendientes registradas.", 38f, y + 14f, paint)
                 y += 26f
             } else {
                 for ((prodName, pStr) in pendingProducts) {
@@ -396,7 +509,7 @@ object TandasJornadaPdfExporter {
                 y += 8f
             }
 
-            // 4. RESUMEN FINAL CONSOLIDADO
+            // 5. RESUMEN FINAL CONSOLIDADO
             y = checkNewPage(65f, y)
             paint.color = Color.parseColor("#1E293B")
             canvas.drawRoundRect(30f, y, (pageWidth - 30).toFloat(), y + 54f, 6f, 6f, paint)
@@ -411,10 +524,11 @@ object TandasJornadaPdfExporter {
             canvas.drawText("Total Tandas: $totalTandasCount   |   Costo Total: $${"%.2f".format(totalCostAll)} CUP   |   Ingresos Potenciales: $${"%.2f".format(totalRevAll)} CUP", 42f, y + 36f, paint)
 
             // Terminar página(s) de tablas
+            drawFooter(pageNumber)
             pdfDocument.finishPage(page)
 
             // ==========================================
-            // PÁGINA 2: GRÁFICOS REALES DE TANDAS
+            // PÁGINA 2: GRÁFICOS ANALÍTICOS DE TANDAS
             // ==========================================
             pageNumber++
             pageInfo = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create()
@@ -423,7 +537,7 @@ object TandasJornadaPdfExporter {
 
             drawHeader("GRÁFICOS ANALÍTICOS DE PRODUCCIÓN")
 
-            var chartY = 105f
+            var chartY = 74f
             val allTandasFlattened = groups.flatMap { it.tandas }
             val totalProductionUnits = allTandasFlattened.sumOf { it.rawFinalQty }
 
@@ -434,10 +548,10 @@ object TandasJornadaPdfExporter {
                 canvas.drawText("No hay datos de producción registrados para generar gráficos en esta jornada.", 42f, chartY + 30f, paint)
             } else {
                 // 1. GRÁFICO DE PASTEL: PARTICIPACIÓN DE PRODUCCIÓN
-                val pieCardHeight = 220f
+                val pieCardHeight = 240f
                 paint.color = Color.parseColor("#F8FAFC")
                 canvas.drawRoundRect(30f, chartY, (pageWidth - 30).toFloat(), chartY + pieCardHeight, 8f, 8f, paint)
-                paint.color = Color.parseColor("#E2E8F0")
+                paint.color = Color.parseColor("#CBD5E1")
                 paint.style = Paint.Style.STROKE
                 paint.strokeWidth = 1f
                 canvas.drawRoundRect(30f, chartY, (pageWidth - 30).toFloat(), chartY + pieCardHeight, 8f, 8f, paint)
@@ -445,14 +559,14 @@ object TandasJornadaPdfExporter {
 
                 // Título del gráfico de pastel
                 paint.color = Color.parseColor("#0F172A")
-                paint.textSize = 11f
+                paint.textSize = 10.5f
                 paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                canvas.drawText("1. PARTICIPACIÓN DE PRODUCCIÓN (VOLUMEN FINAL)", 44f, chartY + 22f, paint)
+                canvas.drawText("1. PARTICIPACIÓN DE PRODUCCIÓN (VOLUMEN FINAL)", 44f, chartY + 20f, paint)
 
                 // Renderizado del pastel
-                val pieCenterX = 115f
-                val pieCenterY = chartY + 118f
-                val pieRadius = 60f
+                val pieCenterX = 120f
+                val pieCenterY = chartY + 130f
+                val pieRadius = 65f
                 val pieOval = RectF(pieCenterX - pieRadius, pieCenterY - pieRadius, pieCenterX + pieRadius, pieCenterY + pieRadius)
 
                 var startAngle = -90f
@@ -470,7 +584,7 @@ object TandasJornadaPdfExporter {
 
                 // Donut hole interior
                 paint.color = Color.WHITE
-                canvas.drawCircle(pieCenterX, pieCenterY, 26f, paint)
+                canvas.drawCircle(pieCenterX, pieCenterY, 30f, paint)
 
                 paint.color = Color.parseColor("#0F172A")
                 paint.textSize = 8.5f
@@ -483,12 +597,12 @@ object TandasJornadaPdfExporter {
 
                 // Leyenda del pastel
                 var legendY = chartY + 44f
-                val legendX = 205f
+                val legendX = 210f
                 allTandasFlattened.take(8).forEachIndexed { index, tItem ->
                     val colorInt = CHART_PALETTE[index % CHART_PALETTE.size]
                     val pct = (tItem.rawFinalQty / totalProductionUnits) * 100.0
                     val pctFormatted = "%.1f".format(pct)
-                    val tLabel = if (tItem.tandaNumber == "00") "Tanda 00" else "Tanda ${tItem.tandaNumber}"
+                    val tLabel = if (tItem.isTanda00) "Tanda 00" else "Tanda ${tItem.tandaNumber}"
 
                     // Box de color
                     slicePaint.color = colorInt
@@ -496,31 +610,31 @@ object TandasJornadaPdfExporter {
 
                     // Texto de la leyenda
                     paint.color = Color.parseColor("#1E293B")
-                    paint.textSize = 8.5f
+                    paint.textSize = 8f
                     paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                    canvas.drawText("$tLabel:", legendX + 16f, legendY + 9f, paint)
+                    canvas.drawText("$tLabel:", legendX + 16f, legendY + 8f, paint)
 
                     paint.color = Color.parseColor("#475569")
                     paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-                    canvas.drawText("${tItem.finalQuantityFormatted} ($pctFormatted%)", legendX + 70f, legendY + 9f, paint)
+                    canvas.drawText("${tItem.finalQuantityFormatted} ($pctFormatted%)", legendX + 70f, legendY + 8f, paint)
 
                     legendY += 18f
                 }
 
                 if (allTandasFlattened.size > 8) {
                     paint.color = Color.parseColor("#64748B")
-                    paint.textSize = 8f
+                    paint.textSize = 7.5f
                     paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.ITALIC)
                     canvas.drawText("+ ${allTandasFlattened.size - 8} tandas adicionales resumidas en total.", legendX + 16f, legendY + 8f, paint)
                 }
 
-                chartY += pieCardHeight + 20f
+                chartY += pieCardHeight + 16f
 
                 // 2. GRÁFICO DE BARRAS: EFICIENCIA Y RENDIMIENTO POR TANDA
-                val barCardHeight = (allTandasFlattened.take(8).size * 28f + 55f).coerceAtLeast(180f)
+                val barCardHeight = (allTandasFlattened.take(8).size * 26f + 50f).coerceAtLeast(160f)
                 paint.color = Color.parseColor("#F8FAFC")
                 canvas.drawRoundRect(30f, chartY, (pageWidth - 30).toFloat(), chartY + barCardHeight, 8f, 8f, paint)
-                paint.color = Color.parseColor("#E2E8F0")
+                paint.color = Color.parseColor("#CBD5E1")
                 paint.style = Paint.Style.STROKE
                 paint.strokeWidth = 1f
                 canvas.drawRoundRect(30f, chartY, (pageWidth - 30).toFloat(), chartY + barCardHeight, 8f, 8f, paint)
@@ -528,9 +642,9 @@ object TandasJornadaPdfExporter {
 
                 // Título del gráfico de barras
                 paint.color = Color.parseColor("#0F172A")
-                paint.textSize = 11f
+                paint.textSize = 10.5f
                 paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                canvas.drawText("2. RENDIMIENTO Y EFICIENCIA (COEFICIENTE DE PRODUCCIÓN)", 44f, chartY + 22f, paint)
+                canvas.drawText("2. RENDIMIENTO Y EFICIENCIA (COEFICIENTE DE PRODUCCIÓN)", 44f, chartY + 20f, paint)
 
                 // Barras horizontales
                 var barY = chartY + 44f
@@ -539,19 +653,19 @@ object TandasJornadaPdfExporter {
                     if (it.rawBaseQty > 0.0) unitsForYield / it.rawBaseQty else 0.0
                 }?.coerceAtLeast(1.0) ?: 1.0
 
-                val maxBarWidth = 240f
-                val barStartX = 145f
+                val maxBarWidth = 230f
+                val barStartX = 150f
 
                 allTandasFlattened.take(8).forEachIndexed { index, tItem ->
                     val colorInt = CHART_PALETTE[index % CHART_PALETTE.size]
                     val unitsForYield = if (tItem.rawYieldUnits > 0.0) tItem.rawYieldUnits else tItem.rawFinalQty
                     val coeff = if (tItem.rawBaseQty > 0.0) unitsForYield / tItem.rawBaseQty else 0.0
                     val coeffFormatted = if (coeff % 1.0 == 0.0) coeff.toInt().toString() else "%.2f".format(coeff)
-                    val tLabel = if (tItem.tandaNumber == "00") "Tanda 00" else "Tanda ${tItem.tandaNumber}"
+                    val tLabel = if (tItem.isTanda00) "Tanda 00" else "Tanda ${tItem.tandaNumber}"
 
                     // Label tanda
                     paint.color = Color.parseColor("#0F172A")
-                    paint.textSize = 8.5f
+                    paint.textSize = 8f
                     paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
                     canvas.drawText(tLabel, 44f, barY + 9f, paint)
 
@@ -574,6 +688,7 @@ object TandasJornadaPdfExporter {
                 }
             }
 
+            drawFooter(pageNumber)
             pdfDocument.finishPage(page)
 
             // Guardar en almacenamiento de documentos
@@ -610,14 +725,15 @@ object TandasJornadaPdfExporter {
                 type = "application/pdf"
                 putExtra(Intent.EXTRA_STREAM, uri)
                 putExtra(Intent.EXTRA_SUBJECT, "Informe de Tandas - Jornada #$jornadaId")
-                putExtra(Intent.EXTRA_TEXT, "Adjunto informe oficial de tandas de producción de la Jornada #$jornadaId.")
+                putExtra(Intent.EXTRA_TEXT, "Adjunto informe oficial de tandas de producción de la Jornada #$jornadaId con el desglose de productos, consumo consolidado y gráficos analíticos.")
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
 
-            val chooser = Intent.createChooser(intent, "Descargar / Compartir PDF de Tandas").apply {
+            val chooser = Intent.createChooser(intent, "Descargar / Compartir PDF de Tandas (WhatsApp, etc.)").apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(chooser)
+            Toast.makeText(context, "PDF guardado: ${file.name}", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             e.printStackTrace()
             Toast.makeText(context, "PDF guardado en: ${file.name}", Toast.LENGTH_LONG).show()
