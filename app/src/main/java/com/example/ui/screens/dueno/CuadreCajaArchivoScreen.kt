@@ -161,12 +161,14 @@ private fun generatePdfForArchive(
 fun CuadreCajaArchivoScreen(
     uiState: MainUiState,
     onBack: () -> Unit,
+    onDeleteJornada: (Long) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     var selectedArchive by remember { mutableStateOf<JornadaCuadreCajaArchive?>(null) }
     var searchQuery by remember { mutableStateOf("") }
     var lastGeneratedPdfFile by remember { mutableStateOf<File?>(null) }
+    var jornadaToDeleteId by remember { mutableStateOf<Long?>(null) }
 
     // Obtener todas las jornadas cerradas ordenadas de más reciente a más antigua
     val closedJornadas = remember(uiState.allJornadas) {
@@ -244,7 +246,7 @@ fun CuadreCajaArchivoScreen(
                                 }
                             }
 
-                            // Botones PDF Rápidos en Header
+                            // Botones PDF y Eliminar en Header
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                                 verticalAlignment = Alignment.CenterVertically
@@ -265,6 +267,18 @@ fun CuadreCajaArchivoScreen(
                                     Icon(Icons.Outlined.PictureAsPdf, contentDescription = null, tint = ElQadreNavy, modifier = Modifier.size(15.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text("PDF", fontWeight = FontWeight.Black, fontSize = 11.5.sp, color = ElQadreNavy)
+                                }
+
+                                Button(
+                                    onClick = { jornadaToDeleteId = archive.jornadaId },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                    modifier = Modifier.height(34.dp).testTag("btn_eliminar_jornada_header")
+                                ) {
+                                    Icon(Icons.Outlined.Delete, contentDescription = "Eliminar", tint = Color.White, modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("ELIMINAR", fontWeight = FontWeight.Black, fontSize = 11.sp, color = Color.White)
                                 }
                             }
                         }
@@ -808,6 +822,9 @@ fun CuadreCajaArchivoScreen(
                                 businessName = uiState.businessConfig?.nombreNegocio ?: "EL QADRE"
                             )
                             selectedArchive = arch
+                        },
+                        onDeleteClick = {
+                            jornadaToDeleteId = jornada.id
                         }
                     )
                 }
@@ -817,13 +834,54 @@ fun CuadreCajaArchivoScreen(
             }
         }
     }
+
+    if (jornadaToDeleteId != null) {
+        val targetId = jornadaToDeleteId!!
+        AlertDialog(
+            onDismissRequest = { jornadaToDeleteId = null },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Outlined.WarningAmber, contentDescription = null, tint = Color(0xFFDC2626))
+                    Text("¿Eliminar definitivamente Jornada #$targetId?", fontWeight = FontWeight.Bold, color = Slate900)
+                }
+            },
+            text = {
+                Text(
+                    "Esta acción eliminará de forma PERMANENTE e IRREVERSIBLE la Jornada #$targetId y todos sus datos de Cuadre de Caja e historial asociados. No quedarán registros ni datos recuperables.",
+                    fontSize = 13.sp,
+                    color = Slate700
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onDeleteJornada(targetId)
+                        if (selectedArchive?.jornadaId == targetId) {
+                            selectedArchive = null
+                        }
+                        jornadaToDeleteId = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                    modifier = Modifier.testTag("btn_confirm_delete_archived_jornada")
+                ) {
+                    Text("Eliminar Definitivamente", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { jornadaToDeleteId = null }) {
+                    Text("Cancelar", color = Slate600)
+                }
+            }
+        )
+    }
 }
 
 @Composable
 private fun ArchivedJornadaSummaryCard(
     jornada: Jornada,
     uiState: MainUiState,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onDeleteClick: () -> Unit
 ) {
     val context = LocalContext.current
     val archive = remember(jornada.id) {
@@ -891,18 +949,35 @@ private fun ArchivedJornadaSummaryCard(
                     )
                 }
 
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = diffState.second.copy(alpha = 0.12f),
-                    border = BorderStroke(1.dp, diffState.second.copy(alpha = 0.3f))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Text(
-                        text = diffState.first,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = diffState.second,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
-                    )
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = diffState.second.copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, diffState.second.copy(alpha = 0.3f))
+                    ) {
+                        Text(
+                            text = diffState.first,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = diffState.second,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onDeleteClick,
+                        modifier = Modifier.size(28.dp).testTag("btn_delete_card_jornada_${jornada.id}")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Delete,
+                            contentDescription = "Eliminar jornada archivada",
+                            tint = Color(0xFFDC2626),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
             }
 

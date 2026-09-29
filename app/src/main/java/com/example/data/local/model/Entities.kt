@@ -343,7 +343,8 @@ data class ProductoElaborado(
     val cantidadCocineros: Int = 1, // Cantidad de cocineros asociados al producto
     val isPagoCocinaFijo: Boolean = false, // true = PAGO FIJO DIARIO, false = PAGO POR UNIDAD
     val pagoDependienteUnitario: Double = 0.0, // Pago por unidad producida/vendida para dependiente (1 dependiente asociado)
-    val pagoCajeroUnitario: Double = 0.0 // Pago por unidad producida/vendida para cajero
+    val pagoCajeroUnitario: Double = 0.0, // Pago por unidad producida/vendida para cajero
+    val gramaje: Double = 0.0 // Gramaje (en gramos) del producto final cuando se presenta al cliente
 ) {
     val effectivePpd: Double get() = if (ppd > 0.0) ppd else (if (estimatedDailyQuantity > 0.0) estimatedDailyQuantity else 10.0)
     val totalPagoCocinaUnitario: Double get() = if (isPagoCocinaFijo) {

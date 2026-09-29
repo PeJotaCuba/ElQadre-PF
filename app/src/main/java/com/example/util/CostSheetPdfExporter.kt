@@ -56,7 +56,7 @@ object CostSheetPdfExporter {
                     paint.color = Color.parseColor("#F59E0B")
                     paint.textSize = 15f
                     paint.isFakeBoldText = true
-                    canvas.drawText("EL QADRE — FICHA DE COSTO DE PRODUCCIÓN", 48f, 65f, paint)
+                    canvas.drawText("PIZZA FACTORY — FICHA DE COSTO DE PRODUCCIÓN", 48f, 65f, paint)
 
                     paint.color = Color.WHITE
                     paint.textSize = 10f
@@ -69,7 +69,7 @@ object CostSheetPdfExporter {
                     paint.color = Color.parseColor("#F59E0B")
                     paint.textSize = 11f
                     paint.isFakeBoldText = true
-                    canvas.drawText("EL QADRE — FICHA DE COSTO: ${product.name} (Cont.)", 45f, 50f, paint)
+                    canvas.drawText("PIZZA FACTORY — FICHA DE COSTO: ${product.name} (Cont.)", 45f, 50f, paint)
                 }
             }
 
@@ -77,10 +77,11 @@ object CostSheetPdfExporter {
                 paint.color = lineGray
                 canvas.drawLine(35f, 810f, 560f, 810f, paint)
                 paint.color = textMuted
-                paint.textSize = 9f
+                paint.textSize = 9.5f
+                paint.isFakeBoldText = true
+                canvas.drawText("Pizza Factory • ${product.name}", 35f, 824f, paint)
                 paint.isFakeBoldText = false
-                canvas.drawText("El Qadre Sistema de Costos | Página $pageNum", 35f, 824f, paint)
-                canvas.drawText("Generado localmente en dispositivo", 390f, 824f, paint)
+                canvas.drawText("Ficha de Costo de Producción | Página $pageNum", 360f, 824f, paint)
             }
 
             drawHeader(isSubsequent = false)
@@ -101,7 +102,7 @@ object CostSheetPdfExporter {
             // ==========================================
             // 1. IDENTIFICACIÓN Y DATOS BÁSICOS
             // ==========================================
-            checkPageOverflow(110f)
+            checkPageOverflow(125f)
             paint.color = primaryColor
             paint.textSize = 12f
             paint.isFakeBoldText = true
@@ -118,10 +119,18 @@ object CostSheetPdfExporter {
             val codProd = product.code.ifBlank { "N/A" }
             canvas.drawText("• Código de Producto: $codProd", 310f, y, paint)
             y += 16f
+            val gramajeVal = costSheet.gramaje
+            val gramajeDisplay = if (gramajeVal > 0.0) {
+                "${if (gramajeVal % 1.0 == 0.0) gramajeVal.toLong().toString() else "%.1f".format(gramajeVal)} g (peso final al cliente)"
+            } else {
+                "Sin especificar"
+            }
+            canvas.drawText("• Gramaje del Producto: $gramajeDisplay", 45f, y, paint)
             val estadoPrecio = if (costSheet.hasPrecioDefinitivo) "SÍ ($${"%.2f".format(costSheet.precioDefinitivo)} CUP)" else "NO"
-            canvas.drawText("• Precio Definitivo Configurado: $estadoPrecio", 45f, y, paint)
+            canvas.drawText("• Precio Definitivo Configurado: $estadoPrecio", 310f, y, paint)
+            y += 16f
             val nombreReceta = costSheet.productoElaborado?.recipeName?.ifBlank { "Estándar" } ?: "Estándar"
-            canvas.drawText("• Receta Registrada: $nombreReceta", 310f, y, paint)
+            canvas.drawText("• Receta Registrada: $nombreReceta", 45f, y, paint)
             y += 24f
 
             // ==========================================
@@ -470,7 +479,7 @@ object CostSheetPdfExporter {
         paint.color = Color.parseColor("#F59E0B") // ElQadreGold
         paint.textSize = 16f
         paint.isFakeBoldText = true
-        canvas.drawText("EL QADRE — FICHA DE COSTO DE MERCADERÍA", 55f, 75f, paint)
+        canvas.drawText("PIZZA FACTORY — FICHA DE COSTO DE MERCADERÍA", 55f, 75f, paint)
 
         paint.color = Color.WHITE
         paint.textSize = 11f
@@ -561,5 +570,15 @@ object CostSheetPdfExporter {
         canvas.drawText("Utilidad Real Unitaria: $${String.format("%.2f", costSheet.utilidadUnitaria)} CUP (${String.format("%.2f", costSheet.margenPorcentual)}% margen)", 50f, y, paint)
         y += 18f
         canvas.drawText("Utilidad Total Proyectada (Stock ${costSheet.currentStock} u): $${String.format("%.2f", costSheet.totalUtilidadProyectada)} CUP", 50f, y, paint)
+
+        // Footer at the bottom: no date, product name
+        paint.color = Color.parseColor("#CBD5E1")
+        canvas.drawLine(40f, 810f, 555f, 810f, paint)
+        paint.color = Color.parseColor("#475569")
+        paint.textSize = 9.5f
+        paint.isFakeBoldText = true
+        canvas.drawText("Pizza Factory • ${costSheet.product.name}", 40f, 824f, paint)
+        paint.isFakeBoldText = false
+        canvas.drawText("Ficha de Costo de Mercadería", 390f, 824f, paint)
     }
 }

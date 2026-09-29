@@ -490,24 +490,32 @@ fun FichaCostoDialog(
         parsePresentacionesEspeciales(currentProduct.presentacionesEspeciales)
     }
 
+    val prodElaborado = remember(uiState.productosElaborados, product.id) {
+        uiState.productosElaborados.find { it.productId == product.id }
+    }
+    var gramajeText by remember(prodElaborado?.gramaje) {
+        val g = prodElaborado?.gramaje ?: 0.0
+        mutableStateOf(if (g > 0.0) if (g % 1.0 == 0.0) g.toLong().toString() else "%.1f".format(g) else "")
+    }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false
+            decorFitsSystemWindows = true
         )
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .padding(start = 14.dp, end = 14.dp, top = 18.dp, bottom = 100.dp)
                 .imePadding(),
             contentAlignment = Alignment.Center
         ) {
             Surface(
                 modifier = Modifier
-                    .fillMaxWidth(0.80f)
-                    .fillMaxHeight(0.80f),
+                    .fillMaxWidth()
+                    .fillMaxHeight(),
                 shape = RoundedCornerShape(20.dp),
                 color = Color(0xFFF8FAFC),
                 border = BorderStroke(1.5.dp, Slate200),
@@ -715,6 +723,46 @@ fun FichaCostoDialog(
                                 Column(horizontalAlignment = Alignment.End) {
                                     Text("Unidad de Medida", fontSize = 10.sp, color = Slate500)
                                     Text(costSheet.productionUnit, fontWeight = FontWeight.Medium, fontSize = 12.sp, color = Slate700)
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+                            HorizontalDivider(color = Slate200)
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // CAMPO PARA AGREGAR / EDITAR GRAMAJE DEL PRODUCTO FINAL
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                OutlinedTextField(
+                                    value = gramajeText,
+                                    onValueChange = { gramajeText = it },
+                                    label = { Text("Gramaje del Producto Final (gramos)") },
+                                    placeholder = { Text("Ej. 350") },
+                                    supportingText = { Text("Gramos del producto al presentarlo al cliente", fontSize = 10.sp, color = Slate500) },
+                                    modifier = Modifier.weight(1.3f).testTag("ficha_gramaje_input"),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    singleLine = true,
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = ElQadreNavy,
+                                        focusedLabelColor = ElQadreNavy
+                                    )
+                                )
+
+                                Button(
+                                    onClick = {
+                                        val newGramaje = gramajeText.toDoubleOrNull() ?: 0.0
+                                        viewModel.updateGramajeProductoElaborado(product.id, newGramaje)
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.height(48.dp).testTag("ficha_save_gramaje_button")
+                                ) {
+                                    Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("GUARDAR", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
@@ -1690,19 +1738,19 @@ fun FichaCostoDialog(
                             }
                         }
                     }
+                    Spacer(modifier = Modifier.height(100.dp))
                 }
 
-                HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp), color = ElQadreBorderLight)
+                HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp), color = ElQadreBorderLight)
 
-                // BOTTOM ACTION
+                // BOTTOM ACTION: Elevated comfortably above Android system navigation buttons
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = Color.White,
                     border = BorderStroke(1.5.dp, Slate200),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .padding(bottom = 24.dp)
+                        .padding(bottom = 16.dp)
                 ) {
                     val context = LocalContext.current
                     Row(

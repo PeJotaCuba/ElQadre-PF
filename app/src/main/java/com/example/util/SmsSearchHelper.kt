@@ -79,9 +79,22 @@ object SmsSearchHelper {
                     val dateSentMillis = if (dateSentIdx >= 0) it.getLong(dateSentIdx) else 0L
 
                     val isPagoXMovilOrEnzona = address.contains("PAGOxMOVIL", ignoreCase = true) ||
+                            address.contains("PAGO POR MOVIL", ignoreCase = true) ||
+                            address.contains("TRANSFERMOVIL", ignoreCase = true) ||
+                            address.contains("PAGOMOVIL", ignoreCase = true) ||
                             address.contains("ENZONA", ignoreCase = true) ||
+                            address.contains("EN ZONA", ignoreCase = true) ||
+                            address.contains("8888", ignoreCase = true) ||
+                            address.contains("5000", ignoreCase = true) ||
+                            address.contains("4000", ignoreCase = true) ||
+                            address.contains("BANDEC", ignoreCase = true) ||
+                            address.contains("BANMET", ignoreCase = true) ||
+                            address.contains("BPA", ignoreCase = true) ||
                             body.contains("PAGOxMOVIL", ignoreCase = true) ||
+                            body.contains("PAGO POR MOVIL", ignoreCase = true) ||
+                            body.contains("TRANSFERMOVIL", ignoreCase = true) ||
                             body.contains("ENZONA", ignoreCase = true) ||
+                            body.contains("EN ZONA", ignoreCase = true) ||
                             SmsTransferParser.isValidTransferSms(body)
 
                     if (isPagoXMovilOrEnzona) {
@@ -91,7 +104,7 @@ object SmsSearchHelper {
                             else -> startMillis
                         }
                         val parsed = SmsTransferParser.parseTransferSms(body, effectiveSmsMillis)
-                        if (parsed != null) {
+                        if (parsed != null && parsed.transactionNumber.isNotBlank() && parsed.amount > 0.0) {
                             val finalEffectiveMillis = when {
                                 dateMillis > 0L -> dateMillis
                                 dateSentMillis > 0L -> dateSentMillis
@@ -107,7 +120,8 @@ object SmsSearchHelper {
                             val matchesTextDate = isDateMatchingText(parsed.dateStr, targetDay, targetMonth, targetYear)
 
                             if (matchesEpoch || matchesTextDate) {
-                                val isRegistered = existingTransactions.contains(parsed.transactionNumber)
+                                val txClean = parsed.transactionNumber.trim()
+                                val isRegistered = existingTransactions.contains(txClean)
                                 val finalDateStr = if (parsed.dateStr.isNotBlank()) {
                                     parsed.dateStr
                                 } else {
@@ -117,6 +131,7 @@ object SmsSearchHelper {
                                 results.add(
                                     SearchedPagoXMovilSms(
                                         parsed = parsed.copy(
+                                            transactionNumber = txClean,
                                             dateStr = finalDateStr,
                                             timestampMillis = finalEffectiveMillis
                                         ),
@@ -133,16 +148,17 @@ object SmsSearchHelper {
             e.printStackTrace()
         }
 
-        return results.distinctBy { it.parsed.transactionNumber }
+        return results.distinctBy { it.parsed.transactionNumber.trim().uppercase() }
     }
 
     private fun isDateMatchingText(dateStr: String, targetDay: Int, targetMonth: Int, targetYear: Int): Boolean {
         if (dateStr.isBlank()) return false
-        val parts = dateStr.split('/', '-')
+        val clean = dateStr.trim().replace('-', '/').replace('.', '/')
+        val parts = clean.split('/')
         if (parts.size >= 3) {
-            val d = parts[0].toIntOrNull() ?: return false
-            val m = parts[1].toIntOrNull() ?: return false
-            var y = parts[2].toIntOrNull() ?: return false
+            val d = parts[0].trim().toIntOrNull() ?: return false
+            val m = parts[1].trim().toIntOrNull() ?: return false
+            var y = parts[2].trim().toIntOrNull() ?: return false
             if (y < 100) y += 2000
             return d == targetDay && m == targetMonth && y == targetYear
         }

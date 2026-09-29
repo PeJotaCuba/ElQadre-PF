@@ -290,6 +290,9 @@ fun CuadreCajaScreen(
         CuadreCajaArchivoScreen(
             uiState = uiState,
             onBack = { showArchivoScreen = false },
+            onDeleteJornada = { jId ->
+                viewModel.deleteJornada(context, jId)
+            },
             modifier = modifier
         )
         return
@@ -370,6 +373,31 @@ fun CuadreCajaScreen(
         com.example.util.CuadreDraftManager.getDraft(context, activeJornadaId)
     }
 
+    val inMemoryProdDrafts = remember(activeJornadaId) {
+        val map = mutableMapOf<String, com.example.util.ProduccionDraftItem>()
+        savedDraft?.produccionDrafts?.forEach { d ->
+            map["${d.productId}_${d.isSpecialPresentation}_${d.specialPresentationName.lowercase()}"] = d
+            map["${d.productId}_${d.isSpecialPresentation}_${d.specialPresentationName}"] = d
+        }
+        map
+    }
+
+    val inMemoryMercDrafts = remember(activeJornadaId) {
+        val map = mutableMapOf<Long, com.example.util.MercaderiaDraftItem>()
+        savedDraft?.mercaderiaDrafts?.forEach { d ->
+            map[d.mercaderiaId] = d
+        }
+        map
+    }
+
+    val inMemoryAgregadoDrafts = remember(activeJornadaId) {
+        val map = mutableMapOf<Long, com.example.util.AgregadoDraftItem>()
+        savedDraft?.agregadoDrafts?.forEach { d ->
+            map[d.materiaPrimaId] = d
+        }
+        map
+    }
+
     // Filter tandas of active jornada / current day
     val jornadaTandas = remember(uiState.tandas, activeJornada) {
         if (activeJornada != null) {
@@ -388,7 +416,8 @@ fun CuadreCajaScreen(
     // Build Produccion item states from registered tandas (Separación: Producto Normal vs Presentaciones Especiales)
     val produccionStates = remember(
         jornadaTandas, uiState.products, uiState.productosElaborados, uiState.recetaIngredientes,
-        uiState.materiasPrimas, uiState.gastosGenerales, uiState.inversiones, savedDraft
+        uiState.materiasPrimas, uiState.gastosGenerales, uiState.inversiones, uiState.produccionModoVersion,
+        activeJornadaId
     ) {
         val grouped = jornadaTandas.groupBy { it.productId }
         val resultList = mutableListOf<ProduccionItemState>()
@@ -518,9 +547,12 @@ fun CuadreCajaScreen(
                         "$baseName — ${pres.name} — Presentación Especial"
                     }
 
-                    val draftItem = savedDraft?.produccionDrafts?.find {
-                        it.productId == prodId && it.isSpecialPresentation && it.specialPresentationName.equals(pres.name, ignoreCase = true)
-                    }
+                    val presKey = "${prodId}_true_${pres.name.lowercase()}"
+                    val draftItem = inMemoryProdDrafts[presKey]
+                        ?: inMemoryProdDrafts["${prodId}_true_${pres.name}"]
+                        ?: savedDraft?.produccionDrafts?.find {
+                            it.productId == prodId && it.isSpecialPresentation && it.specialPresentationName.equals(pres.name, ignoreCase = true)
+                        }
 
                     resultList.add(
                         ProduccionItemState(
@@ -579,9 +611,11 @@ fun CuadreCajaScreen(
                 val normalContainsTanda00 = normalTandas.any { it.tandaNumber == "00" }
                 val prodName = product?.name ?: tandas.firstOrNull()?.productName ?: "Producto #$prodId"
 
-                val draftItem = savedDraft?.produccionDrafts?.find {
-                    it.productId == prodId && !it.isSpecialPresentation
-                }
+                val normKey = "${prodId}_false_"
+                val draftItem = inMemoryProdDrafts[normKey]
+                    ?: savedDraft?.produccionDrafts?.find {
+                        it.productId == prodId && !it.isSpecialPresentation
+                    }
 
                 resultList.add(
                     ProduccionItemState(
@@ -613,50 +647,68 @@ fun CuadreCajaScreen(
 
         // INCORPORACIÓN AUTOMÁTICA DE PRODUCTOS DIRECTOS ACTIVOS (ACTIVO + DIRECTO)
         // Regla: Si está ACTIVO + DIRECTO, aparece automáticamente en Cuadre de Caja
-        // Si está INACTIVO + DIRECTO, no debe aparecer.
         uiState.products.forEach { prod ->
-            if (prod.isAvailable && com.example.util.ProduccionModoHelper.isDirecto(context, prod.id)) {
-                if (resultList.none { it.productId == prod.id && !it.isSpecialPresentation }) {
-                    val prodElab = uiState.productosElaborados.find { it.productId == prod.id }
-                    val normalPrice = if (prodElab?.hasPrecioDefinitivo == true && prodElab.precioDefinitivo > 0.0) prodElab.precioDefinitivo else prod.price
-                    val normalUnit = prodElab?.productionUnit?.ifBlank { prod.unitOfMeasure } ?: "U"
-                    val costSheet = com.example.util.CostCalculationHelper.calculateCostSheet(product = prod, uiState = uiState)
-                    val normalCostoUnitario = costSheet.costoRealUnitario
-                    val pagoCocinaUnit = costSheet.pagoCocinaUnitario
-                    val fichaCocineros = costSheet.cantidadCocineros.takeIf { it > 0 } ?: prodElab?.cantidadCocineros?.takeIf { it > 0 } ?: 1
-                    val cantCocineros = savedPagos?.cantidadCocineros ?: fichaCocineros
-                    val pagoDepUnit = costSheet.totalPagoDependienteUnitario
-                    val pagoCajUnit = costSheet.totalPagoCajeroUnitario
-                    val presList = com.example.data.local.model.parsePresentacionesEspeciales(prod.presentacionesEspeciales)
-                    val draftItem = savedDraft?.produccionDrafts?.find { it.productId == prod.id && !it.isSpecialPresentation }
+            val isDirectoMode = com.example.util.ProduccionModoHelper.isDirecto(context, prod.id)
+            if (isDirectoMode) {
+                val normKey = "${prod.id}_false_"
+                val inMem = inMemoryProdDrafts[normKey]
+                val hasMemData = inMem != null && (
+                    (inMem.customTotalProducedStr != "0" && inMem.customTotalProducedStr.isNotBlank()) ||
+                    (inMem.defectuosoStr != "0" && inMem.defectuosoStr.isNotBlank()) ||
+                    (inMem.consumoStr != "0" && inMem.consumoStr.isNotBlank()) ||
+                    (inMem.regaliaStr != "0" && inMem.regaliaStr.isNotBlank())
+                )
+                val diskDraft = savedDraft?.produccionDrafts?.find { it.productId == prod.id && !it.isSpecialPresentation }
+                val hasDiskData = diskDraft != null && (
+                    (diskDraft.customTotalProducedStr != "0" && diskDraft.customTotalProducedStr.isNotBlank()) ||
+                    (diskDraft.defectuosoStr != "0" && diskDraft.defectuosoStr.isNotBlank()) ||
+                    (diskDraft.consumoStr != "0" && diskDraft.consumoStr.isNotBlank()) ||
+                    (diskDraft.regaliaStr != "0" && diskDraft.regaliaStr.isNotBlank())
+                )
 
-                    resultList.add(
-                        ProduccionItemState(
-                            productId = prod.id,
-                            productName = prod.name,
-                            unit = normalUnit,
-                            price = normalPrice,
-                            tandasCount = 0,
-                            totalProduced = 0.0,
-                            qtyPerTanda = 0.0,
-                            defectuosoStr = draftItem?.defectuosoStr ?: "0",
-                            consumoStr = draftItem?.consumoStr ?: "0",
-                            regaliaStr = draftItem?.regaliaStr ?: "0",
-                            pendientesStr = draftItem?.pendientesStr ?: "0",
-                            costoUnitarioTeorico = normalCostoUnitario,
-                            pagoCocinaUnitario = pagoCocinaUnit,
-                            cantidadCocineros = cantCocineros,
-                            pagoDependienteUnitario = pagoDepUnit,
-                            pagoCajeroUnitario = pagoCajUnit,
-                            presentaciones = presList,
-                            hasTanda00 = false,
-                            isSpecialPresentation = false,
-                            specialPresentationName = "",
-                            parentProductId = prod.id,
-                            isDirecto = true,
-                            customTotalProducedStr = draftItem?.customTotalProducedStr ?: "0"
+                if (prod.isAvailable || hasMemData || hasDiskData) {
+                    if (resultList.none { it.productId == prod.id && !it.isSpecialPresentation }) {
+                        val prodElab = uiState.productosElaborados.find { it.productId == prod.id }
+                        val normalPrice = if (prodElab?.hasPrecioDefinitivo == true && prodElab.precioDefinitivo > 0.0) prodElab.precioDefinitivo else prod.price
+                        val normalUnit = prodElab?.productionUnit?.ifBlank { prod.unitOfMeasure } ?: "U"
+                        val costSheet = com.example.util.CostCalculationHelper.calculateCostSheet(product = prod, uiState = uiState)
+                        val normalCostoUnitario = costSheet.costoRealUnitario
+                        val pagoCocinaUnit = costSheet.pagoCocinaUnitario
+                        val fichaCocineros = costSheet.cantidadCocineros.takeIf { it > 0 } ?: prodElab?.cantidadCocineros?.takeIf { it > 0 } ?: 1
+                        val cantCocineros = savedPagos?.cantidadCocineros ?: fichaCocineros
+                        val pagoDepUnit = costSheet.totalPagoDependienteUnitario
+                        val pagoCajUnit = costSheet.totalPagoCajeroUnitario
+                        val presList = com.example.data.local.model.parsePresentacionesEspeciales(prod.presentacionesEspeciales)
+                        val draftItem = inMem ?: diskDraft
+
+                        resultList.add(
+                            ProduccionItemState(
+                                productId = prod.id,
+                                productName = prod.name,
+                                unit = normalUnit,
+                                price = normalPrice,
+                                tandasCount = 0,
+                                totalProduced = 0.0,
+                                qtyPerTanda = 0.0,
+                                defectuosoStr = draftItem?.defectuosoStr ?: "0",
+                                consumoStr = draftItem?.consumoStr ?: "0",
+                                regaliaStr = draftItem?.regaliaStr ?: "0",
+                                pendientesStr = draftItem?.pendientesStr ?: "0",
+                                costoUnitarioTeorico = normalCostoUnitario,
+                                pagoCocinaUnitario = pagoCocinaUnit,
+                                cantidadCocineros = cantCocineros,
+                                pagoDependienteUnitario = pagoDepUnit,
+                                pagoCajeroUnitario = pagoCajUnit,
+                                presentaciones = presList,
+                                hasTanda00 = false,
+                                isSpecialPresentation = false,
+                                specialPresentationName = "",
+                                parentProductId = prod.id,
+                                isDirecto = true,
+                                customTotalProducedStr = draftItem?.customTotalProducedStr ?: "0"
+                            )
                         )
-                    )
+                    }
                 }
             }
         }
@@ -668,9 +720,25 @@ fun CuadreCajaScreen(
     val mercaderiasStates = remember(
         uiState.mercaderias, uiState.products, uiState.movimientosMercaderia,
         uiState.tarifasPagoBebidas, uiState.gastosGenerales, uiState.inversiones, activeJornada,
-        uiState.productosElaborados, uiState.recetaIngredientes, uiState.materiasPrimas, savedDraft
+        uiState.productosElaborados, uiState.recetaIngredientes, uiState.materiasPrimas, activeJornadaId
     ) {
-        val activeMercs = uiState.mercaderias.filter { it.isActive }
+        val activeMercs = uiState.mercaderias.filter { merc ->
+            val inMem = inMemoryMercDrafts[merc.id]
+            val hasMemData = inMem != null && (
+                inMem.existenciaFinalStr.isNotBlank() ||
+                (inMem.defectuosoStr != "0" && inMem.defectuosoStr.isNotBlank()) ||
+                (inMem.consumoStr != "0" && inMem.consumoStr.isNotBlank()) ||
+                (inMem.regaliaStr != "0" && inMem.regaliaStr.isNotBlank())
+            )
+            val diskDraft = savedDraft?.mercaderiaDrafts?.find { it.mercaderiaId == merc.id }
+            val hasDiskData = diskDraft != null && (
+                diskDraft.existenciaFinalStr.isNotBlank() ||
+                (diskDraft.defectuosoStr != "0" && diskDraft.defectuosoStr.isNotBlank()) ||
+                (diskDraft.consumoStr != "0" && diskDraft.consumoStr.isNotBlank()) ||
+                (diskDraft.regaliaStr != "0" && diskDraft.regaliaStr.isNotBlank())
+            )
+            merc.isActive || hasMemData || hasDiskData
+        }
         val list = mutableListOf<MercaderiaItemState>()
         activeMercs.forEach { merc ->
             val product = uiState.products.find { it.id == merc.productId }
@@ -704,9 +772,13 @@ fun CuadreCajaScreen(
             } else null
 
             val costoUnitario = mercCostSheet?.costoRealUnitario ?: merc.acquisitionCost
-            val draftItem = savedDraft?.mercaderiaDrafts?.find { it.mercaderiaId == merc.id }
+            val draftItem = inMemoryMercDrafts[merc.id] ?: savedDraft?.mercaderiaDrafts?.find { it.mercaderiaId == merc.id }
 
-            val initStr = draftItem?.existenciaInicialStr ?: (if (merc.initialStock > 0.0) "%.1f".format(merc.initialStock).replace(',', '.') else "0")
+            val initStr = if (draftItem != null && draftItem.existenciaInicialStr.isNotBlank()) {
+                draftItem.existenciaInicialStr
+            } else {
+                "0"
+            }
             val entStr = draftItem?.entradasStr ?: (if (entradasJornada > 0.0) "%.1f".format(entradasJornada).replace(',', '.') else "0")
             val finStr = draftItem?.existenciaFinalStr ?: ""
             val defStr = draftItem?.defectuosoStr ?: "0"
@@ -742,7 +814,7 @@ fun CuadreCajaScreen(
     }
 
     // Build Agregados item states from active materias primas configured as agregados
-    val agregadosStates = remember(uiState.materiasPrimas, savedDraft) {
+    val agregadosStates = remember(uiState.materiasPrimas, activeJornadaId) {
         uiState.materiasPrimas.filter { it.isAgregado && it.isActive }.map { mp ->
             val enviadasRaciones = if (mp.racionesEnVenta > 0.0) {
                 mp.racionesEnVenta
@@ -757,7 +829,7 @@ fun CuadreCajaScreen(
                 if (enviadasRaciones % 1.0 == 0.0) enviadasRaciones.toLong().toString() else "%.1f".format(enviadasRaciones).replace(',', '.')
             } else "0"
 
-            val draftItem = savedDraft?.agregadoDrafts?.find { it.materiaPrimaId == mp.id }
+            val draftItem = inMemoryAgregadoDrafts[mp.id] ?: savedDraft?.agregadoDrafts?.find { it.materiaPrimaId == mp.id }
 
             val initStr = draftItem?.existenciaInicialStr ?: initialStr
             val entStr = draftItem?.entradasStr ?: "0"
@@ -841,7 +913,7 @@ fun CuadreCajaScreen(
     androidx.compose.runtime.LaunchedEffect(activeJornadaId) {
         androidx.compose.runtime.snapshotFlow {
             val prodDrafts = produccionStates.map { p ->
-                com.example.util.ProduccionDraftItem(
+                val draft = com.example.util.ProduccionDraftItem(
                     productId = p.productId,
                     isSpecialPresentation = p.isSpecialPresentation,
                     specialPresentationName = p.specialPresentationName,
@@ -851,9 +923,13 @@ fun CuadreCajaScreen(
                     pendientesStr = p.pendientesStr,
                     customTotalProducedStr = p.customTotalProducedStr
                 )
+                val key = "${p.productId}_${p.isSpecialPresentation}_${p.specialPresentationName.lowercase()}"
+                inMemoryProdDrafts[key] = draft
+                inMemoryProdDrafts["${p.productId}_${p.isSpecialPresentation}_${p.specialPresentationName}"] = draft
+                draft
             }
             val mercDrafts = mercaderiasStates.map { m ->
-                com.example.util.MercaderiaDraftItem(
+                val draft = com.example.util.MercaderiaDraftItem(
                     mercaderiaId = m.mercaderiaId,
                     existenciaInicialStr = m.existenciaInicialStr,
                     entradasStr = m.entradasStr,
@@ -863,15 +939,19 @@ fun CuadreCajaScreen(
                     regaliaStr = m.regaliaStr,
                     customPriceStr = m.customPriceStr
                 )
+                inMemoryMercDrafts[m.mercaderiaId] = draft
+                draft
             }
             val agDrafts = agregadosStates.map { a ->
-                com.example.util.AgregadoDraftItem(
+                val draft = com.example.util.AgregadoDraftItem(
                     materiaPrimaId = a.materiaPrimaId,
                     existenciaInicialStr = a.existenciaInicialStr,
                     entradasStr = a.entradasStr,
                     existenciaFinalStr = a.existenciaFinalStr,
                     mermaStr = a.mermaStr
                 )
+                inMemoryAgregadoDrafts[a.materiaPrimaId] = draft
+                draft
             }
             val extDrafts = extraccionesList.map { e ->
                 com.example.util.ExtraccionDraftItem(
@@ -4868,6 +4948,19 @@ fun MercaderiaCuadreCard(
 
             HorizontalDivider(color = Slate100, thickness = 1.dp)
 
+            // Resumen visual de campos de existencias
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                FieldSummaryBadge(label = "Inicio", value = item.existenciaInicialStr)
+                FieldSummaryBadge(label = "Entradas", value = item.entradasStr)
+                FieldSummaryBadge(label = "Merma", value = item.defectuosoStr)
+                FieldSummaryBadge(label = "Final", value = item.existenciaFinalStr)
+            }
+
+            HorizontalDivider(color = Slate100, thickness = 1.dp)
+
             // 2 Datos Clave: CANTIDAD VENDIDA e INGRESOS GENERADOS
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -4918,6 +5011,123 @@ fun MercaderiaCuadreCard(
         MercaderiaEditModal(
             item = item,
             onDismiss = { showEditModal = false }
+        )
+    }
+}
+
+@Composable
+private fun RowScope.FieldSummaryBadge(label: String, value: String) {
+    val isPending = value.isBlank() || value == "0" || value == "0.0"
+    val displayVal = if (isPending) "0" else value
+    val bgColor = if (isPending) Color(0xFFF1F5F9) else Color(0xFFEFF6FF)
+    val textColor = if (isPending) Slate600 else ElQadreNavy
+    val borderColor = if (isPending) Color(0xFFE2E8F0) else Color(0xFFBFDBFE)
+
+    Surface(
+        modifier = Modifier.weight(1f),
+        color = bgColor,
+        shape = RoundedCornerShape(8.dp),
+        border = BorderStroke(1.dp, borderColor)
+    ) {
+        Column(
+            modifier = Modifier.padding(vertical = 4.dp, horizontal = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = label.uppercase(),
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                color = Slate500
+            )
+            Text(
+                text = displayVal,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Black,
+                color = textColor
+            )
+        }
+    }
+}
+
+@Composable
+fun MercaderiaInputField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    unit: String,
+    testTag: String,
+    isFinalField: Boolean = false
+) {
+    val isPending = value.isBlank() || value == "0" || value == "0.0"
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = label,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Black,
+                color = ElQadreNavy
+            )
+            if (isPending) {
+                Surface(
+                    color = Color(0xFFF1F5F9),
+                    shape = RoundedCornerShape(6.dp),
+                    border = BorderStroke(1.dp, Color(0xFFCBD5E1))
+                ) {
+                    Text(
+                        text = "Pendiente (Sin datos)",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Slate600,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+        }
+
+        val containerBg = if (isPending) Color(0xFFF1F5F9) else Color.White
+        val borderCol = if (isPending) Color(0xFFCBD5E1) else (if (isFinalField) Color(0xFF1D4ED8) else ElQadreNavy)
+        val textCol = if (isPending) Slate600 else (if (isFinalField) Color(0xFF1D4ED8) else ElQadreNavy)
+
+        OutlinedTextField(
+            value = if (isPending) "0" else value,
+            onValueChange = { input ->
+                val clean = input.filter { c -> c.isDigit() || c == '.' }
+                val newValue = if (clean.length > 1 && clean.startsWith("0") && !clean.startsWith("0.")) {
+                    clean.removePrefix("0")
+                } else clean
+                onValueChange(newValue)
+            },
+            placeholder = {
+                Text(
+                    text = "0",
+                    fontSize = 18.sp,
+                    color = Slate400
+                )
+            },
+            textStyle = LocalTextStyle.current.copy(
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = textCol
+            ),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            singleLine = true,
+            shape = RoundedCornerShape(12.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = Color.White,
+                unfocusedContainerColor = containerBg,
+                focusedBorderColor = borderCol,
+                unfocusedBorderColor = borderCol,
+                focusedTextColor = textCol,
+                unfocusedTextColor = textCol
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag(testTag)
         )
     }
 }
@@ -4991,106 +5201,47 @@ fun MercaderiaEditModal(
 
                 // 1. Existencia de INICIO
                 item {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(
-                            text = "1. EXISTENCIA DE INICIO (${item.unit}):",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Black,
-                            color = ElQadreNavy
-                        )
-                        OutlinedTextField(
-                            value = inicioInput,
-                            onValueChange = { clean ->
-                                inicioInput = clean.filter { c -> c.isDigit() || c == '.' }
-                            },
-                            placeholder = { Text("0.0", fontSize = 16.sp) },
-                            textStyle = LocalTextStyle.current.copy(fontSize = 18.sp, fontWeight = FontWeight.Bold),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            singleLine = true,
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("input_inicio_mercaderia_modal")
-                        )
-                    }
+                    MercaderiaInputField(
+                        label = "1. EXISTENCIA DE INICIO",
+                        value = inicioInput,
+                        onValueChange = { inicioInput = it },
+                        unit = item.unit,
+                        testTag = "input_inicio_mercaderia_modal"
+                    )
                 }
 
                 // 2. Entradas de Jornada
                 item {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(
-                            text = "2. ENTRADAS / COMPRAS (${item.unit}):",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Black,
-                            color = ElQadreNavy
-                        )
-                        OutlinedTextField(
-                            value = entradasInput,
-                            onValueChange = { clean ->
-                                entradasInput = clean.filter { c -> c.isDigit() || c == '.' }
-                            },
-                            placeholder = { Text("0.0", fontSize = 16.sp) },
-                            textStyle = LocalTextStyle.current.copy(fontSize = 18.sp, fontWeight = FontWeight.Bold),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            singleLine = true,
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("input_entradas_mercaderia_modal")
-                        )
-                    }
+                    MercaderiaInputField(
+                        label = "2. ENTRADAS / COMPRAS",
+                        value = entradasInput,
+                        onValueChange = { entradasInput = it },
+                        unit = item.unit,
+                        testTag = "input_entradas_mercaderia_modal"
+                    )
                 }
 
                 // 3. Mermas
                 item {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(
-                            text = "3. MERMA O DEFECTUOSO (${item.unit}):",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Black,
-                            color = ElQadreNavy
-                        )
-                        OutlinedTextField(
-                            value = mermaInput,
-                            onValueChange = { clean ->
-                                mermaInput = clean.filter { c -> c.isDigit() || c == '.' }
-                            },
-                            placeholder = { Text("0.0", fontSize = 16.sp) },
-                            textStyle = LocalTextStyle.current.copy(fontSize = 18.sp, fontWeight = FontWeight.Bold),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            singleLine = true,
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("input_merma_mercaderia_modal")
-                        )
-                    }
+                    MercaderiaInputField(
+                        label = "3. MERMA O DEFECTUOSO",
+                        value = mermaInput,
+                        onValueChange = { mermaInput = it },
+                        unit = item.unit,
+                        testTag = "input_merma_mercaderia_modal"
+                    )
                 }
 
                 // 4. Existencia FINAL
                 item {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(
-                            text = "4. EXISTENCIA FINAL (${item.unit}):",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Black,
-                            color = ElQadreNavy
-                        )
-                        OutlinedTextField(
-                            value = finalInput,
-                            onValueChange = { clean ->
-                                finalInput = clean.filter { c -> c.isDigit() || c == '.' }
-                            },
-                            placeholder = { Text("0.0", fontSize = 16.sp) },
-                            textStyle = LocalTextStyle.current.copy(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1D4ED8)),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            singleLine = true,
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("input_final_mercaderia_modal")
-                        )
-                    }
+                    MercaderiaInputField(
+                        label = "4. EXISTENCIA FINAL",
+                        value = finalInput,
+                        onValueChange = { finalInput = it },
+                        unit = item.unit,
+                        testTag = "input_final_mercaderia_modal",
+                        isFinalField = true
+                    )
                 }
 
                 // Cálculo automático

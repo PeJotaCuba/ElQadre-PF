@@ -3156,7 +3156,7 @@ fun DuenoProduccionSubscreen(
                                                         .fillMaxHeight()
                                                         .clickable {
                                                             selectedModo = "POR_TANDAS"
-                                                            com.example.util.ProduccionModoHelper.setModo(context, currentP.id, "POR_TANDAS")
+                                                            viewModel.setProduccionModo(context, currentP.id, "POR_TANDAS")
                                                         }
                                                         .testTag("modo_tanda_dueno_${currentP.id}")
                                                 ) {
@@ -3190,7 +3190,7 @@ fun DuenoProduccionSubscreen(
                                                         .fillMaxHeight()
                                                         .clickable {
                                                             selectedModo = "DIRECTO"
-                                                            com.example.util.ProduccionModoHelper.setModo(context, currentP.id, "DIRECTO")
+                                                            viewModel.setProduccionModo(context, currentP.id, "DIRECTO")
                                                         }
                                                         .testTag("modo_directo_dueno_${currentP.id}")
                                                 ) {
@@ -3667,7 +3667,7 @@ fun DuenoProduccionSubscreen(
                 onDismiss = { showNuevoProductoDialog = false },
                 onConfirm = { prod, ppdVal, modo ->
                     viewModel.createProductElaborado(prod, ppdVal) { newId ->
-                        com.example.util.ProduccionModoHelper.setModo(context, newId, modo)
+                        viewModel.setProduccionModo(context, newId, modo)
                     }
                     showNuevoProductoDialog = false
                 }
@@ -3680,7 +3680,7 @@ fun DuenoProduccionSubscreen(
                 uiState = uiState,
                 onDismiss = { selectedProductToEdit = null },
                 onConfirm = { updatedProd, ppdVal, modo ->
-                    com.example.util.ProduccionModoHelper.setModo(context, updatedProd.id, modo)
+                    viewModel.setProduccionModo(context, updatedProd.id, modo)
                     viewModel.updateProductElaboradoFull(updatedProd, ppdVal)
                     selectedProductToEdit = null
                 }
@@ -13022,36 +13022,6 @@ fun DuenoAjustesView(
     var restoreSummary by remember { mutableStateOf<String?>(null) }
     var isRestoring by remember { mutableStateOf(false) }
 
-    // State for Legacy Produccion Import
-    var showImportLegacyProduccionModal by remember { mutableStateOf(false) }
-    var legacyProduccionJsonText by remember { mutableStateOf("") }
-    var legacyProduccionSummary by remember { mutableStateOf<String?>(null) }
-    var isImportingLegacyProduccion by remember { mutableStateOf(false) }
-
-    // File picker launcher for Legacy Produccion
-    val legacyProduccionFilePicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? ->
-        if (uri != null) {
-            try {
-                val inputStream = context.contentResolver.openInputStream(uri)
-                val content = inputStream?.bufferedReader()?.use { it.readText() } ?: ""
-                if (content.isNotBlank()) {
-                    legacyProduccionJsonText = content
-                    val summaryRes = viewModel.getLegacyProduccionBackupSummary(content)
-                    if (summaryRes.isSuccess) {
-                        legacyProduccionSummary = summaryRes.getOrNull()
-                    } else {
-                        legacyProduccionSummary = null
-                        Toast.makeText(context, "Archivo inválido para Producción: ${summaryRes.exceptionOrNull()?.localizedMessage}", Toast.LENGTH_LONG).show()
-                    }
-                }
-            } catch (e: Exception) {
-                Toast.makeText(context, "Error al leer archivo: ${e.message}", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
     // File picker launcher for Restore
     val restoreFilePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -13397,30 +13367,6 @@ fun DuenoAjustesView(
                     Text("RESTAURAR", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
-
-            Spacer(modifier = Modifier.height(14.dp))
-            HorizontalDivider(color = ElQadreBorder, thickness = 1.dp)
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                text = "Recuperar exclusivamente Datos de Producción (Insumos, Productos, Recetas, Categorías) desde JSON antiguos de ElQadre. No afecta licencias, contraseñas, jornadas ni usuarios.",
-                fontSize = 11.sp,
-                color = Slate600
-            )
-            Spacer(modifier = Modifier.height(10.dp))
-            Button(
-                onClick = {
-                    legacyProduccionJsonText = ""
-                    legacyProduccionSummary = null
-                    showImportLegacyProduccionModal = true
-                },
-                modifier = Modifier.fillMaxWidth().height(50.dp).testTag("btn_importar_legacy_produccion"),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706), contentColor = Color.White),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Icon(Icons.Outlined.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("IMPORTAR PRODUCCIÓN (JSON ANTIGUO)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            }
         }
 
         // -------------------------------------------------------------
@@ -13670,7 +13616,7 @@ fun DuenoAjustesView(
                     confirmButton = {
                         Button(
                             onClick = {
-                                viewModel.eliminarTodasLasJornadas {
+                                viewModel.eliminarTodasLasJornadas(context = context) {
                                     Toast.makeText(context, "Todas las jornadas han sido eliminadas.", Toast.LENGTH_SHORT).show()
                                 }
                                 showConfirmDeleteAllJornadas = false
@@ -13963,7 +13909,7 @@ fun DuenoAjustesView(
             confirmButton = {
                 Button(
                     onClick = {
-                        viewModel.deleteJornada(targetJornada.id) {
+                        viewModel.deleteJornada(context = context, jornadaId = targetJornada.id) {
                             Toast.makeText(context, "Jornada #${targetJornada.id} eliminada.", Toast.LENGTH_SHORT).show()
                         }
                         jornadaToDelete = null
@@ -14104,127 +14050,6 @@ fun DuenoAjustesView(
             },
             dismissButton = {
                 TextButton(onClick = { showRestoreModal = false }) {
-                    Text("Cancelar", fontWeight = FontWeight.Bold, color = Slate600)
-                }
-            },
-            containerColor = Color.White
-        )
-    }
-
-    // Modal for Importar Producción (JSON Antiguo)
-    if (showImportLegacyProduccionModal) {
-        AlertDialog(
-            onDismissRequest = { showImportLegacyProduccionModal = false },
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Outlined.Refresh, contentDescription = null, tint = Color(0xFFD97706))
-                    Text("Importar Producción (JSON Antiguo)", fontWeight = FontWeight.Black, color = Color(0xFFD97706), fontSize = 16.sp)
-                }
-            },
-            text = {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.verticalScroll(rememberScrollState())
-                ) {
-                    if (legacyProduccionSummary == null) {
-                        Text(
-                            "Seleccione un archivo de respaldo .json antiguo o pegue su contenido para recuperar selectivamente la producción (Insumos, Productos y Recetas).",
-                            fontSize = 12.sp,
-                            color = Slate600
-                        )
-
-                        Button(
-                            onClick = {
-                                legacyProduccionFilePicker.launch(arrayOf("application/json", "text/*", "*/*"))
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.fillMaxWidth().height(42.dp).testTag("btn_pick_legacy_file")
-                        ) {
-                            Icon(Icons.Outlined.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("SELECCIONAR ARCHIVO (.JSON)", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-
-                        Text("O pegue el contenido JSON:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Slate700)
-
-                        OutlinedTextField(
-                            value = legacyProduccionJsonText,
-                            onValueChange = { legacyProduccionJsonText = it },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(130.dp)
-                                .testTag("legacy_paste_field"),
-                            placeholder = { Text("Pegue el JSON antiguo aquí...") },
-                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 10.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = Color(0xFFD97706),
-                                cursorColor = Color(0xFFD97706)
-                            )
-                        )
-                    } else {
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = Slate100),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text("RESUMEN DE PRODUCCIÓN DETECTADO:", fontSize = 11.sp, fontWeight = FontWeight.Black, color = Color(0xFFD97706))
-                                Text(legacyProduccionSummary!!, fontSize = 12.sp, color = Slate800, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                        Text(
-                            "💡 INFORMACIÓN:\nEsta operación es selectiva (UPsert). Los datos existentes no se eliminarán. Los insumos/productos coincidentes se actualizarán de forma segura.",
-                            fontSize = 12.sp,
-                            color = Color(0xFF0F766E),
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                if (legacyProduccionSummary == null) {
-                    Button(
-                        onClick = {
-                            if (legacyProduccionJsonText.isBlank()) {
-                                Toast.makeText(context, "Seleccione un archivo o pegue el contenido JSON.", Toast.LENGTH_SHORT).show()
-                                return@Button
-                            }
-                            val res = viewModel.getLegacyProduccionBackupSummary(legacyProduccionJsonText)
-                            if (res.isSuccess) {
-                                legacyProduccionSummary = res.getOrNull()
-                            } else {
-                                Toast.makeText(context, "JSON inválido o incompatible con Producción: ${res.exceptionOrNull()?.localizedMessage}", Toast.LENGTH_LONG).show()
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
-                        modifier = Modifier.testTag("btn_validar_legacy_json")
-                    ) {
-                        Text("VALIDAR DATOS", fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                    }
-                } else {
-                    Button(
-                        onClick = {
-                            isImportingLegacyProduccion = true
-                            viewModel.importLegacyProduccionBackupJson(legacyProduccionJsonText) { success, msg ->
-                                isImportingLegacyProduccion = false
-                                if (success) {
-                                    showImportLegacyProduccionModal = false
-                                    Toast.makeText(context, "Producción importada correctamente.", Toast.LENGTH_LONG).show()
-                                } else {
-                                    Toast.makeText(context, "Error al importar: $msg", Toast.LENGTH_LONG).show()
-                                }
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F766E)),
-                        modifier = Modifier.testTag("btn_confirmar_importar_legacy")
-                    ) {
-                        Text("CONFIRMAR E IMPORTAR", fontWeight = FontWeight.Black, fontSize = 11.sp)
-                    }
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showImportLegacyProduccionModal = false }) {
                     Text("Cancelar", fontWeight = FontWeight.Bold, color = Slate600)
                 }
             },

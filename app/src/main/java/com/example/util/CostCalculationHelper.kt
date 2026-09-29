@@ -51,7 +51,9 @@ data class ProductCostSheet(
     val movimientoDiarioTotal: Double = totalKitchenPpd,
     val porcentajeProrrateo: Double = porcentajeParticipacionPpd,
     val depreciacionInversionesUnitario: Double = 0.0
-)
+) {
+    val gramaje: Double get() = productoElaborado?.gramaje ?: 0.0
+}
 
 data class AllocatedCostItem(
     val id: Long,

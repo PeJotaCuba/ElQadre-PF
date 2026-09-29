@@ -96,7 +96,7 @@ fun AppVersionSettingsCard(
         val jsonContent = ApkUpdateManager.generateVersionJson(
             versionCode = localCode,
             versionName = localName,
-            apkUrl = "https://github.com/PeJotaCuba/BD-Qadre-PF/releases/download/v1.1/ElQadrePF.apk",
+            apkUrl = "https://github.com/PeJotaCuba/BD-Qadre-PF/releases/download/v$localName/ElQadrePF.apk",
             notes = ""
         )
         generatedJsonResult = jsonContent

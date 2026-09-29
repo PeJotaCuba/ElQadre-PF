@@ -657,4 +657,26 @@ object CuadreCajaArchiveManager {
             createdAt = System.currentTimeMillis()
         )
     }
+
+    fun deleteArchive(context: Context, jornadaId: Long) {
+        try {
+            val file = getArchiveFile(context, jornadaId)
+            if (file.exists()) {
+                file.delete()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    fun deleteAllArchives(context: Context) {
+        try {
+            val dir = getArchiveDir(context)
+            if (dir.exists()) {
+                dir.listFiles()?.forEach { it.delete() }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
 }

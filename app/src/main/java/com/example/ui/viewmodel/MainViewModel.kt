@@ -17,6 +17,8 @@ import com.example.data.local.model.*
 import com.example.data.repository.AppRepository
 import com.example.ui.screens.admin.convertToBaseQty
 import com.example.ui.screens.admin.getNormalizedCost
+import com.example.util.CuadreCajaArchiveManager
+import com.example.util.CuadreDraftManager
 import com.example.util.ParsedTransferSms
 import com.example.util.SmsTransferBus
 import com.example.util.SmsTransferParser
@@ -78,6 +80,7 @@ data class MainUiState(
     val salonTableCount: Int = 12,
     val tarifasPagoBebidas: com.example.util.TarifasPagoBebidas = com.example.util.TarifasPagoBebidas(),
     val transferenciasClasificacionMap: Map<Long, Pair<Double, Double>> = emptyMap(),
+    val produccionModoVersion: Long = 0L,
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
     val successMessage: String? = null,
@@ -987,6 +990,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val finalTimestamp = if (actualTimestamp > 0L) actualTimestamp else System.currentTimeMillis()
                     val finalDate = if (item.parsed.dateStr.isNotBlank()) item.parsed.dateStr else dateDisplayFormat.format(java.util.Date(finalTimestamp))
 
+                    val gateway = if (item.parsed.gateway.equals("ENZONA", ignoreCase = true) || item.parsed.rawText.contains("ENZONA", ignoreCase = true)) "ENZONA" else "Transfermóvil"
+                    val sourceStr = if (gateway == "ENZONA") "ENZONA_SMS" else "TRANSFERMOVIL_SMS"
+
                     val transferencia = com.example.data.local.model.Transferencia(
                         transactionNumber = txNum,
                         jornadaId = activeJornadaId,
@@ -1000,7 +1006,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         status = "NO ASOCIADA",
                         rawSmsBody = item.parsed.rawText,
                         isManual = false,
-                        source = "AUTO_SMS_JORNADA"
+                        source = sourceStr
                     )
                     repository.insertTransferencia(transferencia)
                     count++
@@ -1923,17 +1929,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun deleteJornada(jornadaId: Long, onComplete: () -> Unit = {}) {
+    fun deleteJornada(context: Context = getApplication(), jornadaId: Long, onComplete: () -> Unit = {}) {
         viewModelScope.launch {
             try {
                 repository.deleteJornadaById(jornadaId)
+                CuadreDraftManager.clearDraft(context, jornadaId)
+                CuadreCajaArchiveManager.deleteArchive(context, jornadaId)
+                com.example.util.InformeInsumosArchiveManager.deleteArchive(context, jornadaId)
+                com.example.util.CuadrePagosManager.clearPagosJornada(context, jornadaId)
+                clearSessionPrefsForJornada(context, jornadaId)
+
                 _uiState.update { current ->
-                    val updated = current.allJornadas.filter { it.id != jornadaId }
+                    val updatedJornadas = current.allJornadas.filter { it.id != jornadaId }
                     val newActive = if (current.activeJornada?.id == jornadaId) null else current.activeJornada
+                    val updatedTandas = current.tandas.filter { it.jornadaId != jornadaId && it.jornada != "Jornada #$jornadaId" && it.jornada != "JORNADA #$jornadaId" }
+                    val updatedMovsMerc = current.movimientosMercaderia.filter { it.jornadaId != jornadaId }
+                    val updatedTransf = current.allTransferencias.filter { it.jornadaId != jornadaId }
+                    val updatedConsumo = current.consumoPersonalList.filter { it.jornadaId != jornadaId }
+                    val updatedOrders = current.allOrders.filter { it.jornadaId != jornadaId }
+
                     current.copy(
-                        allJornadas = updated,
+                        allJornadas = updatedJornadas,
                         activeJornada = newActive,
-                        successMessage = "Jornada #$jornadaId eliminada correctamente."
+                        tandas = updatedTandas,
+                        movimientosMercaderia = updatedMovsMerc,
+                        allTransferencias = updatedTransf,
+                        consumoPersonalList = updatedConsumo,
+                        allOrders = updatedOrders,
+                        successMessage = "Jornada #$jornadaId y todos sus registros asociados eliminados definitivamente."
                     )
                 }
                 onComplete()
@@ -1943,24 +1966,60 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun eliminarTodasLasJornadas(onComplete: () -> Unit = {}) {
+    fun eliminarTodasLasJornadas(context: Context = getApplication(), onComplete: () -> Unit = {}) {
         viewModelScope.launch {
             try {
-                val jornadas = _uiState.value.allJornadas
-                jornadas.forEach { j ->
-                    repository.deleteJornadaById(j.id)
-                }
+                repository.deleteAllJornadasData()
+
+                CuadreDraftManager.clearAllDrafts(context)
+                CuadreCajaArchiveManager.deleteAllArchives(context)
+                com.example.util.InformeInsumosArchiveManager.deleteAllArchives(context)
+                com.example.util.CuadrePagosManager.clearAllPagos(context)
+                clearAllSessionPrefs(context)
+
                 _uiState.update { current ->
                     current.copy(
                         allJornadas = emptyList(),
                         activeJornada = null,
-                        successMessage = "Todas las jornadas han sido eliminadas y el contador ha sido reiniciado a JORNADA 1."
+                        tandas = emptyList(),
+                        movimientosMercaderia = emptyList(),
+                        allTransferencias = emptyList(),
+                        consumoPersonalList = emptyList(),
+                        allOrders = emptyList(),
+                        allOrderItems = emptyList(),
+                        successMessage = "Todas las jornadas han sido eliminadas definitivamente y el contador ha sido reiniciado a JORNADA 1."
                     )
                 }
                 onComplete()
             } catch (e: Exception) {
                 _uiState.update { it.copy(errorMessage = "Error al eliminar todas las jornadas: ${e.message}") }
             }
+        }
+    }
+
+    private fun clearSessionPrefsForJornada(context: Context, jornadaId: Long) {
+        try {
+            val prefs = context.getSharedPreferences("SessionPrefs", Context.MODE_PRIVATE)
+            val editor = prefs.edit()
+            val suffix = "_$jornadaId"
+            val sub = "_${jornadaId}_"
+            prefs.all.keys.forEach { key ->
+                if (key.endsWith(suffix) || key.contains(sub)) {
+                    editor.remove(key)
+                }
+            }
+            editor.apply()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun clearAllSessionPrefs(context: Context) {
+        try {
+            val prefs = context.getSharedPreferences("SessionPrefs", Context.MODE_PRIVATE)
+            prefs.edit().clear().apply()
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
@@ -3143,6 +3202,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
         }
+    }
+
+    fun updateGramajeProductoElaborado(productId: Long, gramajeVal: Double) {
+        viewModelScope.launch {
+            val prodElaborado = _uiState.value.productosElaborados.find { it.productId == productId }
+            if (prodElaborado != null) {
+                repository.updateProductoElaborado(
+                    prodElaborado.copy(gramaje = gramajeVal)
+                )
+            } else {
+                repository.insertProductoElaborado(
+                    ProductoElaborado(
+                        productId = productId,
+                        gramaje = gramajeVal
+                    )
+                )
+            }
+            val gramajeText = if (gramajeVal % 1.0 == 0.0) gramajeVal.toLong().toString() else "%.1f".format(gramajeVal)
+            _uiState.update { it.copy(successMessage = "Gramaje guardado: $gramajeText g") }
+        }
+    }
+
+    fun notifyProduccionModoChanged() {
+        _uiState.update { it.copy(produccionModoVersion = System.currentTimeMillis()) }
+    }
+
+    fun setProduccionModo(context: Context, productId: Long, modo: String) {
+        com.example.util.ProduccionModoHelper.setModo(context, productId, modo)
+        notifyProduccionModoChanged()
     }
 
     fun updatePagosPersonalProductoElaborado(

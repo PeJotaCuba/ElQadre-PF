@@ -75,6 +75,9 @@ interface JornadaDao {
     @Update
     suspend fun updateJornada(jornada: Jornada)
 
+    @Query("SELECT * FROM jornadas WHERE id = :id LIMIT 1")
+    suspend fun getJornadaById(id: Long): Jornada?
+
     @Query("DELETE FROM jornadas WHERE id = :id")
     suspend fun deleteJornadaById(id: Long)
 
@@ -186,6 +189,18 @@ interface TableOrderDao {
     @Query("DELETE FROM order_items WHERE orderId = :orderId")
     suspend fun deleteItemsForOrder(orderId: Long)
 
+    @Query("DELETE FROM order_items WHERE orderId IN (SELECT id FROM table_orders WHERE jornadaId = :jornadaId)")
+    suspend fun deleteOrderItemsByJornada(jornadaId: Long)
+
+    @Query("DELETE FROM order_items WHERE orderId IN (SELECT id FROM table_orders WHERE createdAt >= :openedAt AND createdAt <= :closedAt)")
+    suspend fun deleteOrderItemsByDateRange(openedAt: Long, closedAt: Long)
+
+    @Query("DELETE FROM table_orders WHERE jornadaId = :jornadaId")
+    suspend fun deleteOrdersByJornada(jornadaId: Long)
+
+    @Query("DELETE FROM table_orders WHERE createdAt >= :openedAt AND createdAt <= :closedAt")
+    suspend fun deleteOrdersByDateRange(openedAt: Long, closedAt: Long)
+
     @Query("DELETE FROM table_orders")
     suspend fun deleteAllOrders()
 
@@ -212,6 +227,9 @@ interface StockMovementDao {
 
     @Query("DELETE FROM stock_movements WHERE jornadaId = :jornadaId")
     suspend fun deleteMovementsByJornada(jornadaId: Long)
+
+    @Query("DELETE FROM stock_movements WHERE timestamp >= :openedAt AND timestamp <= :closedAt")
+    suspend fun deleteMovementsByDateRange(openedAt: Long, closedAt: Long)
 }
 
 @Dao
@@ -384,6 +402,12 @@ interface MercaderiaDao {
     @Update
     suspend fun updateMovimiento(movimiento: MovimientoMercaderia)
 
+    @Query("DELETE FROM movimientos_mercaderia WHERE jornadaId = :jornadaId")
+    suspend fun deleteMovimientosMercaderiaByJornada(jornadaId: Long)
+
+    @Query("DELETE FROM movimientos_mercaderia WHERE date >= :openedAt AND date <= :closedAt")
+    suspend fun deleteMovimientosByDateRange(openedAt: Long, closedAt: Long)
+
     @Query("DELETE FROM movimientos_mercaderia")
     suspend fun deleteAllMovimientos()
 
@@ -430,6 +454,12 @@ interface TandaDao {
 
     @Delete
     suspend fun delete(tanda: Tanda)
+
+    @Query("DELETE FROM tandas WHERE jornadaId = :jornadaId OR jornada = 'Jornada #' || :jornadaId OR jornada = 'JORNADA #' || :jornadaId")
+    suspend fun deleteTandasByJornada(jornadaId: Long)
+
+    @Query("DELETE FROM tandas WHERE date >= :openedAt AND date <= :closedAt")
+    suspend fun deleteTandasByDateRange(openedAt: Long, closedAt: Long)
 
     @Query("DELETE FROM tandas WHERE id IN (:ids)")
     suspend fun deleteByIds(ids: List<Long>)
@@ -488,6 +518,9 @@ interface ConsumoPersonalDao {
     @Query("DELETE FROM consumo_personal_items WHERE jornadaId = :jornadaId")
     suspend fun clearConsumoPersonalForJornada(jornadaId: Long)
 
+    @Query("DELETE FROM consumo_personal_items WHERE timestamp >= :openedAt AND timestamp <= :closedAt")
+    suspend fun clearConsumoPersonalByDateRange(openedAt: Long, closedAt: Long)
+
     @Query("DELETE FROM consumo_personal_items")
     suspend fun deleteAllConsumoPersonal()
 
@@ -529,6 +562,12 @@ interface TransferenciaDao {
 
     @Update
     suspend fun updateTransferencia(transferencia: Transferencia)
+
+    @Query("DELETE FROM transferencias WHERE jornadaId = :jornadaId")
+    suspend fun deleteTransferenciasByJornada(jornadaId: Long)
+
+    @Query("DELETE FROM transferencias WHERE receivedAt >= :openedAt AND receivedAt <= :closedAt")
+    suspend fun deleteTransferenciasByDateRange(openedAt: Long, closedAt: Long)
 
     @Query("DELETE FROM transferencias WHERE id = :id")
     suspend fun deleteTransferencia(id: Long)
@@ -589,6 +628,12 @@ interface SmsComandaQueueDao {
 
     @Query("SELECT * FROM sms_comandas_queue WHERE smsText = :smsText AND estado = 'PROCESADA' AND (jornadaId = :jornadaId OR :jornadaId = 0) LIMIT 1")
     suspend fun findProcessedDuplicate(smsText: String, jornadaId: Long): SmsComandaQueue?
+
+    @Query("DELETE FROM sms_comandas_queue WHERE jornadaId = :jornadaId")
+    suspend fun deleteSmsByJornada(jornadaId: Long)
+
+    @Query("DELETE FROM sms_comandas_queue WHERE receivedAt >= :openedAt AND receivedAt <= :closedAt")
+    suspend fun deleteSmsByDateRange(openedAt: Long, closedAt: Long)
 
     @Query("DELETE FROM sms_comandas_queue WHERE id = :id")
     suspend fun deleteById(id: Long)

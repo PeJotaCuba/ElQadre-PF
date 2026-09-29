@@ -78,7 +78,7 @@ object ProjectVersionManager {
         productName: String = "ElQadrePF",
         versionCode: Long = currentVersionCode,
         versionName: String = currentVersionName,
-        apkUrl: String = "https://github.com/PeJotaCuba/BD-Qadre-PF/releases/download/v1.1/ElQadrePF.apk",
+        apkUrl: String = "https://github.com/PeJotaCuba/BD-Qadre-PF/releases/download/v$currentVersionName/ElQadrePF.apk",
         notes: String = ""
     ): String {
         val json = JSONObject()

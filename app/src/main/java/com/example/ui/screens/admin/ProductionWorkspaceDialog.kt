@@ -543,10 +543,10 @@ fun ProductionWorkspaceDialog(
             onConfirm = { p, ppdVal, modo ->
                 if (p.id == 0L) {
                     viewModel.createProductElaborado(p, ppdVal) { newId ->
-                        com.example.util.ProduccionModoHelper.setModo(context, newId, modo)
+                        viewModel.setProduccionModo(context, newId, modo)
                     }
                 } else {
-                    com.example.util.ProduccionModoHelper.setModo(context, p.id, modo)
+                    viewModel.setProduccionModo(context, p.id, modo)
                     viewModel.updateProduct(p)
                     viewModel.updatePpd(p.id, ppdVal)
                 }
@@ -3017,20 +3017,20 @@ fun ProductDetailDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false
+            decorFitsSystemWindows = true
         )
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .padding(start = 14.dp, end = 14.dp, top = 18.dp, bottom = 110.dp)
                 .imePadding(),
             contentAlignment = Alignment.Center
         ) {
             Surface(
                 modifier = Modifier
-                    .fillMaxWidth(0.80f)
-                    .fillMaxHeight(0.80f),
+                    .fillMaxWidth()
+                    .fillMaxHeight(),
                 shape = RoundedCornerShape(20.dp),
                 color = Color(0xFFF8FAFC),
                 border = BorderStroke(1.5.dp, Slate200),
@@ -3388,6 +3388,25 @@ fun ProductDetailDialog(
                                 }
                             }
 
+                            val prodGramaje = prodElaborado?.gramaje ?: 0.0
+                            if (prodGramaje > 0.0) {
+                                Surface(
+                                    color = Slate50,
+                                    shape = RoundedCornerShape(8.dp),
+                                    border = BorderStroke(1.dp, Slate200),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text("Gramaje del Producto (cliente):", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Slate600)
+                                        Text("${if (prodGramaje % 1.0 == 0.0) prodGramaje.toLong() else prodGramaje} g", fontSize = 13.sp, fontWeight = FontWeight.Black, color = ElQadreNavy)
+                                    }
+                                }
+                            }
+
                             if (product.description.isNotBlank()) {
                                 Column {
                                     Text("DESCRIPCIÓN", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Slate500)
@@ -3689,32 +3708,103 @@ fun ProductDetailDialog(
                             }
                         }
                     }
+                    Spacer(modifier = Modifier.height(110.dp))
                 }
 
-                // BOTÓN DE CIERRE
+                // BARRA INFERIOR DE ACCIONES: SUBIDA POR ENCIMA DE LA BARRA DE NAVEGACIÓN ANDROID
                 Surface(
                     color = Color.White,
                     shadowElevation = 8.dp,
                     shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp),
                     border = BorderStroke(1.dp, Slate200),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .navigationBarsPadding()
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 20.dp, vertical = 14.dp)
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Button(
-                            onClick = onDismiss,
-                            shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(56.dp)
+                        // FILA 1: RECETA | FICHA
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Text("CERRAR DETALLE", fontSize = 16.sp, fontWeight = FontWeight.Black, color = Color.White)
+                            Button(
+                                onClick = { onManageRecipeClick(product) },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp)
+                                    .testTag("detail_bottom_btn_receta")
+                            ) {
+                                Icon(Icons.Default.MenuBook, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("RECETA", fontSize = 13.sp, fontWeight = FontWeight.Black)
+                            }
+
+                            Button(
+                                onClick = { onShowFichaCostoClick(product) },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = ElQadreGoldDark),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp)
+                                    .testTag("detail_bottom_btn_ficha")
+                            ) {
+                                Icon(Icons.Default.ReceiptLong, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("FICHA", fontSize = 13.sp, fontWeight = FontWeight.Black)
+                            }
+                        }
+
+                        // FILA 2: EDITAR | ELIMINAR | CERRAR
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = { onEditProductClick(product) },
+                                shape = RoundedCornerShape(10.dp),
+                                border = BorderStroke(1.5.dp, ElQadreNavy),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = ElQadreNavy),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(44.dp)
+                                    .testTag("detail_bottom_btn_editar")
+                            ) {
+                                Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("EDITAR", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+
+                            OutlinedButton(
+                                onClick = { onDeleteProductClick(product) },
+                                shape = RoundedCornerShape(10.dp),
+                                border = BorderStroke(1.5.dp, Rose600),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Rose600),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(44.dp)
+                                    .testTag("detail_bottom_btn_eliminar")
+                            ) {
+                                Icon(Icons.Default.DeleteOutline, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("ELIMINAR", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+
+                            Button(
+                                onClick = onDismiss,
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Slate700),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(44.dp)
+                                    .testTag("detail_bottom_btn_cerrar")
+                            ) {
+                                Text("CERRAR", fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+                            }
                         }
                     }
                 }

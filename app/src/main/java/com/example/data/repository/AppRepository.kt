@@ -1282,9 +1282,52 @@ class AppRepository(private val db: AppDatabase) {
 
     suspend fun updateJornada(jornada: Jornada) = db.jornadaDao().updateJornada(jornada)
     suspend fun deleteJornadaById(id: Long) {
+        val j = db.jornadaDao().getJornadaById(id)
+        val openedAt = j?.openedAt ?: 0L
+        val closedAt = (j?.closedAt ?: System.currentTimeMillis()) + 3600000L
+
+        db.tandaDao().deleteTandasByJornada(id)
+        if (openedAt > 0) db.tandaDao().deleteTandasByDateRange(openedAt, closedAt)
+
+        db.mercaderiaDao().deleteMovimientosMercaderiaByJornada(id)
+        if (openedAt > 0) db.mercaderiaDao().deleteMovimientosByDateRange(openedAt, closedAt)
+
+        db.transferenciaDao().deleteTransferenciasByJornada(id)
+        if (openedAt > 0) db.transferenciaDao().deleteTransferenciasByDateRange(openedAt, closedAt)
+
+        db.consumoPersonalDao().clearConsumoPersonalForJornada(id)
+        if (openedAt > 0) db.consumoPersonalDao().clearConsumoPersonalByDateRange(openedAt, closedAt)
+
+        db.tableOrderDao().deleteOrderItemsByJornada(id)
+        db.tableOrderDao().deleteOrdersByJornada(id)
+        if (openedAt > 0) {
+            db.tableOrderDao().deleteOrderItemsByDateRange(openedAt, closedAt)
+            db.tableOrderDao().deleteOrdersByDateRange(openedAt, closedAt)
+        }
+
+        db.stockMovementDao().deleteMovementsByJornada(id)
+        if (openedAt > 0) db.stockMovementDao().deleteMovementsByDateRange(openedAt, closedAt)
+
+        db.smsComandaQueueDao().deleteSmsByJornada(id)
+        if (openedAt > 0) db.smsComandaQueueDao().deleteSmsByDateRange(openedAt, closedAt)
+
         db.jornadaDao().deleteJornadaById(id)
+
         if (db.jornadaDao().getAllJornadasSync().isEmpty()) {
             db.jornadaDao().resetJornadaSequence()
         }
+    }
+
+    suspend fun deleteAllJornadasData() {
+        db.tandaDao().deleteAllTandas()
+        db.mercaderiaDao().deleteAllMovimientos()
+        db.transferenciaDao().deleteAllTransferencias()
+        db.consumoPersonalDao().deleteAllConsumoPersonal()
+        db.tableOrderDao().deleteAllOrderItems()
+        db.tableOrderDao().deleteAllOrders()
+        db.stockMovementDao().deleteAllMovements()
+        db.smsComandaQueueDao().deleteAll()
+        db.jornadaDao().deleteAllJornadas()
+        db.jornadaDao().resetJornadaSequence()
     }
 }

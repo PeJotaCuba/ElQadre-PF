@@ -129,4 +129,9 @@ object CuadrePagosManager {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().remove("$KEY_PREFIX$jornadaId").apply()
     }
+
+    fun clearAllPagos(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().clear().apply()
+    }
 }

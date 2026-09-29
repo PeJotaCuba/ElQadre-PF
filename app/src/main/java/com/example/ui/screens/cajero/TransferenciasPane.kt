@@ -3,6 +3,7 @@ package com.example.ui.screens.cajero
 import android.app.DatePickerDialog
 import android.content.res.Configuration
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -19,6 +20,9 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.outlined.AccountBalance
 import androidx.compose.material.icons.outlined.CalendarToday
+import androidx.compose.material.icons.outlined.Payments
+import androidx.compose.material.icons.outlined.PhoneAndroid
+import androidx.compose.material.icons.outlined.QrCode2
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -42,6 +46,16 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
+fun resolveTransferenciaOrigen(tx: Transferencia): String {
+    val raw = tx.rawSmsBody.uppercase()
+    val src = tx.source.uppercase()
+    return if (raw.contains("ENZONA") || src.contains("ENZONA")) {
+        "ENZONA"
+    } else {
+        "Transfermóvil"
+    }
+}
+
 @Composable
 fun TransferenciasPane(
     uiState: MainUiState,
@@ -51,49 +65,31 @@ fun TransferenciasPane(
 ) {
     val context = LocalContext.current
     val dateOnlyFormatter = remember { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()) }
-    val todayDateStr = remember(uiState.activeJornada) {
-        val nowCal = Calendar.getInstance()
-        if (uiState.activeJornada != null && uiState.activeJornada.openedAt > 0) {
-            val jCal = Calendar.getInstance().apply { timeInMillis = uiState.activeJornada.openedAt }
-            if (jCal.get(Calendar.YEAR) == nowCal.get(Calendar.YEAR) &&
-                jCal.get(Calendar.DAY_OF_YEAR) == nowCal.get(Calendar.DAY_OF_YEAR)
-            ) {
-                SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(uiState.activeJornada.openedAt))
-            } else {
-                SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date())
-            }
-        } else {
-            SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date())
-        }
-    }
-    var selectedTransferDateFilter by remember(todayDateStr) { mutableStateOf(todayDateStr) } // Default to "HOY"
+    val todayDateStr = remember { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date()) }
+    var selectedTransferDateFilter by remember { mutableStateOf(todayDateStr) } // Always starts on "HOY"
     var showInformeDialog by remember { mutableStateOf(false) }
     var showAgregarExternaDialog by remember { mutableStateOf(false) }
     var showConfirmBorrarTodoDialog by remember { mutableStateOf(false) }
     var pendingNewTransfersToConfirm by remember { mutableStateOf<List<com.example.util.SearchedPagoXMovilSms>>(emptyList()) }
     var selectedTransferForDetail by remember { mutableStateOf<Transferencia?>(null) }
 
+    // El escaneo para confirmar siempre busca transferencias de la jornada abierta, sin importar la fecha seleccionada visualmente
     fun autoSearchJornadaTransfers(showNoNewToast: Boolean = false) {
         val cal = Calendar.getInstance()
-        val nowCal = Calendar.getInstance()
-        if (uiState.activeJornada != null && uiState.activeJornada.openedAt > 0) {
-            val jCal = Calendar.getInstance().apply { timeInMillis = uiState.activeJornada.openedAt }
-            if (jCal.get(Calendar.YEAR) == nowCal.get(Calendar.YEAR) &&
-                jCal.get(Calendar.DAY_OF_YEAR) == nowCal.get(Calendar.DAY_OF_YEAR)
-            ) {
-                cal.timeInMillis = uiState.activeJornada.openedAt
-            }
+        val activeJ = uiState.activeJornada
+        if (activeJ != null && activeJ.openedAt > 0) {
+            cal.timeInMillis = activeJ.openedAt
         }
         val existingTxs = uiState.allTransferencias.map { it.transactionNumber.trim() }.toSet()
         val list = com.example.util.SmsSearchHelper.searchPagoXMovilByDate(context, cal, existingTxs)
         val seenTxs = mutableSetOf<String>()
-        val newOnly = list.filter { !it.isAlreadyRegistered && it.parsed.transactionNumber.isNotBlank() && seenTxs.add(it.parsed.transactionNumber) }
+        val newOnly = list.filter { !it.isAlreadyRegistered && it.parsed.transactionNumber.isNotBlank() && seenTxs.add(it.parsed.transactionNumber.trim()) }
         if (newOnly.isNotEmpty()) {
             pendingNewTransfersToConfirm = newOnly
         } else if (showNoNewToast) {
             android.widget.Toast.makeText(
                 context,
-                "Escaneo completado. No se encontraron nuevas transferencias.",
+                "Escaneo completado. No se encontraron nuevas transferencias para la jornada.",
                 android.widget.Toast.LENGTH_LONG
             ).show()
         }
@@ -141,28 +137,28 @@ fun TransferenciasPane(
         )
     }
 
+    // Filtrado estricto por la fecha seleccionada (HOY o Fecha elegida)
     val filteredTransfers = remember(uiState.allTransferencias, selectedTransferDateFilter) {
         uiState.allTransferencias.filter { tx ->
-            if (selectedTransferDateFilter == "TODAS") {
-                true
-            } else {
-                val txRecDate = dateOnlyFormatter.format(Date(tx.receivedAt))
-                val normalizedSmsDate = tx.smsDate.replace(Regex("^(\\d)/"), "0$1/").replace(Regex("/(\\d)/"), "/0$1/")
-                txRecDate == selectedTransferDateFilter ||
-                        tx.smsDate == selectedTransferDateFilter ||
-                        normalizedSmsDate == selectedTransferDateFilter
-            }
+            val txRecDate = dateOnlyFormatter.format(Date(tx.receivedAt))
+            val normalizedSmsDate = tx.smsDate.replace(Regex("^(\\d)/"), "0$1/").replace(Regex("/(\\d)/"), "/0$1/")
+            txRecDate == selectedTransferDateFilter ||
+                    tx.smsDate == selectedTransferDateFilter ||
+                    normalizedSmsDate == selectedTransferDateFilter
         }
     }
 
     val totalTransferAmount = remember(filteredTransfers) { filteredTransfers.sumOf { it.amount } }
+    val transfermovilCount = remember(filteredTransfers) { filteredTransfers.count { resolveTransferenciaOrigen(it) == "Transfermóvil" } }
+    val enzonaCount = remember(filteredTransfers) { filteredTransfers.count { resolveTransferenciaOrigen(it) == "ENZONA" } }
 
-    val isLandscapeMode = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val isDateToday = selectedTransferDateFilter == todayDateStr
+    val headerDateTitle = if (isDateToday) "TRANSFERENCIAS — HOY" else "TRANSFERENCIAS — $selectedTransferDateFilter"
 
     Column(
         modifier = modifier
             .fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         // Botones de acción principales (AGREGAR | INFORME | BORRAR TODO)
         Row(
@@ -216,76 +212,285 @@ fun TransferenciasPane(
             }
         }
 
-        // SELECTOR DE FECHA (Hoy -> Todas -> Elegir fecha)
+        // SELECTOR DE FECHA (Exclusivamente HOY y ELEGIR FECHA)
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Option "HOY"
+            // Opción "HOY"
             FilterChip(
-                selected = selectedTransferDateFilter == todayDateStr,
+                selected = isDateToday,
                 onClick = { selectedTransferDateFilter = todayDateStr },
-                label = { Text("Hoy", fontSize = 11.5.sp, fontWeight = FontWeight.Bold) },
-                modifier = Modifier.height(38.dp).testTag("chip_fecha_hoy")
+                leadingIcon = {
+                    if (isDateToday) {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp))
+                    }
+                },
+                label = {
+                    Text(
+                        text = "HOY",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                },
+                shape = RoundedCornerShape(10.dp),
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = ElQadreNavy,
+                    selectedLabelColor = Color.White,
+                    selectedLeadingIconColor = ElQadreGold
+                ),
+                border = FilterChipDefaults.filterChipBorder(
+                    enabled = true,
+                    selected = isDateToday,
+                    borderColor = if (isDateToday) ElQadreNavy else Slate300
+                ),
+                modifier = Modifier
+                    .height(40.dp)
+                    .testTag("chip_fecha_hoy")
             )
 
-            // Option "TODAS"
-            FilterChip(
-                selected = selectedTransferDateFilter == "TODAS",
-                onClick = { selectedTransferDateFilter = "TODAS" },
-                label = { Text("Todas", fontSize = 11.5.sp, fontWeight = FontWeight.Bold) },
-                modifier = Modifier.height(38.dp).testTag("chip_fecha_todas")
-            )
-
-            // Specific Date Selector Button ("Elegir fecha")
+            // Opción "ELEGIR FECHA"
             Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = if (selectedTransferDateFilter != "TODAS" && selectedTransferDateFilter != todayDateStr) ElQadreGold.copy(alpha = 0.15f) else Color.White,
-                border = BorderStroke(1.dp, if (selectedTransferDateFilter != "TODAS" && selectedTransferDateFilter != todayDateStr) ElQadreGold else Slate300),
+                shape = RoundedCornerShape(10.dp),
+                color = if (!isDateToday) Color(0xFFEFF6FF) else Color.White,
+                border = BorderStroke(1.5.dp, if (!isDateToday) Color(0xFF3B82F6) else Slate300),
                 modifier = Modifier
                     .weight(1f)
-                    .height(38.dp)
+                    .height(40.dp)
                     .clickable { datePickerDialog.show() }
                     .testTag("btn_selector_fecha_transferencias")
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 8.dp),
+                        .padding(horizontal = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Icon(Icons.Outlined.CalendarToday, contentDescription = null, modifier = Modifier.size(15.dp), tint = ElQadreNavy)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Icon(
+                            imageVector = Icons.Outlined.CalendarToday,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = if (!isDateToday) Color(0xFF1D4ED8) else ElQadreNavy
+                        )
                         Text(
-                            text = if (selectedTransferDateFilter == "TODAS" || selectedTransferDateFilter == todayDateStr) "Elegir Fecha..." else selectedTransferDateFilter,
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = ElQadreNavy
+                            text = if (isDateToday) "ELEGIR FECHA" else selectedTransferDateFilter,
+                            fontSize = 12.sp,
+                            fontWeight = if (!isDateToday) FontWeight.ExtraBold else FontWeight.Bold,
+                            color = if (!isDateToday) Color(0xFF1D4ED8) else ElQadreNavy
                         )
                     }
-                    if (selectedTransferDateFilter != "TODAS" && selectedTransferDateFilter != todayDateStr) {
+
+                    if (!isDateToday) {
                         IconButton(
                             onClick = { selectedTransferDateFilter = todayDateStr },
                             modifier = Modifier.size(24.dp)
                         ) {
-                            Icon(Icons.Default.Close, contentDescription = "Limpiar fecha", modifier = Modifier.size(14.dp), tint = Slate500)
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "Volver a hoy",
+                                modifier = Modifier.size(16.dp),
+                                tint = Color(0xFF1D4ED8)
+                            )
                         }
                     }
                 }
             }
         }
 
+        // =========================================================================
+        // BLOQUE DE INFORMACIÓN RESALTADA (Monto Total, Transfermóvil, ENZONA)
+        // =========================================================================
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = Color(0xFFF8FAFC),
+            border = BorderStroke(1.5.dp, ElQadreNavy.copy(alpha = 0.25f)),
+            shadowElevation = 2.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("resumen_transferencias_fecha_seleccionada")
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Título de la fecha mostrada
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = ElQadreNavy
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Payments,
+                                contentDescription = null,
+                                tint = ElQadreGold,
+                                modifier = Modifier
+                                    .padding(4.dp)
+                                    .size(16.dp)
+                            )
+                        }
+                        Text(
+                            text = headerDateTitle,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Black,
+                            color = ElQadreNavy
+                        )
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = Color.White,
+                        border = BorderStroke(1.dp, Slate200)
+                    ) {
+                        Text(
+                            text = "${filteredTransfers.size} total",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Slate600,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+
+                HorizontalDivider(color = Slate200)
+
+                // Monto total resaltado
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Monto total:",
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Slate700
+                    )
+                    Text(
+                        text = "$${"%,.2f".format(totalTransferAmount)} CUP",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color(0xFF0284C7)
+                    )
+                }
+
+                // Desglose por origen real: Transfermóvil y ENZONA
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Transfermóvil Counter Card
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFFE0F2FE),
+                        border = BorderStroke(1.dp, Color(0xFFBAE6FD)),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.PhoneAndroid,
+                                    contentDescription = null,
+                                    tint = Color(0xFF0369A1),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = "Transfermóvil:",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF0369A1)
+                                )
+                            }
+                            Text(
+                                text = "$transfermovilCount",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFF0369A1)
+                            )
+                        }
+                    }
+
+                    // ENZONA Counter Card
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFFEDE9FE),
+                        border = BorderStroke(1.dp, Color(0xFFDDD6FE)),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.QrCode2,
+                                    contentDescription = null,
+                                    tint = Color(0xFF6D28D9),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = "ENZONA:",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF6D28D9)
+                                )
+                            }
+                            Text(
+                                text = "$enzonaCount",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFF6D28D9)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // =========================================================================
+        // LISTADO DE TRANSFERENCIAS DE LA FECHA SELECCIONADA
+        // =========================================================================
         if (filteredTransfers.isEmpty()) {
-            Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Outlined.AccountBalance, null, tint = Slate300, modifier = Modifier.size(48.dp))
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = if (uiState.allTransferencias.isEmpty()) "No se han recibido transferencias aún." else "No se encontraron transferencias para la fecha seleccionada.",
+                        text = if (uiState.allTransferencias.isEmpty()) "No se han recibido transferencias aún." else "No se encontraron transferencias para la fecha seleccionada ($selectedTransferDateFilter).",
                         color = Slate500,
-                        fontSize = 12.sp,
+                        fontSize = 12.5.sp,
                         textAlign = TextAlign.Center
                     )
                 }
@@ -297,13 +502,14 @@ fun TransferenciasPane(
                     .fillMaxWidth(),
                 contentPadding = PaddingValues(
                     start = 0.dp,
-                    top = 4.dp,
+                    top = 2.dp,
                     end = 0.dp,
                     bottom = 16.dp
                 ),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(filteredTransfers) { tx ->
+                    val origenReal = resolveTransferenciaOrigen(tx)
                     Surface(
                         shape = RoundedCornerShape(12.dp),
                         color = Color.White,
@@ -328,30 +534,33 @@ fun TransferenciasPane(
                                         color = ElQadreNavy
                                     )
 
-                                    if (tx.isManual) {
+                                    // Identificación Real del Origen: Transfermóvil o ENZONA
+                                    if (origenReal == "ENZONA") {
                                         Surface(
                                             shape = RoundedCornerShape(4.dp),
-                                            color = Color(0xFFF3E8FF)
+                                            color = Color(0xFFEDE9FE),
+                                            border = BorderStroke(0.5.dp, Color(0xFFDDD6FE))
                                         ) {
                                             Text(
-                                                text = "MANUAL",
-                                                fontSize = 8.5.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color(0xFF7E22CE),
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                text = "ENZONA",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = Color(0xFF6D28D9),
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp)
                                             )
                                         }
                                     } else {
                                         Surface(
                                             shape = RoundedCornerShape(4.dp),
-                                            color = Color(0xFFE0F2FE)
+                                            color = Color(0xFFE0F2FE),
+                                            border = BorderStroke(0.5.dp, Color(0xFFBAE6FD))
                                         ) {
                                             Text(
-                                                text = "SMS",
-                                                fontSize = 8.5.sp,
-                                                fontWeight = FontWeight.Bold,
+                                                text = "Transfermóvil",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Black,
                                                 color = Color(0xFF0369A1),
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp)
                                             )
                                         }
                                     }
@@ -414,20 +623,16 @@ fun TransferenciasPane(
     if (showInformeDialog) {
         val filteredForReport = remember(uiState.allTransferencias, selectedTransferDateFilter) {
             uiState.allTransferencias.filter { tx ->
-                if (selectedTransferDateFilter == "TODAS") {
-                    true
-                } else {
-                    val txRecDate = dateOnlyFormatter.format(Date(tx.receivedAt))
-                    val normalizedSmsDate = tx.smsDate.replace(Regex("^(\\d)/"), "0$1/").replace(Regex("/(\\d)/"), "/0$1/")
-                    txRecDate == selectedTransferDateFilter ||
-                            tx.smsDate == selectedTransferDateFilter ||
-                            normalizedSmsDate == selectedTransferDateFilter
-                }
+                val txRecDate = dateOnlyFormatter.format(Date(tx.receivedAt))
+                val normalizedSmsDate = tx.smsDate.replace(Regex("^(\\d)/"), "0$1/").replace(Regex("/(\\d)/"), "/0$1/")
+                txRecDate == selectedTransferDateFilter ||
+                        tx.smsDate == selectedTransferDateFilter ||
+                        normalizedSmsDate == selectedTransferDateFilter
             }
         }
 
         InformeTransferenciasDialog(
-            filterLabel = if (selectedTransferDateFilter == "TODAS") "TODAS LAS FECHAS" else selectedTransferDateFilter,
+            filterLabel = if (selectedTransferDateFilter == todayDateStr) "HOY ($todayDateStr)" else selectedTransferDateFilter,
             transfers = filteredForReport,
             cajeroUsername = uiState.currentUser?.username ?: "cajero",
             ownerPhone = uiState.generalConfig?.telefonoDueno ?: "",
