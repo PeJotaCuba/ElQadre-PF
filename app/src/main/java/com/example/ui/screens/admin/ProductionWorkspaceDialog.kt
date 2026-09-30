@@ -1586,40 +1586,61 @@ fun AddEditMateriaPrimaDialog(
     // Dedicated state variables per mode to ensure strict exclusivity and no data leakage
     var unidadPurchaseQtyText by remember {
         mutableStateOf(
-            if (materia != null && initialMode == "POR UNIDAD" && materia.purchaseQuantity > 0.0) materia.purchaseQuantity.toString() else ""
+            if (materia != null && initialMode == "POR UNIDAD" && materia.purchaseQuantity > 0.0) {
+                if (materia.purchaseQuantity % 1.0 == 0.0) materia.purchaseQuantity.toInt().toString() else materia.purchaseQuantity.toString()
+            } else "1"
         )
     }
     var unidadQtyText by remember {
         mutableStateOf(
-            if (materia != null && initialMode == "POR UNIDAD" && materia.purchaseQuantity > 0.0) materia.purchaseQuantity.toString() else ""
+            if (materia != null && initialMode == "POR UNIDAD" && materia.purchaseQuantity > 0.0) {
+                if (materia.purchaseQuantity % 1.0 == 0.0) materia.purchaseQuantity.toInt().toString() else materia.purchaseQuantity.toString()
+            } else "1"
         )
     }
     var unidadPriceText by remember {
         mutableStateOf(
-            if (materia != null && initialMode == "POR UNIDAD" && materia.purchasePrice > 0.0) materia.purchasePrice.toString() else ""
+            if (materia != null && initialMode == "POR UNIDAD") {
+                if (materia.purchasePrice > 0.0) {
+                    if (materia.purchasePrice % 1.0 == 0.0) materia.purchasePrice.toInt().toString() else "%.2f".format(materia.purchasePrice)
+                } else if (materia.unitCost > 0.0) {
+                    val pUnit = materia.purchaseUnit.ifEmpty { materia.unit }
+                    val conv = convertToBaseQty(1.0, pUnit)
+                    val pPrice = materia.unitCost * conv
+                    if (pPrice > 0.0) {
+                        if (pPrice % 1.0 == 0.0) pPrice.toInt().toString() else "%.2f".format(pPrice)
+                    } else ""
+                } else ""
+            } else ""
         )
     }
 
     var lotePurchaseQtyText by remember {
         mutableStateOf(
-            if (materia != null && initialMode == "POR LOTE" && materia.purchaseQuantity > 0.0) materia.purchaseQuantity.toString() else ""
+            if (materia != null && initialMode == "POR LOTE" && materia.purchaseQuantity > 0.0) {
+                if (materia.purchaseQuantity % 1.0 == 0.0) materia.purchaseQuantity.toInt().toString() else materia.purchaseQuantity.toString()
+            } else "1"
         )
     }
     var loteUnitsText by remember {
         mutableStateOf(
-            if (materia != null && initialMode == "POR LOTE" && materia.purchaseLotUnits > 0.0) materia.purchaseLotUnits.toString() else ""
+            if (materia != null && initialMode == "POR LOTE" && materia.purchaseLotUnits > 0.0) {
+                if (materia.purchaseLotUnits % 1.0 == 0.0) materia.purchaseLotUnits.toInt().toString() else materia.purchaseLotUnits.toString()
+            } else ""
         )
     }
     var numLotesText by remember {
         mutableStateOf(
             if (materia != null && initialMode == "POR LOTE" && materia.purchaseLotQuantity > 0.0) {
                 if (materia.purchaseLotQuantity % 1.0 == 0.0) materia.purchaseLotQuantity.toInt().toString() else materia.purchaseLotQuantity.toString()
-            } else ""
+            } else "1"
         )
     }
     var lotePriceText by remember {
         mutableStateOf(
-            if (materia != null && initialMode == "POR LOTE" && materia.purchaseLotPrice > 0.0) materia.purchaseLotPrice.toString() else ""
+            if (materia != null && initialMode == "POR LOTE" && materia.purchaseLotPrice > 0.0) {
+                if (materia.purchaseLotPrice % 1.0 == 0.0) materia.purchaseLotPrice.toInt().toString() else "%.2f".format(materia.purchaseLotPrice)
+            } else ""
         )
     }
 
@@ -1670,15 +1691,35 @@ fun AddEditMateriaPrimaDialog(
     val sharedDivisor = (sharedDivisorStr.toIntOrNull() ?: 1).coerceIn(1, 5)
     val assignedExpensesToProduct = totalPurchaseExpenses / sharedDivisor
 
-    val activeQtyVal = if (isPorUnidad) unidadQtyVal else (loteUnitsVal * numLotesVal)
-    val activeInvestment = if (isPorUnidad) (unidadPriceVal * unidadQtyVal) else (lotePriceVal * numLotesVal)
+    val activeQtyVal = if (isPorUnidad) {
+        if (unidadQtyVal > 0.0) unidadQtyVal else (if (unidadPurchaseQtyVal > 0.0) unidadPurchaseQtyVal else 1.0)
+    } else {
+        (if (loteUnitsVal > 0.0) loteUnitsVal else 1.0) * numLotesVal
+    }
+    val activeInvestment = if (isPorUnidad) {
+        unidadPriceVal * (if (unidadQtyVal > 0.0) unidadQtyVal else 1.0)
+    } else {
+        lotePriceVal * numLotesVal
+    }
     val activeTotalFinalCost = activeInvestment + assignedExpensesToProduct
     val activeRawUnitCost = if (isPorUnidad) {
-        unidadPriceVal
+        val qtyPerUnit = if (unidadPurchaseQtyVal > 0.0 && unidadQtyVal <= 0.0) unidadPurchaseQtyVal else 1.0
+        if (qtyPerUnit > 0.0) unidadPriceVal / qtyPerUnit else unidadPriceVal
     } else {
         if (loteUnitsVal > 0.0) lotePriceVal / loteUnitsVal else 0.0
     }
-    val activeUnitCostPurchased = if (activeQtyVal > 0.0) activeTotalFinalCost / activeQtyVal else activeRawUnitCost
+    val activeUnitCostPurchased = if (activeQtyVal > 0.0 && assignedExpensesToProduct > 0.0) {
+        activeTotalFinalCost / activeQtyVal
+    } else {
+        activeRawUnitCost
+    }
+    val activeCostPerBase = if (isPorUnidad) {
+        if (unidadPriceVal > 0.0) getNormalizedCost(activeUnitCostPurchased, purchaseUnit)
+        else (materia?.unitCost ?: 0.0)
+    } else {
+        if (lotePriceVal > 0.0) getNormalizedCost(activeUnitCostPurchased, purchaseUnit)
+        else (materia?.unitCost ?: 0.0)
+    }
     val activeInitialStockBase = convertToBaseQty(activeQtyVal, purchaseUnit)
 
     // Ensure purchaseUnit is in compatible list
@@ -2543,7 +2584,7 @@ fun AddEditMateriaPrimaDialog(
                         }
 
                         // CUADRO DE CÁLCULO EN VIVO
-                        if ((isPorUnidad && unidadPriceVal > 0.0 && unidadQtyVal > 0.0) || (!isPorUnidad && lotePriceVal > 0.0 && loteUnitsVal > 0.0)) {
+                        if ((isPorUnidad && unidadPriceVal > 0.0) || (!isPorUnidad && lotePriceVal > 0.0)) {
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
                                 color = if (isPorUnidad) Color(0xFFF0FDF4) else Color(0xFFEFF6FF),
@@ -2559,7 +2600,7 @@ fun AddEditMateriaPrimaDialog(
                                             color = Color(0xFF1E3A8A)
                                         )
                                         Text(
-                                            text = "Cálculo: $${"%.2f".format(lotePriceVal)} ÷ ${"%.1f".format(loteUnitsVal)} $purchaseUnit = $${"%.2f".format(activeRawUnitCost)} CUP / $purchaseUnit",
+                                            text = "Cálculo: $${"%.2f".format(lotePriceVal)} ÷ ${"%.1f".format(if (loteUnitsVal > 0.0) loteUnitsVal else 1.0)} $purchaseUnit = $${"%.2f".format(activeRawUnitCost)} CUP / $purchaseUnit",
                                             fontSize = 14.sp,
                                             fontWeight = FontWeight.Black,
                                             color = Color(0xFF0F766E)
@@ -2579,7 +2620,7 @@ fun AddEditMateriaPrimaDialog(
                                         color = Slate800
                                     )
                                     Text(
-                                        text = "Costo unitario final resultante: $${"%.2f".format(activeUnitCostPurchased)} CUP / $purchaseUnit (${"%.4f".format(getNormalizedCost(activeUnitCostPurchased, purchaseUnit))} CUP / $baseUnitCategory)",
+                                        text = "Costo unitario final resultante: $${"%.2f".format(activeUnitCostPurchased)} CUP / $purchaseUnit (${"%.4f".format(activeCostPerBase)} CUP / $baseUnitCategory)",
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.SemiBold,
                                         color = Slate700
@@ -2836,11 +2877,7 @@ fun AddEditMateriaPrimaDialog(
                         Button(
                             onClick = {
                                 val isUnit = purchaseMode == "POR UNIDAD"
-                                val qtyToUse = if (isUnit) unidadQtyVal else loteUnitsVal
                                 val priceToUse = if (isUnit) unidadPriceVal else lotePriceVal
-                                val cantidadLotes = if (isUnit) 1.0 else numLotesVal
-                                val totalQuantity = if (isUnit) qtyToUse else (qtyToUse * cantidadLotes)
-                                val totalInvestmentCalc = if (isUnit) (priceToUse * qtyToUse) else (priceToUse * cantidadLotes)
                                 
                                 if (name.isBlank()) {
                                     errorMessage = "El nombre del insumo no puede estar vacío."
@@ -2852,13 +2889,8 @@ fun AddEditMateriaPrimaDialog(
                                     showError = true
                                     return@Button
                                 }
-                                if (qtyToUse <= 0.0 && materia == null) {
-                                    errorMessage = if (isUnit) "La cantidad de unidades debe ser mayor a 0." else "Las unidades del lote deben ser mayor a 0."
-                                    showError = true
-                                    return@Button
-                                }
-                                if (cantidadLotes <= 0.0 && materia == null) {
-                                    errorMessage = "La cantidad de lotes debe ser mayor a 0."
+                                if (activeQtyVal <= 0.0 && materia == null) {
+                                    errorMessage = if (isUnit) "La cantidad debe ser mayor a 0." else "Las unidades del lote deben ser mayor a 0."
                                     showError = true
                                     return@Button
                                 }
@@ -2889,25 +2921,13 @@ fun AddEditMateriaPrimaDialog(
                                 }
 
                                 val baseUnit = baseUnitCategory
-                                val totalPurchaseExpenses = purchaseExpensesStr.trim().toDoubleOrNull() ?: 0.0
-                                val sharedDivisor = (sharedDivisorStr.toIntOrNull() ?: 1).coerceIn(1, 5)
-                                val assignedExpensesToProduct = totalPurchaseExpenses / sharedDivisor
-                                val totalFinalCostOfPurchase = totalInvestmentCalc + assignedExpensesToProduct
-                                val rawUnitCost = if (isUnit) priceToUse else (if (qtyToUse > 0.0) priceToUse / qtyToUse else 0.0)
-                                val unitCostPurchased = if (totalQuantity > 0.0) totalFinalCostOfPurchase / totalQuantity else rawUnitCost
-                                val costPerBase = if (totalQuantity > 0.0) {
-                                    val computed = getNormalizedCost(unitCostPurchased, purchaseUnit)
-                                    if (materia != null) maxOf(materia.unitCost, computed) else computed
-                                } else {
-                                    materia?.unitCost ?: 0.0
-                                }
-                                val initialStockInBase = convertToBaseQty(totalQuantity, purchaseUnit)
+                                val costPerBase = activeCostPerBase
 
-                                val finalInitialStock = if (totalQuantity > 0.0) initialStockInBase else (materia?.initialStock ?: 0.0)
+                                val finalInitialStock = if (activeQtyVal > 0.0) activeInitialStockBase else (materia?.initialStock ?: 0.0)
                                 val finalStock = if (materia == null) {
-                                    initialStockInBase
+                                    activeInitialStockBase
                                 } else if (!isJornadaOpen) {
-                                    if (totalQuantity > 0.0) initialStockInBase else materia.stock
+                                    if (activeQtyVal > 0.0) activeInitialStockBase else materia.stock
                                 } else {
                                     materia.stock
                                 }
@@ -2925,9 +2945,9 @@ fun AddEditMateriaPrimaDialog(
                                     isActive = isActive,
                                     stock = finalStock,
                                     initialStock = finalInitialStock,
-                                    purchasePrice = if (isUnit) priceToUse else 0.0,
+                                    purchasePrice = if (isUnit) unidadPriceVal else 0.0,
                                     purchaseUnit = purchaseUnit,
-                                    purchaseQuantity = if (isUnit) (if (qtyToUse > 0.0) qtyToUse else (if (unidadPurchaseQtyVal > 0.0) unidadPurchaseQtyVal else 1.0)) else (if (lotePurchaseQtyVal > 0.0) lotePurchaseQtyVal else 0.0),
+                                    purchaseQuantity = if (isUnit) (if (unidadQtyVal > 0.0) unidadQtyVal else (if (unidadPurchaseQtyVal > 0.0) unidadPurchaseQtyVal else 1.0)) else (if (lotePurchaseQtyVal > 0.0) lotePurchaseQtyVal else 0.0),
                                     productId = linkedProductId,
                                     isAgregado = isAgregado,
                                     rationQuantity = rationQtyVal,
@@ -2937,9 +2957,9 @@ fun AddEditMateriaPrimaDialog(
                                     stockEnVenta = materia?.stockEnVenta ?: 0.0,
                                     racionesEnVenta = materia?.racionesEnVenta ?: 0.0,
                                     purchaseMode = purchaseMode,
-                                    purchaseLotUnits = if (!isUnit) qtyToUse else 0.0,
-                                    purchaseLotQuantity = if (!isUnit) cantidadLotes else 0.0,
-                                    purchaseLotPrice = if (!isUnit) priceToUse else 0.0
+                                    purchaseLotUnits = if (!isUnit) (if (loteUnitsVal > 0.0) loteUnitsVal else 0.0) else 0.0,
+                                    purchaseLotQuantity = if (!isUnit) numLotesVal else 0.0,
+                                    purchaseLotPrice = if (!isUnit) lotePriceVal else 0.0
                                 )
 
                                 onConfirm(
@@ -3017,24 +3037,25 @@ fun ProductDetailDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = true
+            decorFitsSystemWindows = false
         )
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(start = 14.dp, end = 14.dp, top = 18.dp, bottom = 110.dp)
+                .navigationBarsPadding()
+                .statusBarsPadding()
                 .imePadding(),
             contentAlignment = Alignment.Center
         ) {
             Surface(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .fillMaxHeight(),
+                    .fillMaxWidth(0.92f)
+                    .fillMaxHeight(0.80f),
                 shape = RoundedCornerShape(20.dp),
                 color = Color(0xFFF8FAFC),
                 border = BorderStroke(1.5.dp, Slate200),
-                shadowElevation = 8.dp
+                shadowElevation = 10.dp
             ) {
                 Column(
                     modifier = Modifier.fillMaxSize()
@@ -3708,7 +3729,7 @@ fun ProductDetailDialog(
                             }
                         }
                     }
-                    Spacer(modifier = Modifier.height(110.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
                 }
 
                 // BARRA INFERIOR DE ACCIONES: SUBIDA POR ENCIMA DE LA BARRA DE NAVEGACIÓN ANDROID
@@ -4436,17 +4457,15 @@ fun RecipeManagementDialog(
 
     val baseYield = baseYieldText.toDoubleOrNull() ?: (prodElaborado?.baseYield ?: 1.0)
     
-    // CÁLCULOS CORREGIDOS DE LA RECETA
-    // costo total = costo completo de la receta
-    val recipeCost = ingredients.sumOf { ing ->
-        val raw = uiState.materiasPrimas.find { it.id == ing.materiaPrimaId }
-        val unitCost = raw?.unitCost ?: 0.0
-        ing.quantity * unitCost
-    }
-    // costo unitario = costo total ÷ rendimiento
+    // CÁLCULOS EN TIEMPO REAL USANDO LOS PRECIOS ACTUALES DE INSUMOS
+    val ingredientDetails = com.example.util.CostCalculationHelper.calculateIngredientDetails(
+        productId = product.id,
+        recetaIngredientes = ingredients,
+        materiasPrimas = uiState.materiasPrimas,
+        prodElaboradoId = prodElaborado?.id
+    )
+    val recipeCost = ingredientDetails.sumOf { it.totalCost }
     val unitCost = if (baseYield > 0.0) recipeCost / baseYield else recipeCost
-    // precio de venta = precio por unidad
-    // margen estimado = calcular usando costo unitario y precio de venta por unidad
     val marginAmt = salePrice - unitCost
     val marginPct = if (salePrice > 0.0) (marginAmt / salePrice) * 100.0 else 0.0
 
@@ -4658,8 +4677,9 @@ fun RecipeManagementDialog(
                                 }
                             } else {
                                 ingredients.forEach { ing ->
-                                    val raw = uiState.materiasPrimas.find { it.id == ing.materiaPrimaId }
-                                    val totalIngCost = ing.quantity * (raw?.unitCost ?: 0.0)
+                                    val ingDetail = ingredientDetails.find { it.materiaPrima?.id == ing.materiaPrimaId }
+                                    val raw = ingDetail?.materiaPrima ?: uiState.materiasPrimas.find { it.id == ing.materiaPrimaId }
+                                    val totalIngCost = ingDetail?.totalCost ?: (ing.quantity * (raw?.unitCost ?: 0.0))
 
                                     Surface(
                                         shape = RoundedCornerShape(12.dp),

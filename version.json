@@ -1,8 +1,8 @@
 {
   "product": "ElQadrePF",
-  "versionCode": 6,
-  "versionName": "1.1.4",
-  "apkUrl": "https://github.com/PeJotaCuba/BD-Qadre-PF/releases/download/v1.1.4/ElQadrePF.apk",
-  "releaseDate": "2026-09-26T16:05:00Z",
-  "notes": "Creación y cierre automático de Tanda 00 a partir de unidades pendientes para DUEÑO"
+  "versionCode": 9,
+  "versionName": "1.1.7",
+  "apkUrl": "https://github.com/PeJotaCuba/BD-Qadre-PF/releases/download/v1.1.7/ElQadrePF.apk",
+  "releaseDate": "2026-09-30T18:51:56Z",
+  "notes": "Filtro estricto por fecha real del SMS en transferencias de Cuadre de Caja (Transfermovil y ENZONA)"
 }

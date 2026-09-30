@@ -340,15 +340,6 @@ fun CajeroScreen(
         )
     }
 
-    if (uiState.showTransferAlert && uiState.pendingTransferAlert != null) {
-        TransferenciaAlertDialog(
-            parsed = uiState.pendingTransferAlert!!,
-            uiState = uiState,
-            viewModel = viewModel,
-            onDismiss = { viewModel.dismissTransferAlert() }
-        )
-    }
-
     if (uiState.showComandaAlert && uiState.pendingComandaAlert != null) {
         val alertData = uiState.pendingComandaAlert!!
         ComandaSmsAlertDialog(

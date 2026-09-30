@@ -18,6 +18,59 @@ data class SearchedPagoXMovilSms(
 
 object SmsSearchHelper {
 
+    /**
+     * Comprueba si una fecha en texto (ej. "27/8/2026" o "30/09/2026") coincide exactamente con el día, mes y año objetivo.
+     */
+    fun isDateMatchingText(dateStr: String, targetDay: Int, targetMonth: Int, targetYear: Int): Boolean {
+        if (dateStr.isBlank()) return false
+        val clean = dateStr.trim().replace('-', '/').replace('.', '/')
+        val parts = clean.split('/')
+        if (parts.size >= 3) {
+            val d = parts[0].trim().toIntOrNull() ?: return false
+            val m = parts[1].trim().toIntOrNull() ?: return false
+            var y = parts[2].trim().toIntOrNull() ?: return false
+            if (y < 100) y += 2000
+            return d == targetDay && m == targetMonth && y == targetYear
+        }
+        return false
+    }
+
+    /**
+     * Comprueba si una transferencia corresponde a la fecha de la jornada/filtro objetivo:
+     * - Para Transfermóvil: Se utiliza estrictamente la fecha real extraída del texto del SMS (ej. "Fecha: 27/8/2026.").
+     * - Para ENZONA: Se utiliza la fecha real de recepción del SMS en el sistema Android (o la fecha del texto si la incluye).
+     */
+    fun doesSmsMatchTargetDate(
+        parsed: ParsedTransferSms,
+        smsReceivedMillis: Long,
+        targetDateCalendar: Calendar
+    ): Boolean {
+        val targetDay = targetDateCalendar.get(Calendar.DAY_OF_MONTH)
+        val targetMonth = targetDateCalendar.get(Calendar.MONTH) + 1 // 1-12
+        val targetYear = targetDateCalendar.get(Calendar.YEAR)
+
+        val isTransfermovil = parsed.gateway.equals("Transfermóvil", ignoreCase = true) ||
+                SmsTransferParser.isTransfermovilTransferSms(parsed.rawText)
+
+        if (isTransfermovil && parsed.dateStr.isNotBlank()) {
+            // Transfermóvil: la fecha de referencia es la fecha explícita en el cuerpo del mensaje
+            return isDateMatchingText(parsed.dateStr, targetDay, targetMonth, targetYear)
+        } else {
+            // ENZONA: utilizar la fecha/hora real de recepción en el sistema Android
+            val effectiveMillis = if (smsReceivedMillis > 0L) smsReceivedMillis else parsed.timestampMillis
+            if (effectiveMillis <= 0L) return false
+            val smsCal = Calendar.getInstance().apply { timeInMillis = effectiveMillis }
+            val sDay = smsCal.get(Calendar.DAY_OF_MONTH)
+            val sMonth = smsCal.get(Calendar.MONTH) + 1
+            val sYear = smsCal.get(Calendar.YEAR)
+            return sDay == targetDay && sMonth == targetMonth && sYear == targetYear
+        }
+    }
+
+    /**
+     * Busca transferencias por SMS de los remitentes autorizados que correspondan ÚNICAMENTE
+     * al día indicado por targetDateCalendar, respetando los 4 formatos válidos.
+     */
     fun searchPagoXMovilByDate(
         context: Context,
         targetDateCalendar: Calendar,
@@ -28,26 +81,6 @@ object SmsSearchHelper {
         if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_SMS) != PackageManager.PERMISSION_GRANTED) {
             return results
         }
-
-        // Calculate start and end of target day in local timezone
-        val startCal = (targetDateCalendar.clone() as Calendar).apply {
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }
-        val endCal = (targetDateCalendar.clone() as Calendar).apply {
-            set(Calendar.HOUR_OF_DAY, 23)
-            set(Calendar.MINUTE, 59)
-            set(Calendar.SECOND, 59)
-            set(Calendar.MILLISECOND, 999)
-        }
-        val startMillis = startCal.timeInMillis
-        val endMillis = endCal.timeInMillis
-
-        val targetDay = targetDateCalendar.get(Calendar.DAY_OF_MONTH)
-        val targetMonth = targetDateCalendar.get(Calendar.MONTH) + 1 // 1-12
-        val targetYear = targetDateCalendar.get(Calendar.YEAR)
 
         try {
             val uri = Uri.parse("content://sms/inbox")
@@ -78,50 +111,25 @@ object SmsSearchHelper {
                     val dateMillis = it.getLong(dateIdx)
                     val dateSentMillis = if (dateSentIdx >= 0) it.getLong(dateSentIdx) else 0L
 
-                    val isPagoXMovilOrEnzona = address.contains("PAGOxMOVIL", ignoreCase = true) ||
-                            address.contains("PAGO POR MOVIL", ignoreCase = true) ||
-                            address.contains("TRANSFERMOVIL", ignoreCase = true) ||
-                            address.contains("PAGOMOVIL", ignoreCase = true) ||
-                            address.contains("ENZONA", ignoreCase = true) ||
-                            address.contains("EN ZONA", ignoreCase = true) ||
-                            address.contains("8888", ignoreCase = true) ||
-                            address.contains("5000", ignoreCase = true) ||
-                            address.contains("4000", ignoreCase = true) ||
-                            address.contains("BANDEC", ignoreCase = true) ||
-                            address.contains("BANMET", ignoreCase = true) ||
-                            address.contains("BPA", ignoreCase = true) ||
-                            body.contains("PAGOxMOVIL", ignoreCase = true) ||
-                            body.contains("PAGO POR MOVIL", ignoreCase = true) ||
-                            body.contains("TRANSFERMOVIL", ignoreCase = true) ||
-                            body.contains("ENZONA", ignoreCase = true) ||
-                            body.contains("EN ZONA", ignoreCase = true) ||
-                            SmsTransferParser.isValidTransferSms(body)
+                    val isAuthorized = SmsTransferParser.isAuthorizedSender(address)
 
-                    if (isPagoXMovilOrEnzona) {
+                    if (isAuthorized) {
                         val effectiveSmsMillis = when {
                             dateMillis > 0L -> dateMillis
                             dateSentMillis > 0L -> dateSentMillis
-                            else -> startMillis
+                            else -> 0L
                         }
-                        val parsed = SmsTransferParser.parseTransferSms(body, effectiveSmsMillis)
+                        val parsed = SmsTransferParser.parseTransferSms(body, effectiveSmsMillis, address)
                         if (parsed != null && parsed.transactionNumber.isNotBlank() && parsed.amount > 0.0) {
-                            val finalEffectiveMillis = when {
-                                dateMillis > 0L -> dateMillis
-                                dateSentMillis > 0L -> dateSentMillis
-                                parsed.timestampMillis > 0L -> parsed.timestampMillis
-                                else -> startMillis
-                            }
-
-                            // Check date match
-                            val matchesEpoch = (dateMillis in startMillis..endMillis) ||
-                                    (dateSentMillis in startMillis..endMillis) ||
-                                    (parsed.timestampMillis in startMillis..endMillis) ||
-                                    (finalEffectiveMillis in startMillis..endMillis)
-                            val matchesTextDate = isDateMatchingText(parsed.dateStr, targetDay, targetMonth, targetYear)
-
-                            if (matchesEpoch || matchesTextDate) {
+                            if (doesSmsMatchTargetDate(parsed, effectiveSmsMillis, targetDateCalendar)) {
                                 val txClean = parsed.transactionNumber.trim()
                                 val isRegistered = existingTransactions.contains(txClean)
+                                
+                                val finalEffectiveMillis = when {
+                                    parsed.timestampMillis > 0L -> parsed.timestampMillis
+                                    effectiveSmsMillis > 0L -> effectiveSmsMillis
+                                    else -> targetDateCalendar.timeInMillis
+                                }
                                 val finalDateStr = if (parsed.dateStr.isNotBlank()) {
                                     parsed.dateStr
                                 } else {
@@ -151,23 +159,27 @@ object SmsSearchHelper {
         return results.distinctBy { it.parsed.transactionNumber.trim().uppercase() }
     }
 
-    private fun isDateMatchingText(dateStr: String, targetDay: Int, targetMonth: Int, targetYear: Int): Boolean {
-        if (dateStr.isBlank()) return false
-        val clean = dateStr.trim().replace('-', '/').replace('.', '/')
-        val parts = clean.split('/')
-        if (parts.size >= 3) {
-            val d = parts[0].trim().toIntOrNull() ?: return false
-            val m = parts[1].trim().toIntOrNull() ?: return false
-            var y = parts[2].trim().toIntOrNull() ?: return false
-            if (y < 100) y += 2000
-            return d == targetDay && m == targetMonth && y == targetYear
-        }
-        return false
+    fun findUnregisteredPagoXMovil(
+        context: Context,
+        existingTransactions: Set<String>,
+        targetDateCalendar: Calendar? = null
+    ): List<ParsedTransferSms> {
+        val all = findAllUnregisteredTransfers(context, existingTransactions, targetDateCalendar)
+        return all.map { it.parsed }
     }
 
-    fun findUnregisteredPagoXMovil(context: Context, existingTransactions: Set<String>): List<ParsedTransferSms> {
-        val todayCal = Calendar.getInstance()
-        val all = searchPagoXMovilByDate(context, todayCal, existingTransactions)
-        return all.filter { !it.isAlreadyRegistered }.map { it.parsed }
+    fun findAllUnregisteredTransfers(
+        context: Context,
+        existingTransactions: Set<String>,
+        targetDateCalendar: Calendar? = null
+    ): List<SearchedPagoXMovilSms> {
+        if (targetDateCalendar != null) {
+            return searchPagoXMovilByDate(context, targetDateCalendar, existingTransactions)
+                .filter { !it.isAlreadyRegistered }
+        }
+
+        // Si no se especifica calendario, se usa el día actual
+        return searchPagoXMovilByDate(context, Calendar.getInstance(), existingTransactions)
+            .filter { !it.isAlreadyRegistered }
     }
 }

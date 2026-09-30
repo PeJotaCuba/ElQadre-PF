@@ -33,15 +33,13 @@ class SmsReceiver : BroadcastReceiver() {
             val fullText = fullBodyBuilder.toString()
             if (fullText.isBlank()) return
 
-            // 1. Separate check for Transfermóvil (PAGOxMOVIL) & ENZONA Transfer SMS
-            val isTransferGateway = senderTrimmed.contains("PAGOxMOVIL", ignoreCase = true) ||
-                    senderTrimmed.contains("ENZONA", ignoreCase = true) ||
-                    SmsTransferParser.isValidTransferSms(fullText)
+            // 1. Separate check for Transfermóvil & ENZONA Transfer SMS
+            val isAuthorizedGateway = SmsTransferParser.isAuthorizedSender(senderTrimmed)
 
-            if (isTransferGateway) {
+            if (isAuthorizedGateway) {
                 val firstMsg = messages.firstOrNull()
                 val msgTimestamp = firstMsg?.timestampMillis ?: 0L
-                val parsed = SmsTransferParser.parseTransferSms(fullText, msgTimestamp)
+                val parsed = SmsTransferParser.parseTransferSms(fullText, msgTimestamp, senderTrimmed)
                 if (parsed != null) {
                     val finalTimestamp = when {
                         msgTimestamp > 0L -> msgTimestamp

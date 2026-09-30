@@ -502,13 +502,15 @@ fun FichaCostoDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = true
+            decorFitsSystemWindows = false
         )
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(start = 14.dp, end = 14.dp, top = 18.dp, bottom = 100.dp)
+                .navigationBarsPadding()
+                .statusBarsPadding()
+                .padding(start = 14.dp, end = 14.dp, top = 16.dp, bottom = 96.dp)
                 .imePadding(),
             contentAlignment = Alignment.Center
         ) {

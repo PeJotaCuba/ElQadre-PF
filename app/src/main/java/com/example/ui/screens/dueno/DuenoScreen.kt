@@ -2462,7 +2462,7 @@ fun DuenoProduccionSubscreen(
                                                         color = Slate400
                                                     )
                                                     Text(
-                                                        text = "Costo: $${"%.2f".format(mp.unitCost)}/${mp.unit}",
+                                                        text = "Costo: $${if (mp.unitCost < 1.0) "%.4f".format(mp.unitCost).trimEnd('0').let { if (it.endsWith('.')) it + "00" else it } else "%.2f".format(mp.unitCost)}/${mp.unit}",
                                                         fontSize = 13.sp,
                                                         fontWeight = FontWeight.Bold,
                                                         color = Slate700
@@ -2711,7 +2711,7 @@ fun DuenoProduccionSubscreen(
                                     Column {
                                         Text("Costo Unitario:", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Emerald800)
                                         Text(
-                                            "$${"%.2f".format(mp.unitCost)} / ${mp.unit}",
+                                            "$${if (mp.unitCost < 1.0) "%.4f".format(mp.unitCost).trimEnd('0').let { if (it.endsWith('.')) it + "00" else it } else "%.2f".format(mp.unitCost)} / ${mp.unit}",
                                             fontSize = 24.sp,
                                             fontWeight = FontWeight.Black,
                                             color = Color(0xFF0F766E)
@@ -3021,15 +3021,30 @@ fun DuenoProduccionSubscreen(
                 val currentModo = remember(currentP.id) { com.example.util.ProduccionModoHelper.getModo(context, currentP.id) }
                 var selectedModo by remember(currentP.id) { mutableStateOf(currentModo) }
 
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = Color(0xFFF8FAFC)
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .statusBarsPadding()
+                        .navigationBarsPadding()
+                        .imePadding()
+                        .padding(horizontal = 14.dp, vertical = 20.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Scaffold(
-                        containerColor = Color(0xFFF8FAFC),
-                        contentWindowInsets = WindowInsets.safeDrawing,
-                        topBar = {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .fillMaxHeight(0.80f),
+                        shape = RoundedCornerShape(20.dp),
+                        color = Color(0xFFF8FAFC),
+                        border = BorderStroke(1.5.dp, Slate200),
+                        shadowElevation = 12.dp
+                    ) {
+                        Column(
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            // 1. CABECERA SUPERIOR FIJA
                             Surface(
+                                shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
                                 color = Color.White,
                                 shadowElevation = 3.dp,
                                 modifier = Modifier.fillMaxWidth()
@@ -3037,9 +3052,8 @@ fun DuenoProduccionSubscreen(
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .statusBarsPadding()
-                                        .padding(horizontal = 20.dp, vertical = 14.dp),
-                                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                                        .padding(horizontal = 18.dp, vertical = 14.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
                                     // 2. CABECERA - LÍNEA SUPERIOR: Nombre (izq) y X (der)
                                     Row(
@@ -3050,7 +3064,7 @@ fun DuenoProduccionSubscreen(
                                         Text(
                                             text = currentP.name.uppercase(),
                                             fontWeight = FontWeight.Black,
-                                            fontSize = 22.sp,
+                                            fontSize = 20.sp,
                                             color = ElQadreNavy,
                                             maxLines = 2,
                                             overflow = TextOverflow.Ellipsis,
@@ -3064,13 +3078,13 @@ fun DuenoProduccionSubscreen(
                                                 contentColor = Slate700
                                             ),
                                             modifier = Modifier
-                                                .size(48.dp)
+                                                .size(44.dp)
                                                 .testTag("close_dueno_product_detail")
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Default.Close,
                                                 contentDescription = "Cerrar",
-                                                modifier = Modifier.size(24.dp)
+                                                modifier = Modifier.size(22.dp)
                                             )
                                         }
                                     }
@@ -3219,180 +3233,16 @@ fun DuenoProduccionSubscreen(
                                     }
                                 }
                             }
-                        },
-                        bottomBar = {
-                            Surface(
-                                color = Color.White,
-                                shadowElevation = 8.dp,
-                                border = BorderStroke(1.dp, Slate200),
-                                modifier = Modifier.fillMaxWidth()
+
+                            // 2. CUERPO CON SCROLL VERTICAL
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f)
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(horizontal = 18.dp, vertical = 14.dp),
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
                             ) {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .navigationBarsPadding()
-                                        .padding(horizontal = 16.dp, vertical = 12.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        // 1. RECETA
-                                        OutlinedButton(
-                                            onClick = {
-                                                val target = prod
-                                                selectedProductForDetail = null
-                                                selectedProductForRecipe = target
-                                            },
-                                            shape = RoundedCornerShape(12.dp),
-                                            border = BorderStroke(1.5.dp, ElQadreNavy),
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .height(52.dp)
-                                                .testTag("btn_receta_product_detail"),
-                                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
-                                        ) {
-                                            Column(
-                                                horizontalAlignment = Alignment.CenterHorizontally,
-                                                verticalArrangement = Arrangement.Center
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Outlined.MenuBook,
-                                                    contentDescription = null,
-                                                    tint = ElQadreNavy,
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                                Text(
-                                                    text = "RECETA",
-                                                    fontSize = 12.sp,
-                                                    fontWeight = FontWeight.Black,
-                                                    color = ElQadreNavy
-                                                )
-                                            }
-                                        }
-
-                                        // 2. FICHA
-                                        Button(
-                                            onClick = {
-                                                val target = prod
-                                                selectedProductForDetail = null
-                                                selectedProductForFichaCosto = target
-                                            },
-                                            colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
-                                            shape = RoundedCornerShape(12.dp),
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .height(52.dp)
-                                                .testTag("btn_ficha_product_detail"),
-                                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
-                                        ) {
-                                            Column(
-                                                horizontalAlignment = Alignment.CenterHorizontally,
-                                                verticalArrangement = Arrangement.Center
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Outlined.Assessment,
-                                                    contentDescription = null,
-                                                    tint = Color.White,
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                                Text(
-                                                    text = "FICHA",
-                                                    fontSize = 12.sp,
-                                                    fontWeight = FontWeight.Black,
-                                                    color = Color.White
-                                                )
-                                            }
-                                        }
-
-                                        // 3. EDICIÓN
-                                        FilledTonalButton(
-                                            onClick = {
-                                                val target = prod
-                                                selectedProductForDetail = null
-                                                selectedProductToEdit = target
-                                            },
-                                            colors = ButtonDefaults.filledTonalButtonColors(
-                                                containerColor = Slate100,
-                                                contentColor = Slate800
-                                            ),
-                                            shape = RoundedCornerShape(12.dp),
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .height(52.dp)
-                                                .testTag("btn_edit_product_detail"),
-                                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
-                                        ) {
-                                            Column(
-                                                horizontalAlignment = Alignment.CenterHorizontally,
-                                                verticalArrangement = Arrangement.Center
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Outlined.Edit,
-                                                    contentDescription = null,
-                                                    tint = Slate800,
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                                Text(
-                                                    text = "EDICIÓN",
-                                                    fontSize = 12.sp,
-                                                    fontWeight = FontWeight.Black,
-                                                    color = Slate800
-                                                )
-                                            }
-                                        }
-
-                                        // 4. ELIMINAR
-                                        Button(
-                                            onClick = {
-                                                val target = prod
-                                                selectedProductForDetail = null
-                                                productToDelete = target
-                                            },
-                                            colors = ButtonDefaults.buttonColors(
-                                                containerColor = Color(0xFFFEE2E2),
-                                                contentColor = Color(0xFFDC2626)
-                                            ),
-                                            border = BorderStroke(1.5.dp, Color(0xFFFCA5A5)),
-                                            shape = RoundedCornerShape(12.dp),
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .height(52.dp)
-                                                .testTag("btn_delete_product_detail"),
-                                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
-                                        ) {
-                                            Column(
-                                                horizontalAlignment = Alignment.CenterHorizontally,
-                                                verticalArrangement = Arrangement.Center
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Outlined.Delete,
-                                                    contentDescription = null,
-                                                    tint = Color(0xFFDC2626),
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                                Text(
-                                                    text = "ELIMINAR",
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.Black,
-                                                    color = Color(0xFFDC2626)
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    ) { innerPadding ->
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(innerPadding)
-                                .verticalScroll(rememberScrollState())
-                                .padding(horizontal = 20.dp, vertical = 16.dp),
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
                             // 3. INFORMACIÓN INMEDIATA (Únicamente Categoría y Código)
                             Surface(
                                 shape = RoundedCornerShape(16.dp),
@@ -3529,6 +3379,16 @@ fun DuenoProduccionSubscreen(
                             }
 
                             // 4. RESTO DE LA INFORMACIÓN: RECETA / INGREDIENTES
+                            val currentIngredientDetails = remember(peReceta, materiasPrimas, prod.id, pe?.id) {
+                                com.example.util.CostCalculationHelper.calculateIngredientDetails(
+                                    productId = prod.id,
+                                    recetaIngredientes = peReceta,
+                                    materiasPrimas = materiasPrimas,
+                                    prodElaboradoId = pe?.id
+                                )
+                            }
+                            val totalDirectRecipeCost = currentIngredientDetails.sumOf { it.totalCost }
+
                             Surface(
                                 shape = RoundedCornerShape(16.dp),
                                 color = Color.White,
@@ -3541,21 +3401,35 @@ fun DuenoProduccionSubscreen(
                                     verticalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
                                     Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Outlined.RestaurantMenu,
-                                            contentDescription = null,
-                                            tint = ElQadreNavy,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                        Text(
-                                            text = "INGREDIENTES DE LA RECETA",
-                                            fontSize = 15.sp,
-                                            fontWeight = FontWeight.Black,
-                                            color = ElQadreNavy
-                                        )
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.RestaurantMenu,
+                                                contentDescription = null,
+                                                tint = ElQadreNavy,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                            Text(
+                                                text = "INGREDIENTES DE LA RECETA",
+                                                fontSize = 15.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = ElQadreNavy
+                                            )
+                                        }
+                                        if (peReceta.isNotEmpty()) {
+                                            Text(
+                                                text = "Costo: $${"%.2f".format(totalDirectRecipeCost)} CUP",
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = ElQadreGoldDark
+                                            )
+                                        }
                                     }
 
                                     HorizontalDivider(color = Slate200, thickness = 1.dp)
@@ -3565,7 +3439,9 @@ fun DuenoProduccionSubscreen(
                                             verticalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
                                             peReceta.forEach { ing ->
-                                                val raw = materiasPrimas.find { it.id == ing.materiaPrimaId }
+                                                val ingDetail = currentIngredientDetails.find { it.materiaPrima?.id == ing.materiaPrimaId }
+                                                val raw = ingDetail?.materiaPrima ?: materiasPrimas.find { it.id == ing.materiaPrimaId }
+                                                val ingCost = ingDetail?.totalCost ?: (ing.quantity * (raw?.unitCost ?: 0.0))
                                                 Row(
                                                     modifier = Modifier
                                                         .fillMaxWidth()
@@ -3581,8 +3457,8 @@ fun DuenoProduccionSubscreen(
                                                         color = Slate800
                                                     )
                                                     Text(
-                                                        text = "${"%.1f".format(ing.quantity)} ${ing.unit}",
-                                                        fontSize = 15.sp,
+                                                        text = "$${"%.2f".format(ingCost)} CUP (${"%.1f".format(ing.quantity)} ${ing.unit})",
+                                                        fontSize = 14.sp,
                                                         fontWeight = FontWeight.Black,
                                                         color = Slate900
                                                     )
@@ -3601,10 +3477,175 @@ fun DuenoProduccionSubscreen(
                                 }
                             }
                         }
+
+                        // 3. BARRA INFERIOR DE ACCIONES: DENTRO DEL CUADRO SUPERPUESTO
+                        Surface(
+                            shape = RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp),
+                            color = Color.White,
+                            shadowElevation = 8.dp,
+                            border = BorderStroke(1.dp, Slate200),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 12.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // 1. RECETA
+                                    OutlinedButton(
+                                        onClick = {
+                                            val target = prod
+                                            selectedProductForDetail = null
+                                            selectedProductForRecipe = target
+                                        },
+                                        shape = RoundedCornerShape(12.dp),
+                                        border = BorderStroke(1.5.dp, ElQadreNavy),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(52.dp)
+                                            .testTag("btn_receta_product_detail"),
+                                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+                                    ) {
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.MenuBook,
+                                                contentDescription = null,
+                                                tint = ElQadreNavy,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Text(
+                                                text = "RECETA",
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = ElQadreNavy
+                                            )
+                                        }
+                                    }
+
+                                    // 2. FICHA
+                                    Button(
+                                        onClick = {
+                                            val target = prod
+                                            selectedProductForDetail = null
+                                            selectedProductForFichaCosto = target
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(52.dp)
+                                            .testTag("btn_ficha_product_detail"),
+                                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+                                    ) {
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.Assessment,
+                                                contentDescription = null,
+                                                tint = Color.White,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Text(
+                                                text = "FICHA",
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = Color.White
+                                            )
+                                        }
+                                    }
+
+                                    // 3. EDICIÓN
+                                    FilledTonalButton(
+                                        onClick = {
+                                            val target = prod
+                                            selectedProductForDetail = null
+                                            selectedProductToEdit = target
+                                        },
+                                        colors = ButtonDefaults.filledTonalButtonColors(
+                                            containerColor = Slate100,
+                                            contentColor = Slate800
+                                        ),
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(52.dp)
+                                            .testTag("btn_edit_product_detail"),
+                                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+                                    ) {
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.Edit,
+                                                contentDescription = null,
+                                                tint = Slate800,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Text(
+                                                text = "EDICIÓN",
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = Slate800
+                                            )
+                                        }
+                                    }
+
+                                    // 4. ELIMINAR
+                                    Button(
+                                        onClick = {
+                                            val target = prod
+                                            selectedProductForDetail = null
+                                            productToDelete = target
+                                        },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = Color(0xFFFEE2E2),
+                                            contentColor = Color(0xFFDC2626)
+                                        ),
+                                        border = BorderStroke(1.5.dp, Color(0xFFFCA5A5)),
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(52.dp)
+                                            .testTag("btn_delete_product_detail"),
+                                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+                                    ) {
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.Delete,
+                                                contentDescription = null,
+                                                tint = Color(0xFFDC2626),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Text(
+                                                text = "ELIMINAR",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = Color(0xFFDC2626)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
+    }
 
         // ==========================================================
         // DETALLE MODAL: TANDA
@@ -3803,7 +3844,8 @@ fun DuenoProduccionSubscreen(
         }
 
         selectedProductForRecipe?.let { p ->
-            val recipeIngredients = uiState.recetaIngredientes.filter { it.productoElaboradoId == p.id }
+            val pe = uiState.productosElaborados.find { it.productId == p.id }
+            val recipeIngredients = uiState.recetaIngredientes.filter { it.productoElaboradoId == p.id || (pe != null && it.productoElaboradoId == pe.id) }
             RecipeManagementDialog(
                 product = p,
                 productName = p.name,
@@ -4108,95 +4150,112 @@ fun DuenoMercaderiasSubscreen(
 
             Dialog(
                 onDismissRequest = { selectedMercaderiaForDetail = null },
-                properties = DialogProperties(usePlatformDefaultWidth = false)
+                properties = DialogProperties(
+                    usePlatformDefaultWidth = false,
+                    decorFitsSystemWindows = false
+                )
             ) {
-                Surface(
+                BackHandler { selectedMercaderiaForDetail = null }
+
+                Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .statusBarsPadding()
-                        .navigationBarsPadding(),
-                    color = Color(0xFFF1F5F9)
+                        .navigationBarsPadding()
+                        .imePadding()
+                        .padding(horizontal = 14.dp, vertical = 20.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Column(
-                        modifier = Modifier.fillMaxSize()
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .fillMaxHeight(0.80f),
+                        shape = RoundedCornerShape(20.dp),
+                        color = Color(0xFFF1F5F9),
+                        border = BorderStroke(1.5.dp, Slate200),
+                        shadowElevation = 12.dp
                     ) {
-                        // ENCABEZADO SUPERIOR: FLECHA DE RETORNO (←) Y X DE CIERRE
-                        Surface(
-                            color = Color.White,
-                            shadowElevation = 3.dp,
-                            modifier = Modifier.fillMaxWidth()
+                        Column(
+                            modifier = Modifier.fillMaxSize()
                         ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 8.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
+                            // ENCABEZADO SUPERIOR: FLECHA DE RETORNO (←) Y X DE CIERRE
+                            Surface(
+                                shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+                                color = Color.White,
+                                shadowElevation = 3.dp,
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                // FLECHA DE RETORNO (ESQUINA SUPERIOR IZQUIERDA -> MERCADERÍAS)
-                                IconButton(
-                                    onClick = { selectedMercaderiaForDetail = null },
+                                Row(
                                     modifier = Modifier
-                                        .size(52.dp)
-                                        .testTag("btn_back_mercaderia_detail")
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 8.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.ArrowBack,
-                                        contentDescription = "Regresar a Mercaderías",
-                                        tint = ElQadreNavy,
-                                        modifier = Modifier.size(30.dp)
-                                    )
-                                }
+                                    // FLECHA DE RETORNO (ESQUINA SUPERIOR IZQUIERDA -> MERCADERÍAS)
+                                    IconButton(
+                                        onClick = { selectedMercaderiaForDetail = null },
+                                        modifier = Modifier
+                                            .size(44.dp)
+                                            .testTag("btn_back_mercaderia_detail")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.ArrowBack,
+                                            contentDescription = "Regresar a Mercaderías",
+                                            tint = ElQadreNavy,
+                                            modifier = Modifier.size(26.dp)
+                                        )
+                                    }
 
-                                Column(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .padding(horizontal = 8.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Text(
-                                        text = "DETALLE DE MERCADERÍA",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Slate500,
-                                        letterSpacing = 1.sp
-                                    )
-                                    Text(
-                                        text = (product?.name ?: "MERCADERÍA #${merc.id}").uppercase(),
-                                        fontSize = 19.sp,
-                                        fontWeight = FontWeight.Black,
-                                        color = ElQadreNavy,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
+                                    Column(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .padding(horizontal = 8.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Text(
+                                            text = "DETALLE DE MERCADERÍA",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Slate500,
+                                            letterSpacing = 1.sp
+                                        )
+                                        Text(
+                                            text = (product?.name ?: "MERCADERÍA #${merc.id}").uppercase(),
+                                            fontSize = 17.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = ElQadreNavy,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
 
-                                // X DE CIERRE (ESQUINA SUPERIOR DERECHA)
-                                IconButton(
-                                    onClick = { selectedMercaderiaForDetail = null },
-                                    modifier = Modifier
-                                        .size(52.dp)
-                                        .testTag("btn_close_mercaderia_detail")
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Close,
-                                        contentDescription = "Cerrar detalle",
-                                        tint = Slate700,
-                                        modifier = Modifier.size(30.dp)
-                                    )
+                                    // X DE CIERRE (ESQUINA SUPERIOR DERECHA)
+                                    IconButton(
+                                        onClick = { selectedMercaderiaForDetail = null },
+                                        modifier = Modifier
+                                            .size(44.dp)
+                                            .testTag("btn_close_mercaderia_detail")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = "Cerrar detalle",
+                                            tint = Slate700,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
                                 }
                             }
-                        }
 
-                        // CONTENIDO DESPLAZABLE CON TEXTOS GRANDES Y ACCESIBLES
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxWidth()
-                                .verticalScroll(rememberScrollState())
-                                .padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
+                            // CONTENIDO DESPLAZABLE CON TEXTOS GRANDES Y ACCESIBLES
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth()
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(14.dp)
+                            ) {
                             // TARJETA DE INFORMACIÓN PRINCIPAL (NOMBRE, CATEGORÍA, UNIDAD)
                             Surface(
                                 shape = RoundedCornerShape(16.dp),
@@ -4530,215 +4589,209 @@ fun DuenoMercaderiasSubscreen(
                                 }
                             }
 
-                            // ==========================================
-                            // SECCIÓN DE BOTONES DE ACCIÓN REORGANIZADOS
-                            // ==========================================
-                            Surface(
-                                shape = RoundedCornerShape(16.dp),
-                                color = Color.White,
-                                border = BorderStroke(1.5.dp, Slate200),
-                                shadowElevation = 3.dp,
-                                modifier = Modifier.fillMaxWidth()
+                        }
+
+                        // ==========================================
+                        // 3. BARRA INFERIOR DE ACCIONES (FIJA DENTRO DEL CUADRO)
+                        // ==========================================
+                        Surface(
+                            shape = RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp),
+                            color = Color.White,
+                            border = BorderStroke(1.dp, Slate200),
+                            shadowElevation = 8.dp,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Column(
-                                    modifier = Modifier.padding(16.dp),
-                                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                                // FILA 1: ENTRADA | MERMA
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    Text(
-                                        text = "ACCIONES DISPONIBLES",
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Slate500,
-                                        letterSpacing = 1.sp
-                                    )
-
-                                    // FILA 1: ENTRADA | MERMO
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                    ) {
-                                        Button(
-                                            onClick = {
-                                                val target = merc
-                                                selectedMercaderiaForDetail = null
-                                                selectedMercForEntrada = target
-                                            },
-                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F766E)),
-                                            shape = RoundedCornerShape(12.dp),
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .height(56.dp)
-                                                .testTag("btn_merc_entrada"),
-                                            contentPadding = PaddingValues(horizontal = 8.dp)
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Add,
-                                                    contentDescription = null,
-                                                    tint = Color.White,
-                                                    modifier = Modifier.size(22.dp)
-                                                )
-                                                Text(
-                                                    text = "ENTRADA",
-                                                    fontSize = 16.sp,
-                                                    fontWeight = FontWeight.Black,
-                                                    color = Color.White
-                                                )
-                                            }
-                                        }
-
-                                        Button(
-                                            onClick = {
-                                                val target = merc
-                                                selectedMercaderiaForDetail = null
-                                                selectedMercForMerma = target
-                                            },
-                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
-                                            shape = RoundedCornerShape(12.dp),
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .height(56.dp)
-                                                .testTag("btn_merc_merma"),
-                                            contentPadding = PaddingValues(horizontal = 8.dp)
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Warning,
-                                                    contentDescription = null,
-                                                    tint = Color.White,
-                                                    modifier = Modifier.size(20.dp)
-                                                )
-                                                Text(
-                                                    text = "MERMO",
-                                                    fontSize = 16.sp,
-                                                    fontWeight = FontWeight.Black,
-                                                    color = Color.White
-                                                )
-                                            }
-                                        }
-                                    }
-
-                                    // FILA 2: PARA VENTA | EDITAR
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                    ) {
-                                        Button(
-                                            onClick = {
-                                                val target = merc
-                                                selectedMercaderiaForDetail = null
-                                                selectedMercForParaVenta = target
-                                            },
-                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1D4ED8)),
-                                            shape = RoundedCornerShape(12.dp),
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .height(56.dp)
-                                                .testTag("btn_merc_para_venta"),
-                                            contentPadding = PaddingValues(horizontal = 8.dp)
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Outlined.Storefront,
-                                                    contentDescription = null,
-                                                    tint = Color.White,
-                                                    modifier = Modifier.size(20.dp)
-                                                )
-                                                Text(
-                                                    text = "PARA VENTA",
-                                                    fontSize = 15.sp,
-                                                    fontWeight = FontWeight.Black,
-                                                    color = Color.White
-                                                )
-                                            }
-                                        }
-
-                                        Button(
-                                            onClick = {
-                                                val target = merc
-                                                selectedMercaderiaForDetail = null
-                                                editingMercaderia = target
-                                            },
-                                            colors = ButtonDefaults.buttonColors(containerColor = Slate700),
-                                            shape = RoundedCornerShape(12.dp),
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .height(56.dp)
-                                                .testTag("btn_merc_editar"),
-                                            contentPadding = PaddingValues(horizontal = 8.dp)
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Edit,
-                                                    contentDescription = null,
-                                                    tint = Color.White,
-                                                    modifier = Modifier.size(20.dp)
-                                                )
-                                                Text(
-                                                    text = "EDITAR",
-                                                    fontSize = 16.sp,
-                                                    fontWeight = FontWeight.Black,
-                                                    color = Color.White
-                                                )
-                                            }
-                                        }
-                                    }
-
-                                    // FILA 3: FICHA DE COSTO (ANCHO COMPLETO, MAYOR TAMAÑO Y RELEVANCIA VISUAL)
                                     Button(
                                         onClick = {
                                             val target = merc
                                             selectedMercaderiaForDetail = null
-                                            selectedMercForCostSheet = target
+                                            selectedMercForEntrada = target
                                         },
-                                        colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
-                                        shape = RoundedCornerShape(14.dp),
-                                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp, pressedElevation = 8.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F766E)),
+                                        shape = RoundedCornerShape(12.dp),
                                         modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(64.dp)
-                                            .testTag("btn_merc_ficha_costo")
+                                            .weight(1f)
+                                            .height(48.dp)
+                                            .testTag("btn_merc_entrada"),
+                                        contentPadding = PaddingValues(horizontal = 8.dp)
                                     ) {
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                                         ) {
                                             Icon(
-                                                imageVector = Icons.Default.Calculate,
+                                                imageVector = Icons.Default.Add,
                                                 contentDescription = null,
-                                                tint = Color(0xFFFBBF24),
-                                                modifier = Modifier.size(28.dp)
+                                                tint = Color.White,
+                                                modifier = Modifier.size(20.dp)
                                             )
                                             Text(
-                                                text = "FICHA DE COSTO",
-                                                fontSize = 18.sp,
+                                                text = "ENTRADA",
+                                                fontSize = 14.sp,
                                                 fontWeight = FontWeight.Black,
-                                                color = Color.White,
-                                                letterSpacing = 0.5.sp
+                                                color = Color.White
+                                            )
+                                        }
+                                    }
+
+                                    Button(
+                                        onClick = {
+                                            val target = merc
+                                            selectedMercaderiaForDetail = null
+                                            selectedMercForMerma = target
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(48.dp)
+                                            .testTag("btn_merc_merma"),
+                                        contentPadding = PaddingValues(horizontal = 8.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Warning,
+                                                contentDescription = null,
+                                                tint = Color.White,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Text(
+                                                text = "MERMA",
+                                                fontSize = 14.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = Color.White
                                             )
                                         }
                                     }
                                 }
-                            }
 
-                            Spacer(modifier = Modifier.height(24.dp))
+                                // FILA 2: PARA VENTA | EDITAR
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Button(
+                                        onClick = {
+                                            val target = merc
+                                            selectedMercaderiaForDetail = null
+                                            selectedMercForParaVenta = target
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1D4ED8)),
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(48.dp)
+                                            .testTag("btn_merc_para_venta"),
+                                        contentPadding = PaddingValues(horizontal = 8.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.Storefront,
+                                                contentDescription = null,
+                                                tint = Color.White,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Text(
+                                                text = "PARA VENTA",
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = Color.White
+                                            )
+                                        }
+                                    }
+
+                                    Button(
+                                        onClick = {
+                                            val target = merc
+                                            selectedMercaderiaForDetail = null
+                                            editingMercaderia = target
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Slate700),
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(48.dp)
+                                            .testTag("btn_merc_editar"),
+                                        contentPadding = PaddingValues(horizontal = 8.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Edit,
+                                                contentDescription = null,
+                                                tint = Color.White,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Text(
+                                                text = "EDITAR",
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = Color.White
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // FILA 3: FICHA DE COSTO
+                                Button(
+                                    onClick = {
+                                        val target = merc
+                                        selectedMercaderiaForDetail = null
+                                        selectedMercForCostSheet = target
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
+                                    shape = RoundedCornerShape(12.dp),
+                                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 3.dp, pressedElevation = 6.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(50.dp)
+                                        .testTag("btn_merc_ficha_costo")
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Calculate,
+                                            contentDescription = null,
+                                            tint = Color(0xFFFBBF24),
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                        Text(
+                                            text = "FICHA DE COSTO",
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = Color.White,
+                                            letterSpacing = 0.5.sp
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
         }
+    }
 
         if (showPagosBebidasDialog) {
             ConfigurarPagosBebidasDialog(

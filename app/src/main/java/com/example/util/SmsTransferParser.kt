@@ -17,274 +17,338 @@ data class ParsedTransferSms(
     val gateway: String = "Transfermóvil" // "Transfermóvil" or "ENZONA"
 )
 
+/**
+ * Validador y analizador de SMS de transferencias bancarias (Transfermóvil y ENZONA).
+ *
+ * REGLA ESTRICTA:
+ * REMITENTE AUTORIZADO + FORMATO VÁLIDO EXACTO = TRANSFERENCIA
+ *
+ * Formatos válidos admitidos:
+ *
+ * 1. TRANSFERMÓVIL - FORMATO 1:
+ *    "El titular del telefono 5351110746 le ha realizado una transferencia a la cuenta 9212069990303927 de 5000.00 CUP. Nro. Transaccion KW601MRAWO999. Fecha: 27/8/2026."
+ *
+ * 2. TRANSFERMÓVIL - FORMATO 2:
+ *    "Se ha realizado una transferencia a la cuenta 9212069990303927 de 10.00 CUP. Nro. Transaccion KW601NFJBT999. Fecha: 29/8/2026."
+ *
+ * 3. ENZONA - FORMATO 3:
+ *    "ENZONA transferencia recibida Importe: 3325.00 CUP No.: Qrr6FuhO4Yiu"
+ *
+ * 4. ENZONA - FORMATO 4:
+ *    "ENZONA pago recibido, Importe: 1550.00 CUP No.: lwoTTFnYIwvn"
+ *
+ * Cualquier otro formato o mensaje (pagos emitidos, cobros, consultas de saldo, facturas,
+ * recargas, compras, débitos, avisos, notificaciones del sistema o mensajes con estructuras distintas)
+ * ES RECHAZADO Y NO SE CONSIDERA TRANSFERENCIA.
+ */
 object SmsTransferParser {
 
-    private val PHONE_REGEX = Regex(
-        """(?:titular\s+del\s+tel[eé]fono|tel[eé]fono|tel\.|m[oó]vil|celular)\s*:?\s*(\d{8,12})""",
+    // FORMATO 1 (Transfermóvil con teléfono remitente)
+    private val FORMAT_1_REGEX = Regex(
+        """^El\s+titular\s+del\s+tel[eé]fono\s+(\d{8,12})\s+le\s+ha\s+realizado\s+una\s+transferencia\s+a\s+la\s+cuenta\s+([0-9*xX]{8,24})\s+de\s+(\d+(?:[.,]\d{1,2})?)(?:\s*(CUP|USD|EUR|MLC))?\.?\s+Nro\.?\s*Transacci[oó]n\s+([A-Za-z0-9_-]+)\.?\s+Fecha:?\s*([0-9]{1,2}[/-][0-9]{1,2}[/-][0-9]{2,4}(?:\s+[0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?)?)\.?$""",
         RegexOption.IGNORE_CASE
     )
 
-    private val ACCOUNT_REGEX = Regex(
-        """(?:cuenta|a\s+la\s+cuenta|cta\.?)\s*:?\s*([0-9*xX]{8,24})""",
+    // FORMATO 2 (Transfermóvil sin teléfono)
+    private val FORMAT_2_REGEX = Regex(
+        """^Se\s+ha\s+realizado\s+una\s+transferencia\s+a\s+la\s+cuenta\s+([0-9*xX]{8,24})\s+de\s+(\d+(?:[.,]\d{1,2})?)(?:\s*(CUP|USD|EUR|MLC))?\.?\s+Nro\.?\s*Transacci[oó]n\s+([A-Za-z0-9_-]+)\.?\s+Fecha:?\s*([0-9]{1,2}[/-][0-9]{1,2}[/-][0-9]{2,4}(?:\s+[0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?)?)\.?$""",
         RegexOption.IGNORE_CASE
     )
 
-    private val AMOUNT_CURRENCY_REGEX = Regex(
-        """(?:de|monto|importe|por)?\s*([\d]+(?:[.,]\d{1,2})?)\s*(CUP|USD|EUR|MLC)""",
+    // FORMATO 3 (ENZONA transferencia recibida)
+    private val FORMAT_3_REGEX = Regex(
+        """^EN\s*ZONA\s+transferencia\s+recibida\s+Importe:?\s*(\d+(?:[.,]\d{1,2})?)(?:\s*(CUP|USD|EUR|MLC))?\.?\s+(?:No\.?:?|Nro\.?:?)\s*([A-Za-z0-9_-]+)(?:\.?\s+Fecha:?\s*([0-9]{1,2}[/-][0-9]{1,2}[/-][0-9]{2,4}(?:\s+[0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?)?))?\.?$""",
         RegexOption.IGNORE_CASE
     )
 
-    private val AMOUNT_GENERIC_REGEX = Regex(
-        """(?:de|monto|importe|por)\s*:?\s*([\d]+(?:[.,]\d{1,2})?)""",
-        RegexOption.IGNORE_CASE
-    )
-
-    private val TRANSACTION_REGEX = Regex(
-        """(?:Nro\.?\s*Transacci[oó]n|Transacci[oó]n|Transaccion|Nro\.?\s*Trans|No\.?\s*Trans|Trans\.|Tx\.?|Ref\.?|No\.|No:)\s*:?\s*([A-Za-z0-9_-]+)""",
-        RegexOption.IGNORE_CASE
-    )
-
-    private val DATE_WITH_TIME_REGEX = Regex(
-        """(?:Fecha|Date)\s*:?\s*([0-9]{1,2}[/-][0-9]{1,2}[/-][0-9]{2,4})(?:\s+([0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?))?""",
-        RegexOption.IGNORE_CASE
-    )
-
-    private val SEPARATE_TIME_REGEX = Regex(
-        """(?:hora|time|a\s+las)\s*:?\s*([0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?)""",
-        RegexOption.IGNORE_CASE
-    )
-
-    private val DATE_REGEX = Regex(
-        """(?:Fecha|Date)\s*:?\s*([0-9]{1,2}[/-][0-9]{1,2}[/-][0-9]{2,4})""",
-        RegexOption.IGNORE_CASE
-    )
-
-    // Flexible regex for ENZONA formats:
-    // Format 1: ENZONA transferencia recibida Importe: 3325.00 CUP No.: Qrr6FuhO4Yiu
-    // Format 2: ENZONA pago recibido, Importe: 1550.00 CUP No.: lwoTTFnYIwvn
-    // Format 3: ENZONA pago recibido Importe: 500 CUP No: 12345
-    private val ENZONA_UNIFIED_REGEX = Regex(
-        """(?:ENZONA|EN\s*ZONA)\s*[\s:,.-]*(?:transferencia\s+recibida|pago\s+recibido|transf\.?\s+recibida|cobro\s+recibido)?\s*[\s:,.-]*(?:Importe|Monto|Total)?\s*[:=\s]*([\d]+(?:[.,]\d{1,2})?)\s*(CUP|USD|EUR|MLC)?\s*[\s,;.-]*(?:No\.?|Nro\.?|Transacci[oó]n|Id|Ref\.?|No)\s*[:=\s]*([A-Za-z0-9_-]+)""",
+    // FORMATO 4 (ENZONA pago recibido con o sin coma)
+    private val FORMAT_4_REGEX = Regex(
+        """^EN\s*ZONA\s+pago\s+recibido,?\s+Importe:?\s*(\d+(?:[.,]\d{1,2})?)(?:\s*(CUP|USD|EUR|MLC))?\.?\s+(?:No\.?:?|Nro\.?:?)\s*([A-Za-z0-9_-]+)(?:\.?\s+Fecha:?\s*([0-9]{1,2}[/-][0-9]{1,2}[/-][0-9]{2,4}(?:\s+[0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?)?))?\.?$""",
         RegexOption.IGNORE_CASE
     )
 
     /**
-     * Checks if the message is a valid ENZONA transfer/payment SMS matching the specified formats.
+     * Normaliza saltos de línea y espacios en blanco del texto SMS.
      */
-    fun isEnzonaTransferSms(text: String): Boolean {
-        if (text.isBlank()) return false
-        val clean = text.trim()
-        if (clean.contains("ENZONA", ignoreCase = true) || clean.contains("EN ZONA", ignoreCase = true)) {
-            return ENZONA_UNIFIED_REGEX.containsMatchIn(clean) ||
-                    (clean.contains("recibido", ignoreCase = true) && clean.contains("Importe", ignoreCase = true)) ||
-                    (clean.contains("transferencia", ignoreCase = true) && clean.contains("Importe", ignoreCase = true))
-        }
-        return false
+    fun normalizeSmsText(text: String): String {
+        return text.replace('\u00A0', ' ')
+            .replace('\u200B', ' ')
+            .replace("\r\n", " ")
+            .replace('\r', ' ')
+            .replace('\n', ' ')
+            .trim()
+            .replace(Regex("""\s+"""), " ")
     }
 
     /**
-     * Checks if the given text matches the structural pattern of a Transfermóvil bank transfer SMS.
+     * Valida si el remitente corresponde a los remitentes autorizados de Transfermóvil.
+     */
+    fun isAuthorizedTransfermovilSender(sender: String?): Boolean {
+        if (sender.isNullOrBlank()) return false
+        val clean = sender.trim()
+        return clean.contains("PAGOxMOVIL", ignoreCase = true) ||
+                clean.contains("PAGO POR MOVIL", ignoreCase = true) ||
+                clean.contains("TRANSFERMOVIL", ignoreCase = true) ||
+                clean.contains("PAGOMOVIL", ignoreCase = true) ||
+                clean == "8888" ||
+                clean == "5000" ||
+                clean == "4000" ||
+                clean.contains("BANDEC", ignoreCase = true) ||
+                clean.contains("BANMET", ignoreCase = true) ||
+                clean.contains("BPA", ignoreCase = true)
+    }
+
+    /**
+     * Valida si el remitente corresponde exactamente a "ENZONA".
+     */
+    fun isAuthorizedEnzonaSender(sender: String?): Boolean {
+        if (sender.isNullOrBlank()) return false
+        val clean = sender.trim()
+        return clean.equals("ENZONA", ignoreCase = true) || clean.contains("ENZONA", ignoreCase = true)
+    }
+
+    /**
+     * Valida si el remitente corresponde a un remitente autorizado (Transfermóvil o ENZONA).
+     */
+    fun isAuthorizedSender(sender: String?): Boolean {
+        return isAuthorizedTransfermovilSender(sender) || isAuthorizedEnzonaSender(sender)
+    }
+
+    /**
+     * Valida si el texto corresponde estrictamente a uno de los dos formatos válidos de Transfermóvil (FORMATO 1 o FORMATO 2).
      */
     fun isTransfermovilTransferSms(text: String): Boolean {
         if (text.isBlank()) return false
-        val clean = text.trim()
-        val containsTransfer = clean.contains("transferencia", ignoreCase = true) ||
-                clean.contains("transfer", ignoreCase = true) ||
-                clean.contains("pagoxmovil", ignoreCase = true) ||
-                clean.contains("pago por movil", ignoreCase = true) ||
-                clean.contains("pago recibido", ignoreCase = true)
-        val containsCuenta = clean.contains("cuenta", ignoreCase = true) || clean.contains("cta", ignoreCase = true)
-        val containsTx = clean.contains("transacci", ignoreCase = true) ||
-                clean.contains("transaccion", ignoreCase = true) ||
-                clean.contains("nro", ignoreCase = true) ||
-                clean.contains("no.", ignoreCase = true)
-        val containsFecha = clean.contains("fecha", ignoreCase = true) ||
-                clean.contains("date", ignoreCase = true) ||
-                DATE_REGEX.containsMatchIn(clean)
-
-        if (!containsTransfer) {
-            return false
-        }
-
-        val hasAmount = AMOUNT_CURRENCY_REGEX.containsMatchIn(clean) || AMOUNT_GENERIC_REGEX.containsMatchIn(clean)
-        val hasTxNumber = TRANSACTION_REGEX.containsMatchIn(clean)
-
-        return hasAmount && hasTxNumber
+        val clean = normalizeSmsText(text)
+        return FORMAT_1_REGEX.matches(clean) || FORMAT_2_REGEX.matches(clean)
     }
 
     /**
-     * Checks if the given text matches the structural pattern of any valid bank transfer SMS (Transfermóvil or ENZONA).
+     * Valida si el texto corresponde estrictamente a uno de los dos formatos válidos de ENZONA (FORMATO 3 o FORMATO 4).
+     */
+    fun isEnzonaTransferSms(text: String): Boolean {
+        if (text.isBlank()) return false
+        val clean = normalizeSmsText(text)
+        return FORMAT_3_REGEX.matches(clean) || FORMAT_4_REGEX.matches(clean)
+    }
+
+    /**
+     * Valida si el texto coincide con la estructura de cualquiera de los cuatro formatos válidos.
      */
     fun isValidTransferSms(text: String): Boolean {
-        return isEnzonaTransferSms(text) || isTransfermovilTransferSms(text)
+        return isTransfermovilTransferSms(text) || isEnzonaTransferSms(text)
     }
 
     /**
-     * Parses the SMS text extracting transfer details.
-     * Supports both Transfermóvil (PAGOxMOVIL) and ENZONA formats.
+     * Valida si el texto y el remitente corresponden a una transferencia autorizada.
+     * Si el remitente es proporcionado, debe coincidir exactamente con el canal del formato.
      */
-    fun parseTransferSms(text: String, fallbackTimestampMillis: Long = 0L): ParsedTransferSms? {
+    fun isValidTransferSmsWithSender(text: String, sender: String?): Boolean {
+        if (sender != null && sender.isNotBlank()) {
+            if (isAuthorizedEnzonaSender(sender)) {
+                return isEnzonaTransferSms(text)
+            }
+            if (isAuthorizedTransfermovilSender(sender)) {
+                return isTransfermovilTransferSms(text)
+            }
+            return false
+        }
+        return isValidTransferSms(text)
+    }
+
+    /**
+     * Parsea un SMS de transferencia extrayendo sus datos.
+     * Solo retorna un objeto ParsedTransferSms si el mensaje coincide estrictamente
+     * con uno de los 4 formatos válidos y el remitente (si se proporciona) está autorizado.
+     */
+    fun parseTransferSms(
+        text: String,
+        fallbackTimestampMillis: Long = 0L,
+        sender: String? = null
+    ): ParsedTransferSms? {
         if (text.isBlank()) return null
-        val cleanText = text.trim()
 
-        // 1. Check ENZONA formats
-        if (isEnzonaTransferSms(cleanText)) {
-            val enzonaMatch = ENZONA_UNIFIED_REGEX.find(cleanText)
-            if (enzonaMatch != null) {
-                val amountStr = enzonaMatch.groupValues[1].replace(',', '.')
-                val currencyStr = enzonaMatch.groupValues[2].ifBlank { "CUP" }.uppercase()
-                val txNumber = enzonaMatch.groupValues[3].trim()
-                val amount = amountStr.toDoubleOrNull() ?: 0.0
-
-                if (txNumber.isNotBlank() && amount > 0.0) {
-                    val dateWithTimeMatch = DATE_WITH_TIME_REGEX.find(cleanText)
-                    val dateStr = dateWithTimeMatch?.groupValues?.get(1)?.trim()
-                        ?: DATE_REGEX.find(cleanText)?.groupValues?.get(1)?.trim()
-                        ?: ""
-                    var timeStr = dateWithTimeMatch?.groupValues?.get(2)?.trim() ?: ""
-                    if (timeStr.isBlank()) {
-                        val separateTimeMatch = SEPARATE_TIME_REGEX.find(cleanText)
-                        timeStr = separateTimeMatch?.groupValues?.get(1)?.trim() ?: ""
-                    }
-
-                    val parsedMillis = tryParseDateTimeMillis(dateStr, timeStr)
-                    val effectiveMillis = when {
-                        fallbackTimestampMillis > 0L -> fallbackTimestampMillis
-                        parsedMillis > 0L -> parsedMillis
-                        else -> System.currentTimeMillis()
-                    }
-                    val dateFormatted = if (dateStr.isNotBlank()) dateStr else SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(effectiveMillis))
-
-                    return ParsedTransferSms(
-                        transactionNumber = txNumber,
-                        amount = amount,
-                        currency = currencyStr,
-                        recipientAccount = "",
-                        phoneNumber = "",
-                        dateStr = dateFormatted,
-                        rawText = cleanText,
-                        hasPhone = false,
-                        timestampMillis = effectiveMillis,
-                        gateway = "ENZONA"
-                    )
-                }
-            } else {
-                // Fallback for ENZONA variations
-                val amountMatch = AMOUNT_CURRENCY_REGEX.find(cleanText) ?: AMOUNT_GENERIC_REGEX.find(cleanText)
-                val amountStr = amountMatch?.groupValues?.get(1)?.replace(',', '.') ?: "0.0"
-                val currencyStr = if (amountMatch?.groupValues?.size ?: 0 > 2 && amountMatch?.groupValues?.get(2)?.isNotBlank() == true) amountMatch.groupValues[2].uppercase() else "CUP"
-                val amount = amountStr.toDoubleOrNull() ?: 0.0
-
-                val txMatch = TRANSACTION_REGEX.find(cleanText)
-                val txNumber = txMatch?.groupValues?.get(1)?.trim() ?: ""
-
-                if (txNumber.isNotBlank() && amount > 0.0) {
-                    val effectiveMillis = if (fallbackTimestampMillis > 0L) fallbackTimestampMillis else System.currentTimeMillis()
-                    val dateFormatted = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(effectiveMillis))
-                    return ParsedTransferSms(
-                        transactionNumber = txNumber,
-                        amount = amount,
-                        currency = currencyStr,
-                        recipientAccount = "",
-                        phoneNumber = "",
-                        dateStr = dateFormatted,
-                        rawText = cleanText,
-                        hasPhone = false,
-                        timestampMillis = effectiveMillis,
-                        gateway = "ENZONA"
-                    )
-                }
+        // Si se provee remitente, validar que esté autorizado para el tipo de mensaje
+        if (sender != null && sender.isNotBlank()) {
+            val isTm = isAuthorizedTransfermovilSender(sender)
+            val isEz = isAuthorizedEnzonaSender(sender)
+            if (!isTm && !isEz) {
+                return null
+            }
+            if (isTm && !isTransfermovilTransferSms(text)) {
+                return null
+            }
+            if (isEz && !isEnzonaTransferSms(text)) {
+                return null
             }
         }
 
-        // 2. Check Transfermóvil format
-        if (!isTransfermovilTransferSms(cleanText)) return null
+        val clean = normalizeSmsText(text)
 
-        val phoneMatch = PHONE_REGEX.find(cleanText)
-        val phoneNumber = phoneMatch?.groupValues?.get(1)?.trim() ?: ""
+        // 1. Probar Transfermóvil FORMATO 1
+        val m1 = FORMAT_1_REGEX.matchEntire(clean)
+        if (m1 != null) {
+            val phone = m1.groupValues[1].trim()
+            val account = m1.groupValues[2].trim()
+            val amountStr = m1.groupValues[3].replace(',', '.')
+            val currencyStr = m1.groupValues[4].ifBlank { "CUP" }.uppercase()
+            val txNumber = m1.groupValues[5].trim()
+            val dateRaw = m1.groupValues[6].trim()
+            val amount = amountStr.toDoubleOrNull() ?: 0.0
 
-        val accountMatch = ACCOUNT_REGEX.find(cleanText)
-        val recipientAccount = accountMatch?.groupValues?.get(1)?.trim() ?: ""
-
-        val amountMatch = AMOUNT_CURRENCY_REGEX.find(cleanText) ?: AMOUNT_GENERIC_REGEX.find(cleanText)
-        val amountStr = amountMatch?.groupValues?.get(1)?.replace(',', '.') ?: "0.0"
-        val currencyStr = if (amountMatch?.groupValues?.size ?: 0 > 2 && amountMatch?.groupValues?.get(2)?.isNotBlank() == true) amountMatch.groupValues[2].uppercase() else "CUP"
-        val amount = amountStr.toDoubleOrNull() ?: 0.0
-
-        val txMatch = TRANSACTION_REGEX.find(cleanText)
-        val transactionNumber = txMatch?.groupValues?.get(1)?.trim() ?: ""
-
-        val dateWithTimeMatch = DATE_WITH_TIME_REGEX.find(cleanText)
-        val dateStr = dateWithTimeMatch?.groupValues?.get(1)?.trim()
-            ?: DATE_REGEX.find(cleanText)?.groupValues?.get(1)?.trim()
-            ?: ""
-        var timeStr = dateWithTimeMatch?.groupValues?.get(2)?.trim() ?: ""
-        if (timeStr.isBlank()) {
-            val separateTimeMatch = SEPARATE_TIME_REGEX.find(cleanText)
-            timeStr = separateTimeMatch?.groupValues?.get(1)?.trim() ?: ""
+            if (txNumber.isNotBlank() && amount > 0.0) {
+                val parsedMillis = parseDateToMillis(dateRaw)
+                val effectiveMillis = when {
+                    parsedMillis > 0L -> parsedMillis
+                    fallbackTimestampMillis > 0L -> fallbackTimestampMillis
+                    else -> System.currentTimeMillis()
+                }
+                val dateFormatted = if (dateRaw.isNotBlank()) dateRaw else SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(effectiveMillis))
+                return ParsedTransferSms(
+                    transactionNumber = txNumber,
+                    amount = amount,
+                    currency = currencyStr,
+                    recipientAccount = account,
+                    phoneNumber = phone,
+                    dateStr = dateFormatted,
+                    rawText = text.trim(),
+                    hasPhone = phone.isNotBlank(),
+                    timestampMillis = effectiveMillis,
+                    gateway = "Transfermóvil"
+                )
+            }
         }
 
-        if (transactionNumber.isBlank() || amount <= 0.0) {
-            return null
+        // 2. Probar Transfermóvil FORMATO 2
+        val m2 = FORMAT_2_REGEX.matchEntire(clean)
+        if (m2 != null) {
+            val account = m2.groupValues[1].trim()
+            val amountStr = m2.groupValues[2].replace(',', '.')
+            val currencyStr = m2.groupValues[3].ifBlank { "CUP" }.uppercase()
+            val txNumber = m2.groupValues[4].trim()
+            val dateRaw = m2.groupValues[5].trim()
+            val amount = amountStr.toDoubleOrNull() ?: 0.0
+
+            if (txNumber.isNotBlank() && amount > 0.0) {
+                val parsedMillis = parseDateToMillis(dateRaw)
+                val effectiveMillis = when {
+                    parsedMillis > 0L -> parsedMillis
+                    fallbackTimestampMillis > 0L -> fallbackTimestampMillis
+                    else -> System.currentTimeMillis()
+                }
+                val dateFormatted = if (dateRaw.isNotBlank()) dateRaw else SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(effectiveMillis))
+                return ParsedTransferSms(
+                    transactionNumber = txNumber,
+                    amount = amount,
+                    currency = currencyStr,
+                    recipientAccount = account,
+                    phoneNumber = "",
+                    dateStr = dateFormatted,
+                    rawText = text.trim(),
+                    hasPhone = false,
+                    timestampMillis = effectiveMillis,
+                    gateway = "Transfermóvil"
+                )
+            }
         }
 
-        val parsedMillis = tryParseDateTimeMillis(dateStr, timeStr)
-        val effectiveMillis = when {
-            fallbackTimestampMillis > 0L -> fallbackTimestampMillis
-            parsedMillis > 0L -> parsedMillis
-            else -> System.currentTimeMillis()
+        // 3. Probar ENZONA FORMATO 3
+        val m3 = FORMAT_3_REGEX.matchEntire(clean)
+        if (m3 != null) {
+            val amountStr = m3.groupValues[1].replace(',', '.')
+            val currencyStr = m3.groupValues[2].ifBlank { "CUP" }.uppercase()
+            val txNumber = m3.groupValues[3].trim()
+            val dateRaw = if (m3.groupValues.size > 4) m3.groupValues[4].trim() else ""
+            val amount = amountStr.toDoubleOrNull() ?: 0.0
+
+            if (txNumber.isNotBlank() && amount > 0.0) {
+                val parsedMillis = if (dateRaw.isNotBlank()) parseDateToMillis(dateRaw) else 0L
+                val effectiveMillis = when {
+                    parsedMillis > 0L -> parsedMillis
+                    fallbackTimestampMillis > 0L -> fallbackTimestampMillis
+                    else -> System.currentTimeMillis()
+                }
+                val dateFormatted = if (dateRaw.isNotBlank()) dateRaw else SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(effectiveMillis))
+                return ParsedTransferSms(
+                    transactionNumber = txNumber,
+                    amount = amount,
+                    currency = currencyStr,
+                    recipientAccount = "",
+                    phoneNumber = "",
+                    dateStr = dateFormatted,
+                    rawText = text.trim(),
+                    hasPhone = false,
+                    timestampMillis = effectiveMillis,
+                    gateway = "ENZONA"
+                )
+            }
         }
 
-        val finalDateStr = if (dateStr.isNotBlank()) dateStr else SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(effectiveMillis))
+        // 4. Probar ENZONA FORMATO 4
+        val m4 = FORMAT_4_REGEX.matchEntire(clean)
+        if (m4 != null) {
+            val amountStr = m4.groupValues[1].replace(',', '.')
+            val currencyStr = m4.groupValues[2].ifBlank { "CUP" }.uppercase()
+            val txNumber = m4.groupValues[3].trim()
+            val dateRaw = if (m4.groupValues.size > 4) m4.groupValues[4].trim() else ""
+            val amount = amountStr.toDoubleOrNull() ?: 0.0
 
-        return ParsedTransferSms(
-            transactionNumber = transactionNumber,
-            amount = amount,
-            currency = currencyStr,
-            recipientAccount = recipientAccount,
-            phoneNumber = phoneNumber,
-            dateStr = finalDateStr,
-            rawText = cleanText,
-            hasPhone = phoneNumber.isNotBlank(),
-            timestampMillis = effectiveMillis,
-            gateway = "Transfermóvil"
-        )
+            if (txNumber.isNotBlank() && amount > 0.0) {
+                val parsedMillis = if (dateRaw.isNotBlank()) parseDateToMillis(dateRaw) else 0L
+                val effectiveMillis = when {
+                    parsedMillis > 0L -> parsedMillis
+                    fallbackTimestampMillis > 0L -> fallbackTimestampMillis
+                    else -> System.currentTimeMillis()
+                }
+                val dateFormatted = if (dateRaw.isNotBlank()) dateRaw else SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(effectiveMillis))
+                return ParsedTransferSms(
+                    transactionNumber = txNumber,
+                    amount = amount,
+                    currency = currencyStr,
+                    recipientAccount = "",
+                    phoneNumber = "",
+                    dateStr = dateFormatted,
+                    rawText = text.trim(),
+                    hasPhone = false,
+                    timestampMillis = effectiveMillis,
+                    gateway = "ENZONA"
+                )
+            }
+        }
+
+        // Ningún formato válido coincidió
+        return null
     }
 
-    private fun tryParseDateTimeMillis(dateStr: String, timeStr: String): Long {
-        val cleanDate = dateStr.trim()
-        val cleanTime = timeStr.trim()
-        if (cleanDate.isBlank()) return 0L
-
-        val formats = if (cleanTime.isNotBlank()) {
-            listOf(
-                "dd/MM/yyyy HH:mm:ss",
-                "d/M/yyyy HH:mm:ss",
-                "dd-MM-yyyy HH:mm:ss",
-                "d-M-yyyy HH:mm:ss",
-                "dd/MM/yyyy HH:mm",
-                "d/M/yyyy HH:mm",
-                "dd-MM-yyyy HH:mm",
-                "d-M-yyyy HH:mm",
-                "dd/MM/yy HH:mm:ss",
-                "dd/MM/yy HH:mm"
-            )
-        } else {
-            listOf(
-                "dd/MM/yyyy",
-                "d/M/yyyy",
-                "dd-MM-yyyy",
-                "d-M-yyyy",
-                "dd/MM/yy"
-            )
-        }
-
-        val stringToParse = if (cleanTime.isNotBlank()) "$cleanDate $cleanTime" else cleanDate
+    /**
+     * Intenta parsear fechas de diferentes formatos cubanos comunes (dd/MM/yyyy, d/M/yyyy, etc.).
+     */
+    fun parseDateToMillis(dateStr: String): Long {
+        val clean = dateStr.trim()
+        if (clean.isBlank()) return 0L
+        val formats = listOf(
+            "dd/MM/yyyy HH:mm:ss",
+            "d/M/yyyy HH:mm:ss",
+            "dd-MM-yyyy HH:mm:ss",
+            "d-M-yyyy HH:mm:ss",
+            "dd/MM/yyyy HH:mm",
+            "d/M/yyyy HH:mm",
+            "dd-MM-yyyy HH:mm",
+            "d-M-yyyy HH:mm",
+            "dd/MM/yyyy",
+            "d/M/yyyy",
+            "dd-MM-yyyy",
+            "d-M-yyyy",
+            "dd/MM/yy HH:mm:ss",
+            "dd/MM/yy HH:mm",
+            "dd/MM/yy",
+            "d/M/yy"
+        )
         for (pattern in formats) {
             try {
                 val sdf = SimpleDateFormat(pattern, Locale.getDefault())
                 sdf.isLenient = false
-                val parsed = sdf.parse(stringToParse)
+                val parsed = sdf.parse(clean)
                 if (parsed != null) return parsed.time
             } catch (_: Exception) {}
         }

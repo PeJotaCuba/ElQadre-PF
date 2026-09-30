@@ -117,6 +117,31 @@ fun ElQadreApp(viewModel: MainViewModel) {
         }
     }
 
+    val smsReceiver = remember { com.example.receiver.SmsReceiver() }
+    androidx.compose.runtime.DisposableEffect(context) {
+        val filter = android.content.IntentFilter(android.provider.Telephony.Sms.Intents.SMS_RECEIVED_ACTION).apply {
+            priority = 999
+        }
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                androidx.core.content.ContextCompat.registerReceiver(
+                    context,
+                    smsReceiver,
+                    filter,
+                    androidx.core.content.ContextCompat.RECEIVER_EXPORTED
+                )
+            } else {
+                context.registerReceiver(smsReceiver, filter)
+            }
+        } catch (_: Exception) {}
+
+        onDispose {
+            try {
+                context.unregisterReceiver(smsReceiver)
+            } catch (_: Exception) {}
+        }
+    }
+
     androidx.compose.runtime.LaunchedEffect(Unit) {
         if (hasCheckedStartupUpdate) return@LaunchedEffect
         hasCheckedStartupUpdate = true
@@ -290,6 +315,16 @@ fun ElQadreApp(viewModel: MainViewModel) {
                     }
                 }
             }
+        }
+
+        // Global Transferencia Recibida Overlay (Detección automática por SMS)
+        if (uiState.showTransferAlert && uiState.pendingTransferAlert != null) {
+            com.example.ui.screens.cajero.TransferenciaAlertDialog(
+                parsed = uiState.pendingTransferAlert!!,
+                uiState = uiState,
+                viewModel = viewModel,
+                onDismiss = { viewModel.dismissTransferAlert() }
+            )
         }
 
         // Global Update Overlay and AlertDialog

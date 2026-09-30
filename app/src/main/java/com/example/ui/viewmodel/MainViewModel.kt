@@ -633,7 +633,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun handleIncomingTransferSms(parsed: ParsedTransferSms) {
         viewModelScope.launch {
-            val existing = repository.getTransferenciaByTransactionNumber(parsed.transactionNumber)
+            val existing = repository.getTransferenciaByTransactionNumber(parsed.transactionNumber.trim())
             if (existing != null) {
                 _uiState.update {
                     it.copy(
@@ -642,39 +642,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 return@launch
             }
-
-            val username = _uiState.value.currentUser?.username ?: "cajero"
-            val activeJornadaId = _uiState.value.activeJornada?.id ?: 0L
-
-            val finalTimestamp = when {
-                parsed.timestampMillis > 0L -> parsed.timestampMillis
-                else -> System.currentTimeMillis()
-            }
-            val finalDate = if (parsed.dateStr.isNotBlank()) {
-                parsed.dateStr
-            } else {
-                java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault()).format(java.util.Date(finalTimestamp))
-            }
-
-            val transferencia = Transferencia(
-                transactionNumber = parsed.transactionNumber,
-                jornadaId = activeJornadaId,
-                comandaId = null,
-                comandaNumber = null,
-                amount = parsed.amount,
-                currency = parsed.currency,
-                phoneNumber = parsed.phoneNumber.trim(),
-                titularName = "",
-                titularCi = "",
-                recipientAccount = parsed.recipientAccount,
-                smsDate = finalDate,
-                receivedAt = finalTimestamp,
-                cajeroUsername = username,
-                status = "NO ASOCIADA",
-                rawSmsBody = parsed.rawText
-            )
-
-            repository.insertTransferencia(transferencia)
 
             playTransferAlertSound()
 
@@ -753,8 +720,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
 
+            val finalTimestamp = when {
+                parsed.timestampMillis > 0L -> parsed.timestampMillis
+                else -> System.currentTimeMillis()
+            }
+            val finalDate = if (parsed.dateStr.isNotBlank()) {
+                parsed.dateStr
+            } else {
+                java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault()).format(java.util.Date(finalTimestamp))
+            }
+            val isEnzona = parsed.gateway.equals("ENZONA", ignoreCase = true) || parsed.rawText.contains("ENZONA", ignoreCase = true)
+            val sourceStr = if (isEnzona) "ENZONA_SMS" else "TRANSFERMOVIL_SMS"
+
             val transferencia = Transferencia(
-                transactionNumber = parsed.transactionNumber,
+                transactionNumber = parsed.transactionNumber.trim(),
                 jornadaId = activeJornadaId,
                 comandaId = null,
                 comandaNumber = null,
@@ -764,15 +743,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 titularName = titularName.trim(),
                 titularCi = titularCi.trim(),
                 recipientAccount = parsed.recipientAccount,
-                smsDate = parsed.dateStr,
-                receivedAt = System.currentTimeMillis(),
+                smsDate = finalDate,
+                receivedAt = finalTimestamp,
                 cajeroUsername = cajero,
                 status = "NO ASOCIADA",
-                rawSmsBody = parsed.rawText
+                rawSmsBody = parsed.rawText,
+                isManual = false,
+                source = sourceStr
             )
             repository.insertTransferencia(transferencia)
-            dismissTransferAlert()
-            _uiState.update { it.copy(successMessage = "Transferencia de $${"%.2f".format(parsed.amount)} ${parsed.currency} guardada como NO ASOCIADA.") }
+
+            val reloaded = withContext(Dispatchers.IO) {
+                repository.getDatabase().transferenciaDao().getAllTransferenciasSync()
+            }
+            _uiState.update {
+                it.copy(
+                    allTransferencias = reloaded,
+                    showTransferAlert = false,
+                    pendingTransferAlert = null,
+                    successMessage = "Transferencia de $${"%.2f".format(parsed.amount)} ${parsed.currency} guardada exitosamente."
+                )
+            }
         }
     }
 
@@ -868,8 +859,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault()).format(java.util.Date(actualTimestamp))
             }
+            val isEnzona = parsed.gateway.equals("ENZONA", ignoreCase = true) || parsed.rawText.contains("ENZONA", ignoreCase = true)
+            val sourceStr = if (isEnzona) "ENZONA_SMS" else "TRANSFERMOVIL_SMS"
             val transferencia = com.example.data.local.model.Transferencia(
-                transactionNumber = parsed.transactionNumber,
+                transactionNumber = parsed.transactionNumber.trim(),
                 jornadaId = activeJornadaId,
                 amount = parsed.amount,
                 currency = parsed.currency,
@@ -880,10 +873,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 cajeroUsername = username,
                 status = "NO ASOCIADA",
                 rawSmsBody = parsed.rawText,
-                isManual = true,
-                source = "MANUAL_EXTERNA"
+                isManual = false,
+                source = sourceStr
             )
             repository.insertTransferencia(transferencia)
+            val reloaded = withContext(Dispatchers.IO) {
+                repository.getDatabase().transferenciaDao().getAllTransferenciasSync()
+            }
+            _uiState.update { it.copy(allTransferencias = reloaded) }
             onSuccess()
         }
     }

@@ -151,9 +151,9 @@ object CostSheetPdfExporter {
             paint.textSize = 9.5f
             paint.isFakeBoldText = true
             canvas.drawText("Ingrediente / Materia Prima", 45f, y, paint)
-            canvas.drawText("Cantidad", 290f, y, paint)
-            canvas.drawText("Costo Unit.", 380f, y, paint)
-            canvas.drawText("Total Costo", 475f, y, paint)
+            canvas.drawText("Precio Referencia", 225f, y, paint)
+            canvas.drawText("Cant. Utilizada", 365f, y, paint)
+            canvas.drawText("Costo Receta", 475f, y, paint)
             y += 10f
 
             paint.color = lineGray
@@ -171,14 +171,41 @@ object CostSheetPdfExporter {
                 for (ing in costSheet.ingredientDetails) {
                     checkPageOverflow(20f)
                     val ingName = ing.materiaPrima?.name ?: "Ingrediente"
+                    val mp = ing.materiaPrima
+
+                    val purUnitRaw = mp?.purchaseUnit?.ifBlank { mp.unit }?.lowercase()?.trim() ?: ing.unit.lowercase().trim()
+                    val purUnitLabel = when (purUnitRaw) {
+                        "kg", "kilo", "kilogramo" -> "KG"
+                        "lb", "libra", "libras" -> "LIBRA"
+                        "l", "litro", "litros" -> "LITRO"
+                        "g", "gramo", "gramos" -> "G"
+                        "ml", "mililitro", "mililitros" -> "ML"
+                        "u", "unidad", "unidades" -> "UNIDAD"
+                        "file", "carton" -> "FILE"
+                        else -> purUnitRaw.uppercase()
+                    }
+
+                    val refPrice: Double = if (mp != null && mp.unitCost > 0.0) {
+                        val convFactor = com.example.ui.viewmodel.UnitConverter.convert(1.0, purUnitRaw, mp.unit.lowercase().trim()) ?: 1.0
+                        mp.unitCost * convFactor
+                    } else if (mp != null && mp.purchasePrice > 0.0 && mp.purchaseQuantity > 0.0) {
+                        mp.purchasePrice / mp.purchaseQuantity
+                    } else {
+                        ing.unitCost
+                    }
+
+                    val refPriceDisplay = "$${"%.2f".format(refPrice)} CUP/$purUnitLabel"
+                    val qtyDisplay = "${if (ing.quantity % 1.0 == 0.0) ing.quantity.toLong().toString() else "%.2f".format(ing.quantity)} ${ing.unit}"
+                    val totalCostDisplay = "$${"%.2f".format(ing.totalCost)} CUP"
+
                     paint.color = textDark
-                    paint.textSize = 9.5f
+                    paint.textSize = 9f
                     paint.isFakeBoldText = false
-                    val displayName = if (ingName.length > 38) ingName.take(35) + "..." else ingName
+                    val displayName = if (ingName.length > 27) ingName.take(24) + "..." else ingName
                     canvas.drawText(displayName, 45f, y, paint)
-                    canvas.drawText("${"%.2f".format(ing.quantity)} ${ing.unit}", 290f, y, paint)
-                    canvas.drawText("$${"%.2f".format(ing.unitCost)}", 380f, y, paint)
-                    canvas.drawText("$${"%.2f".format(ing.totalCost)}", 475f, y, paint)
+                    canvas.drawText(refPriceDisplay, 225f, y, paint)
+                    canvas.drawText(qtyDisplay, 365f, y, paint)
+                    canvas.drawText(totalCostDisplay, 475f, y, paint)
                     y += 16f
                 }
             }
@@ -197,13 +224,13 @@ object CostSheetPdfExporter {
             y += 24f
 
             // ==========================================
-            // 3. EGRESOS POR RATEO ECONÓMICO (COSTOS INDIRECTOS)
+            // 3. EGRESOS - PRORRATEO ECONÓMICO (COSTOS INDIRECTOS)
             // ==========================================
             checkPageOverflow(110f)
             paint.color = primaryColor
             paint.textSize = 12f
             paint.isFakeBoldText = true
-            canvas.drawText("3. EGRESOS POR RATEO ECONÓMICO (COSTOS INDIRECTOS)", 35f, y, paint)
+            canvas.drawText("3. EGRESOS - PRORRATEO ECONÓMICO (COSTOS INDIRECTOS)", 35f, y, paint)
             y += 18f
 
             paint.color = textDark
@@ -509,7 +536,7 @@ object CostSheetPdfExporter {
         paint.color = Color.parseColor("#334155")
         paint.textSize = 13f
         paint.isFakeBoldText = true
-        canvas.drawText("2. EGRESOS POR RATEO ECONÓMICO", 40f, y, paint)
+        canvas.drawText("2. EGRESOS - PRORRATEO ECONÓMICO", 40f, y, paint)
 
         y += 20f
         paint.textSize = 11f

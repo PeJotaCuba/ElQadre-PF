@@ -115,10 +115,11 @@ fun TransferenciaAlertDialog(
                 HorizontalDivider(color = Slate100)
 
                 // Transfer Summary Card
+                val isEnzonaAlert = parsed.gateway.equals("ENZONA", ignoreCase = true) || parsed.rawText.contains("ENZONA", ignoreCase = true)
                 Surface(
                     shape = RoundedCornerShape(12.dp),
-                    color = Color(0xFFF0FDF4),
-                    border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                    color = if (isEnzonaAlert) Color(0xFFFAF5FF) else Color(0xFFF0FDF4),
+                    border = BorderStroke(1.dp, if (isEnzonaAlert) Color(0xFFE9D5FF) else Color(0xFFBBF7D0)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(
@@ -133,16 +134,41 @@ fun TransferenciaAlertDialog(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
+                                text = "CANAL / ORIGEN:",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Slate600
+                            )
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = if (isEnzonaAlert) Color(0xFFEDE9FE) else Color(0xFFE0F2FE),
+                                border = BorderStroke(0.5.dp, if (isEnzonaAlert) Color(0xFFDDD6FE) else Color(0xFFBAE6FD))
+                            ) {
+                                Text(
+                                    text = if (isEnzonaAlert) "ENZONA" else "Transfermóvil",
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = if (isEnzonaAlert) Color(0xFF6D28D9) else Color(0xFF0369A1),
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp)
+                                )
+                            }
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
                                 text = "MONTO RECIBIDO:",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF166534)
+                                color = if (isEnzonaAlert) Color(0xFF6D28D9) else Color(0xFF166534)
                             )
                             Text(
                                 text = "$${"%.2f".format(parsed.amount)} ${parsed.currency}",
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Black,
-                                color = Emerald600,
+                                color = if (isEnzonaAlert) Color(0xFF7C3AED) else Emerald600,
                                 modifier = Modifier.testTag("transfer_alert_amount")
                             )
                         }
@@ -150,7 +176,7 @@ fun TransferenciaAlertDialog(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text("Nro. Transacción:", fontSize = 11.sp, color = Slate600)
+                            Text("Nro. Transacción / ID:", fontSize = 11.sp, color = Slate600)
                             Text(
                                 text = parsed.transactionNumber,
                                 fontSize = 11.sp,

@@ -314,12 +314,13 @@ fun CuadreCajaScreen(
     val activeJornadaId = activeJornada?.id ?: 1L
 
     fun executeConfirmScanAction() {
-        val cal = Calendar.getInstance()
-        if (activeJornada != null && activeJornada.openedAt > 0) {
-            cal.timeInMillis = activeJornada.openedAt
-        }
         val existingTxs = uiState.allTransferencias.map { it.transactionNumber.trim() }.toSet()
-        val list = com.example.util.SmsSearchHelper.searchPagoXMovilByDate(context, cal, existingTxs)
+        val targetCal = java.util.Calendar.getInstance().apply {
+            if (activeJornada != null && activeJornada.openedAt > 0L) {
+                timeInMillis = activeJornada.openedAt
+            }
+        }
+        val list = com.example.util.SmsSearchHelper.searchPagoXMovilByDate(context, targetCal, existingTxs)
         val seenTxs = mutableSetOf<String>()
         val newOnly = list.filter { !it.isAlreadyRegistered && it.parsed.transactionNumber.isNotBlank() && seenTxs.add(it.parsed.transactionNumber) }
         
@@ -852,21 +853,43 @@ fun CuadreCajaScreen(
         }.toMutableStateList()
     }
 
-    // Calculate Transferencias
+    // Calculate Transferencias strictly matching the active jornada date
     val transferenciasForJornada = remember(uiState.allTransferencias, activeJornada) {
-        if (activeJornada != null) {
-            uiState.allTransferencias.filter {
-                it.jornadaId == activeJornada.id ||
-                (activeJornada.openedAt > 0 && it.receivedAt >= activeJornada.openedAt)
-            }
+        val targetDateStr = if (activeJornada != null && activeJornada.openedAt > 0L) {
+            java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault()).format(java.util.Date(activeJornada.openedAt))
         } else {
-            val startOfToday = java.util.Calendar.getInstance().apply {
-                set(java.util.Calendar.HOUR_OF_DAY, 0)
-                set(java.util.Calendar.MINUTE, 0)
-                set(java.util.Calendar.SECOND, 0)
-                set(java.util.Calendar.MILLISECOND, 0)
-            }.timeInMillis
-            uiState.allTransferencias.filter { it.receivedAt >= startOfToday }
+            java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault()).format(java.util.Date())
+        }
+
+        fun normalizeDate(str: String): String {
+            if (str.isBlank()) return ""
+            val clean = str.trim().replace('-', '/').replace('.', '/')
+            val parts = clean.split('/')
+            if (parts.size >= 3) {
+                val d = parts[0].trim().toIntOrNull() ?: 0
+                val m = parts[1].trim().toIntOrNull() ?: 0
+                var y = parts[2].trim().toIntOrNull() ?: 0
+                if (y < 100) y += 2000
+                return "%02d/%02d/%04d".format(d, m, y)
+            }
+            return str.trim()
+        }
+
+        val normTarget = normalizeDate(targetDateStr)
+        val dateOnlyFmt = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault())
+
+        uiState.allTransferencias.filter { tx ->
+            val normSmsDate = normalizeDate(tx.smsDate)
+            val normRecDate = if (tx.receivedAt > 0L) normalizeDate(dateOnlyFmt.format(java.util.Date(tx.receivedAt))) else ""
+
+            val matchesDate = (normSmsDate.isNotBlank() && normSmsDate == normTarget) ||
+                    (normSmsDate.isBlank() && normRecDate == normTarget)
+
+            if (activeJornada != null) {
+                (tx.jornadaId == activeJornada.id && matchesDate) || (tx.jornadaId <= 0L && matchesDate)
+            } else {
+                matchesDate
+            }
         }
     }
     val transferenciasRegistradasMonto = remember(transferenciasForJornada) {

@@ -49,11 +49,13 @@ import java.util.Locale
 fun resolveTransferenciaOrigen(tx: Transferencia): String {
     val raw = tx.rawSmsBody.uppercase()
     val src = tx.source.uppercase()
-    return if (raw.contains("ENZONA") || src.contains("ENZONA")) {
-        "ENZONA"
-    } else {
-        "Transfermóvil"
+    if (raw.contains("ENZONA") || src.contains("ENZONA")) {
+        return "ENZONA"
     }
+    if (com.example.util.SmsTransferParser.isEnzonaTransferSms(tx.rawSmsBody)) {
+        return "ENZONA"
+    }
+    return "Transfermóvil"
 }
 
 @Composable
@@ -66,30 +68,44 @@ fun TransferenciasPane(
     val context = LocalContext.current
     val dateOnlyFormatter = remember { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()) }
     val todayDateStr = remember { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date()) }
-    var selectedTransferDateFilter by remember { mutableStateOf(todayDateStr) } // Always starts on "HOY"
+    val initialDateStr = remember(uiState.activeJornada) {
+        val activeJ = uiState.activeJornada
+        if (activeJ != null && activeJ.openedAt > 0) {
+            dateOnlyFormatter.format(Date(activeJ.openedAt))
+        } else {
+            todayDateStr
+        }
+    }
+    var selectedTransferDateFilter by remember { mutableStateOf(initialDateStr) }
     var showInformeDialog by remember { mutableStateOf(false) }
     var showAgregarExternaDialog by remember { mutableStateOf(false) }
     var showConfirmBorrarTodoDialog by remember { mutableStateOf(false) }
     var pendingNewTransfersToConfirm by remember { mutableStateOf<List<com.example.util.SearchedPagoXMovilSms>>(emptyList()) }
     var selectedTransferForDetail by remember { mutableStateOf<Transferencia?>(null) }
 
-    // El escaneo para confirmar siempre busca transferencias de la jornada abierta, sin importar la fecha seleccionada visualmente
+    // El escaneo para confirmar busca transferencias pendientes no registradas correspondientes al día de la jornada activa / fecha seleccionada
     fun autoSearchJornadaTransfers(showNoNewToast: Boolean = false) {
-        val cal = Calendar.getInstance()
-        val activeJ = uiState.activeJornada
-        if (activeJ != null && activeJ.openedAt > 0) {
-            cal.timeInMillis = activeJ.openedAt
-        }
         val existingTxs = uiState.allTransferencias.map { it.transactionNumber.trim() }.toSet()
-        val list = com.example.util.SmsSearchHelper.searchPagoXMovilByDate(context, cal, existingTxs)
-        val seenTxs = mutableSetOf<String>()
-        val newOnly = list.filter { !it.isAlreadyRegistered && it.parsed.transactionNumber.isNotBlank() && seenTxs.add(it.parsed.transactionNumber.trim()) }
+        val targetCal = Calendar.getInstance().apply {
+            try {
+                val d = dateOnlyFormatter.parse(selectedTransferDateFilter)
+                if (d != null) time = d
+            } catch (_: Exception) {
+                val activeJ = uiState.activeJornada
+                if (activeJ != null && activeJ.openedAt > 0L) {
+                    timeInMillis = activeJ.openedAt
+                }
+            }
+        }
+        val allFound = com.example.util.SmsSearchHelper.searchPagoXMovilByDate(context, targetCal, existingTxs)
+
+        val newOnly = allFound.filter { !it.isAlreadyRegistered && it.parsed.transactionNumber.isNotBlank() }
         if (newOnly.isNotEmpty()) {
             pendingNewTransfersToConfirm = newOnly
         } else if (showNoNewToast) {
             android.widget.Toast.makeText(
                 context,
-                "Escaneo completado. No se encontraron nuevas transferencias para la jornada.",
+                "Escaneo completado. No se encontraron nuevas transferencias pendientes.",
                 android.widget.Toast.LENGTH_LONG
             ).show()
         }
@@ -137,14 +153,34 @@ fun TransferenciasPane(
         )
     }
 
-    // Filtrado estricto por la fecha seleccionada (HOY o Fecha elegida)
+    fun normalizeDate(str: String): String {
+        if (str.isBlank()) return ""
+        val clean = str.trim().replace('-', '/').replace('.', '/')
+        val parts = clean.split('/')
+        if (parts.size >= 3) {
+            val d = parts[0].trim().toIntOrNull() ?: 0
+            val m = parts[1].trim().toIntOrNull() ?: 0
+            var y = parts[2].trim().toIntOrNull() ?: 0
+            if (y < 100) y += 2000
+            return "%02d/%02d/%04d".format(d, m, y)
+        }
+        return str.trim()
+    }
+
+    // Filtrado de transferencias que alimenta la pantalla inicial:
+    // Muestra ÚNICAMENTE las transferencias cuya fecha real del SMS coincida con la fecha seleccionada
     val filteredTransfers = remember(uiState.allTransferencias, selectedTransferDateFilter) {
+        val normTarget = normalizeDate(selectedTransferDateFilter)
+
         uiState.allTransferencias.filter { tx ->
-            val txRecDate = dateOnlyFormatter.format(Date(tx.receivedAt))
-            val normalizedSmsDate = tx.smsDate.replace(Regex("^(\\d)/"), "0$1/").replace(Regex("/(\\d)/"), "/0$1/")
-            txRecDate == selectedTransferDateFilter ||
-                    tx.smsDate == selectedTransferDateFilter ||
-                    normalizedSmsDate == selectedTransferDateFilter
+            val normSmsDate = normalizeDate(tx.smsDate)
+            val normRecDate = if (tx.receivedAt > 0L) normalizeDate(dateOnlyFormatter.format(Date(tx.receivedAt))) else ""
+
+            if (normSmsDate.isNotBlank()) {
+                normSmsDate == normTarget
+            } else {
+                normRecDate == normTarget
+            }
         }
     }
 
@@ -587,11 +623,20 @@ fun TransferenciasPane(
                                 fontWeight = FontWeight.SemiBold,
                                 color = Slate700
                             )
-                            Text(
-                                text = "Teléfono: $phoneDisplay | Cuenta: ${tx.recipientAccount.ifBlank { "No especificada" }}",
-                                fontSize = 10.5.sp,
-                                color = Slate500
-                            )
+                            if (origenReal == "ENZONA") {
+                                Text(
+                                    text = "Canal: ENZONA | Transacción: ${tx.transactionNumber}",
+                                    fontSize = 10.5.sp,
+                                    color = Color(0xFF6D28D9),
+                                    fontWeight = FontWeight.Bold
+                                )
+                            } else {
+                                Text(
+                                    text = "Teléfono: $phoneDisplay | Cuenta: ${tx.recipientAccount.ifBlank { "No especificada" }}",
+                                    fontSize = 10.5.sp,
+                                    color = Slate500
+                                )
+                            }
 
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -768,13 +813,15 @@ fun TransferenciasPane(
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 140.dp),
+                            .heightIn(max = 160.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         items(pendingNewTransfersToConfirm) { item ->
                             val tx = item.parsed
+                            val isEnzonaItem = tx.gateway.equals("ENZONA", ignoreCase = true) || tx.rawText.contains("ENZONA", ignoreCase = true)
+                            val origenName = if (isEnzonaItem) "ENZONA" else "Transfermóvil"
                             Surface(
-                                shape = RoundedCornerShape(6.dp),
+                                shape = RoundedCornerShape(8.dp),
                                 color = Color.White,
                                 border = BorderStroke(1.dp, Slate200),
                                 modifier = Modifier.fillMaxWidth()
@@ -782,27 +829,42 @@ fun TransferenciasPane(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                                        .padding(horizontal = 10.dp, vertical = 8.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Column {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            Text(
+                                                text = tx.transactionNumber,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 12.sp,
+                                                color = ElQadreNavy
+                                            )
+                                            Surface(
+                                                shape = RoundedCornerShape(4.dp),
+                                                color = if (isEnzonaItem) Color(0xFFEDE9FE) else Color(0xFFE0F2FE),
+                                                border = BorderStroke(0.5.dp, if (isEnzonaItem) Color(0xFFDDD6FE) else Color(0xFFBAE6FD))
+                                            ) {
+                                                Text(
+                                                    text = origenName,
+                                                    fontSize = 8.5.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    color = if (isEnzonaItem) Color(0xFF6D28D9) else Color(0xFF0369A1),
+                                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp)
+                                                )
+                                            }
+                                        }
                                         Text(
-                                            text = tx.transactionNumber,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 11.5.sp,
-                                            color = ElQadreNavy
-                                        )
-                                        Text(
-                                            text = if (tx.phoneNumber.isNotBlank()) "Tel: ${tx.phoneNumber}" else tx.dateStr,
-                                            fontSize = 9.5.sp,
+                                            text = if (tx.phoneNumber.isNotBlank()) "Tel: ${tx.phoneNumber}" else "Fecha: ${tx.dateStr}",
+                                            fontSize = 10.sp,
                                             color = Slate500
                                         )
                                     }
                                     Text(
                                         text = "$${"%.2f".format(tx.amount)} ${tx.currency}",
                                         fontWeight = FontWeight.Black,
-                                        fontSize = 12.sp,
+                                        fontSize = 13.sp,
                                         color = Emerald600
                                     )
                                 }
@@ -820,7 +882,7 @@ fun TransferenciasPane(
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Emerald600),
                     shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                    modifier = Modifier.fillMaxWidth().height(48.dp).testTag("btn_confirmar_nuevas_transferencias")
                 ) {
                     Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
@@ -834,9 +896,9 @@ fun TransferenciasPane(
             dismissButton = {
                 TextButton(
                     onClick = { pendingNewTransfersToConfirm = emptyList() },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth().testTag("btn_posponer_nuevas_transferencias")
                 ) {
-                    Text("Cancelar / Más tarde", color = Slate600, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                    Text("DEJAR PARA MÁS TARDE", color = Slate600, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                 }
             }
         )
