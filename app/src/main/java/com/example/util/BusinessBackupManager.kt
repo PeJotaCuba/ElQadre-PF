@@ -13,9 +13,13 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 data class BackupSummary(
     val codigoNegocio: String,
@@ -54,6 +58,64 @@ data class LegacyImportSummary(
 object BusinessBackupManager {
     private const val APP_IDENTIFIER = "Q_RESPALDO"
     private const val FORMAT_IDENTIFIER = "ELQADRE_FULL_BUSINESS_BACKUP"
+
+    const val OFFICIAL_BACKUP_GITHUB_URL = "https://raw.githubusercontent.com/PeJotaCuba/BD-Qadre-PF/refs/heads/main/Q_respaldo.json"
+
+    /**
+     * Descarga el archivo Q_respaldo.json directamente desde GitHub cuando hay conexión a Internet.
+     * Centraliza la URL oficial y maneja encabezados/fallback para evitar problemas de caché.
+     */
+    suspend fun fetchGitHubBackupJson(): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            var jsonString: String? = null
+            // 1. Intentar API de GitHub primero para evitar problemas de cache del CDN
+            try {
+                val apiUrl = "https://api.github.com/repos/PeJotaCuba/BD-Qadre-PF/contents/Q_respaldo.json"
+                val apiConn = URL(apiUrl).openConnection() as HttpURLConnection
+                apiConn.connectTimeout = 8000
+                apiConn.readTimeout = 8000
+                apiConn.useCaches = false
+                apiConn.setRequestProperty("Accept", "application/vnd.github.v3.raw")
+                apiConn.setRequestProperty("User-Agent", "Mozilla/5.0 (Android; ElQadrePOS)")
+                if (apiConn.responseCode == HttpURLConnection.HTTP_OK) {
+                    jsonString = apiConn.inputStream.bufferedReader().use { it.readText() }
+                }
+                apiConn.disconnect()
+            } catch (_: Exception) {
+                // Fallback a URL direct raw
+            }
+
+            if (jsonString == null) {
+                val cacheBuster = "_ts=${System.currentTimeMillis()}"
+                val currentUrl = if (OFFICIAL_BACKUP_GITHUB_URL.contains("?")) {
+                    "$OFFICIAL_BACKUP_GITHUB_URL&$cacheBuster"
+                } else {
+                    "$OFFICIAL_BACKUP_GITHUB_URL?$cacheBuster"
+                }
+                val conn = URL(currentUrl).openConnection() as HttpURLConnection
+                conn.connectTimeout = 10000
+                conn.readTimeout = 10000
+                conn.useCaches = false
+                conn.instanceFollowRedirects = true
+                conn.setRequestProperty("Cache-Control", "no-cache, no-store, must-revalidate")
+                conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Android; ElQadrePOS)")
+                if (conn.responseCode == HttpURLConnection.HTTP_OK) {
+                    jsonString = conn.inputStream.bufferedReader().use { it.readText() }
+                } else {
+                    return@withContext Result.failure(Exception("Respuesta HTTP ${conn.responseCode} al descargar Q_respaldo.json"))
+                }
+                conn.disconnect()
+            }
+
+            if (jsonString.isNullOrBlank()) {
+                return@withContext Result.failure(Exception("El archivo Q_respaldo.json obtenido desde GitHub está vacío."))
+            }
+
+            Result.success(jsonString)
+        } catch (e: Exception) {
+            Result.failure(Exception("Error al descargar Q_respaldo.json desde GitHub: ${e.localizedMessage}"))
+        }
+    }
 
     fun createBackupJson(context: Context, uiState: MainUiState): String {
         val currentBizCode = BusinessCodeHelper.resolveBusinessCode(

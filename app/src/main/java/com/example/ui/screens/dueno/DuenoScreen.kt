@@ -176,6 +176,75 @@ fun DuenoScreen(
     var duenoRestoreJsonInput by remember { mutableStateOf("") }
     var duenoBackupSummary by remember { mutableStateOf<String?>(null) }
 
+    // State for Unified Restore (Q_respaldo.json)
+    var showRestoreModal by remember { mutableStateOf(false) }
+    var restoreJsonText by remember { mutableStateOf("") }
+    var restoreSummary by remember { mutableStateOf<String?>(null) }
+    var isDownloadingBackupFromGithub by remember { mutableStateOf(false) }
+    var restoreErrorMessage by remember { mutableStateOf<String?>(null) }
+    var restoreSource by remember { mutableStateOf("") }
+    val restoreScope = rememberCoroutineScope()
+
+    // File picker launcher for Restore
+    val restoreFilePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                val inputStream = context.contentResolver.openInputStream(uri)
+                val content = inputStream?.bufferedReader()?.use { it.readText() } ?: ""
+                if (content.isNotBlank()) {
+                    val summaryRes = viewModel.getDuenoBackupSummary(content)
+                    if (summaryRes.isSuccess) {
+                        restoreJsonText = content
+                        restoreSummary = summaryRes.getOrNull()
+                        restoreSource = "Archivo Seleccionado del Dispositivo"
+                        restoreErrorMessage = null
+                    } else {
+                        restoreSummary = null
+                        restoreJsonText = ""
+                        restoreErrorMessage = "El archivo seleccionado no es un Q_respaldo.json válido: ${summaryRes.exceptionOrNull()?.localizedMessage}. No se han modificado datos locales."
+                        Toast.makeText(context, "Respaldo inválido. No se han modificado datos locales.", Toast.LENGTH_LONG).show()
+                    }
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Error al leer archivo local: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    fun initiateRestoreFlow() {
+        restoreJsonText = ""
+        restoreSummary = null
+        restoreErrorMessage = null
+        showRestoreModal = true
+
+        val hasInternet = com.example.util.ApkUpdateManager.isNetworkAvailable(context)
+        if (hasInternet) {
+            restoreSource = "GitHub (Q_respaldo.json)"
+            isDownloadingBackupFromGithub = true
+            restoreScope.launch {
+                val result = com.example.util.BusinessBackupManager.fetchGitHubBackupJson()
+                isDownloadingBackupFromGithub = false
+                if (result.isSuccess) {
+                    val jsonContent = result.getOrNull() ?: ""
+                    val summaryRes = viewModel.getDuenoBackupSummary(jsonContent)
+                    if (summaryRes.isSuccess) {
+                        restoreJsonText = jsonContent
+                        restoreSummary = summaryRes.getOrNull()
+                    } else {
+                        restoreErrorMessage = "El archivo Q_respaldo.json de GitHub no es un respaldo válido: ${summaryRes.exceptionOrNull()?.localizedMessage}. No se han modificado datos locales."
+                    }
+                } else {
+                    restoreErrorMessage = "${result.exceptionOrNull()?.localizedMessage ?: "Error de conexión al obtener Q_respaldo.json de GitHub."} Puede seleccionar un archivo local."
+                }
+            }
+        } else {
+            restoreSource = "Dispositivo Local (Sin conexión a Internet)"
+            isDownloadingBackupFromGithub = false
+        }
+    }
+
     // State for Jornada Apertura, Cierre y Detalle (Fase 4)
     var showAbrirJornadaModal by remember { mutableStateOf(false) }
     var showCerrarJornadaModal by remember { mutableStateOf(false) }
@@ -189,7 +258,7 @@ fun DuenoScreen(
             showCuadreCajaModal ||
             showNotificationsDialog ||
             showResumenConteoDialog ||
-            showRestoreDuenoModal ||
+            showRestoreModal ||
             showRestoreSalonModal ||
             showRestoreBarraModal ||
             showRestoreCajeroModal ||
@@ -204,7 +273,7 @@ fun DuenoScreen(
             showCuadreCajaModal -> showCuadreCajaModal = false
             showNotificationsDialog -> showNotificationsDialog = false
             showResumenConteoDialog -> showResumenConteoDialog = false
-            showRestoreDuenoModal -> showRestoreDuenoModal = false
+            showRestoreModal -> showRestoreModal = false
             showRestoreSalonModal -> showRestoreSalonModal = false
             showRestoreBarraModal -> showRestoreBarraModal = false
             showRestoreCajeroModal -> showRestoreCajeroModal = false
@@ -427,17 +496,16 @@ fun DuenoScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            // Synchronize Button (Local data refresh)
+                            // Restore Button (Parte superior de la aplicación)
                             IconButton(
                                 onClick = {
-                                    viewModel.refreshCatalog()
-                                    Toast.makeText(context, "Datos actualizados localmente.", Toast.LENGTH_SHORT).show()
+                                    initiateRestoreFlow()
                                 },
-                                modifier = Modifier.testTag("btn_top_sync")
+                                modifier = Modifier.testTag("btn_top_restore")
                             ) {
                                 Icon(
-                                    imageVector = Icons.Outlined.Sync,
-                                    contentDescription = "ACTUALIZAR",
+                                    imageVector = Icons.Outlined.Restore,
+                                    contentDescription = "RESTAURAR",
                                     tint = Color.White,
                                     modifier = Modifier.size(24.dp)
                                 )
@@ -872,6 +940,9 @@ fun DuenoScreen(
                                     previousView = DuenoView.GESTION
                                     currentView = targetView
                                 },
+                                onRestoreRequested = {
+                                    initiateRestoreFlow()
+                                },
                                 onBack = {
                                     currentView = DuenoView.INICIO
                                     previousView = null
@@ -1168,6 +1239,149 @@ fun DuenoScreen(
         DetalleJornadaCerradaDialog(
             jornada = showDetalleJornadaModal!!,
             onDismiss = { showDetalleJornadaModal = null }
+        )
+    }
+
+    // Modal for RESTAURAR (Q_respaldo.json)
+    if (showRestoreModal) {
+        AlertDialog(
+            onDismissRequest = {
+                if (!isDownloadingBackupFromGithub && !isRestoring) {
+                    showRestoreModal = false
+                }
+            },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Outlined.Restore, contentDescription = null, tint = ElQadreNavy)
+                    Text("Restaurar Respaldo (Q_respaldo.json)", fontWeight = FontWeight.Black, color = ElQadreNavy, fontSize = 16.sp)
+                }
+            },
+            text = {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.verticalScroll(rememberScrollState())
+                ) {
+                    if (isDownloadingBackupFromGithub) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.fillMaxWidth().padding(20.dp)
+                        ) {
+                            CircularProgressIndicator(color = ElQadreNavy)
+                            Text("Comprobando conexión a Internet...", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = ElQadreNavy)
+                            Text("Descargando Q_respaldo.json desde GitHub...", fontSize = 11.sp, color = Slate600)
+                        }
+                    } else if (restoreSummary != null) {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF0FDF4)),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF16A34A)),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Text("✓ Respaldo Válido Confirmado", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF15803D))
+                                Text("Origen: $restoreSource", fontSize = 10.sp, color = Slate600)
+                            }
+                        }
+
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Slate100),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text("RESUMEN DEL RESPALDO A RESTAURAR:", fontSize = 11.sp, fontWeight = FontWeight.Black, color = ElQadreNavy)
+                                Text(restoreSummary!!, fontSize = 12.sp, color = Slate800, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        Text(
+                            "⚠️ ATENCIÓN:\nAl proceder, la base de datos local se restaurará con la información del respaldo sin duplicar registros.",
+                            fontSize = 11.sp,
+                            color = Color(0xFFDC2626),
+                            fontWeight = FontWeight.Bold
+                        )
+                    } else {
+                        if (restoreErrorMessage != null) {
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFFFEF2F2)),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444)),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text("⚠️ Descarga / Validación Incompleta", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB91C1C))
+                                    Text(restoreErrorMessage!!, fontSize = 11.sp, color = Color(0xFF991B1B))
+                                    Text("Ningún dato local ha sido modificado.", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF7F1D1D))
+                                }
+                            }
+                        } else {
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFFEFF6FF)),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF3B82F6)),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp)) {
+                                    Text("ℹ️ Sin Conexión a Internet", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E40AF))
+                                    Text("No hay acceso a Internet. Seleccione el archivo Q_respaldo.json guardado en su dispositivo.", fontSize = 11.sp, color = Slate700)
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        Button(
+                            onClick = {
+                                restoreFilePicker.launch(arrayOf("application/json", "text/*", "*/*"))
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth().height(46.dp).testTag("btn_pick_restore_file_dialog")
+                        ) {
+                            Icon(Icons.Outlined.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("BUSCAR ARCHIVO EN EL DISPOSITIVO", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                if (restoreSummary != null) {
+                    Button(
+                        onClick = {
+                            isRestoring = true
+                            viewModel.restoreDuenoBackupJson(restoreJsonText) { success, msg ->
+                                isRestoring = false
+                                if (success) {
+                                    showRestoreModal = false
+                                    Toast.makeText(context, "Datos restaurados con éxito.", Toast.LENGTH_LONG).show()
+                                } else {
+                                    Toast.makeText(context, "Error al restaurar: $msg", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        },
+                        enabled = !isRestoring,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                        modifier = Modifier.testTag("btn_confirmar_restaurar")
+                    ) {
+                        if (isRestoring) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                            Spacer(modifier = Modifier.width(6.dp))
+                        }
+                        Text("CONFIRMAR Y RESTAURAR", fontWeight = FontWeight.Black, fontSize = 11.sp)
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showRestoreModal = false },
+                    enabled = !isDownloadingBackupFromGithub && !isRestoring
+                ) {
+                    Text("Cancelar", fontWeight = FontWeight.Bold, color = Slate600)
+                }
+            },
+            containerColor = Color.White
         )
     }
 }
@@ -13053,6 +13267,7 @@ fun DuenoAjustesView(
     onVisibleModulesChanged: (Set<String>) -> Unit = {},
     initialSection: String = "PREFERENCIAS",
     onNavigate: (DuenoView) -> Unit = {},
+    onRestoreRequested: () -> Unit = {},
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -13066,36 +13281,6 @@ fun DuenoAjustesView(
         uiState.generalConfig?.let { config ->
             tasaUsdText = if (config.tasaUsd > 0) config.tasaUsd.toString() else ""
             tasaEurText = if (config.tasaEur > 0) config.tasaEur.toString() else ""
-        }
-    }
-
-    // State for Restore
-    var showRestoreModal by remember { mutableStateOf(false) }
-    var restoreJsonText by remember { mutableStateOf("") }
-    var restoreSummary by remember { mutableStateOf<String?>(null) }
-    var isRestoring by remember { mutableStateOf(false) }
-
-    // File picker launcher for Restore
-    val restoreFilePicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? ->
-        if (uri != null) {
-            try {
-                val inputStream = context.contentResolver.openInputStream(uri)
-                val content = inputStream?.bufferedReader()?.use { it.readText() } ?: ""
-                if (content.isNotBlank()) {
-                    restoreJsonText = content
-                    val summaryRes = viewModel.getDuenoBackupSummary(content)
-                    if (summaryRes.isSuccess) {
-                        restoreSummary = summaryRes.getOrNull()
-                    } else {
-                        restoreSummary = null
-                        Toast.makeText(context, "Archivo de respaldo inválido: ${summaryRes.exceptionOrNull()?.localizedMessage}", Toast.LENGTH_LONG).show()
-                    }
-                }
-            } catch (e: Exception) {
-                Toast.makeText(context, "Error al leer archivo: ${e.message}", Toast.LENGTH_SHORT).show()
-            }
         }
     }
 
@@ -13407,15 +13592,13 @@ fun DuenoAjustesView(
 
                 Button(
                     onClick = {
-                        restoreJsonText = ""
-                        restoreSummary = null
-                        showRestoreModal = true
+                        onRestoreRequested()
                     },
                     modifier = Modifier.weight(1f).height(50.dp).testTag("btn_restaurar_dueno"),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F766E), contentColor = Color.White),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Icon(Icons.Outlined.CloudUpload, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Outlined.Restore, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("RESTAURAR", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
@@ -13986,127 +14169,6 @@ fun DuenoAjustesView(
         DetalleJornadaCerradaDialog(
             jornada = selectedJornadaForDetail!!,
             onDismiss = { selectedJornadaForDetail = null }
-        )
-    }
-
-    // Modal for RESTAURAR
-    if (showRestoreModal) {
-        AlertDialog(
-            onDismissRequest = { showRestoreModal = false },
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Outlined.CloudUpload, contentDescription = null, tint = ElQadreNavy)
-                    Text("Restaurar Respaldo de Datos", fontWeight = FontWeight.Black, color = ElQadreNavy, fontSize = 16.sp)
-                }
-            },
-            text = {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.verticalScroll(rememberScrollState())
-                ) {
-                    if (restoreSummary == null) {
-                        Text(
-                            "Seleccione el archivo .json de respaldo o pegue su contenido para restaurar el sistema sin datos duplicados.",
-                            fontSize = 12.sp,
-                            color = Slate600
-                        )
-
-                        Button(
-                            onClick = {
-                                restoreFilePicker.launch(arrayOf("application/json", "text/*", "*/*"))
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.fillMaxWidth().height(42.dp).testTag("btn_pick_restore_file")
-                        ) {
-                            Icon(Icons.Outlined.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("SELECCIONAR ARCHIVO (.JSON)", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-
-                        Text("O pegue el contenido JSON:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Slate700)
-
-                        OutlinedTextField(
-                            value = restoreJsonText,
-                            onValueChange = { restoreJsonText = it },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(130.dp)
-                                .testTag("restore_paste_field"),
-                            placeholder = { Text("Pegue el JSON de respaldo aquí...") },
-                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 10.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = ElQadreNavy,
-                                cursorColor = ElQadreNavy
-                            )
-                        )
-                    } else {
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = Slate100),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text("RESUMEN DEL RESPALDO A RESTAURAR:", fontSize = 11.sp, fontWeight = FontWeight.Black, color = ElQadreNavy)
-                                Text(restoreSummary!!, fontSize = 12.sp, color = Slate800, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                        Text(
-                            "⚠️ ATENCIÓN:\nAl proceder, la base de datos local se restaurará con la información del respaldo sin duplicar registros.",
-                            fontSize = 12.sp,
-                            color = Color(0xFFDC2626),
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                if (restoreSummary == null) {
-                    Button(
-                        onClick = {
-                            if (restoreJsonText.isBlank()) {
-                                Toast.makeText(context, "Seleccione un archivo o pegue el contenido JSON.", Toast.LENGTH_SHORT).show()
-                                return@Button
-                            }
-                            val res = viewModel.getDuenoBackupSummary(restoreJsonText)
-                            if (res.isSuccess) {
-                                restoreSummary = res.getOrNull()
-                            } else {
-                                Toast.makeText(context, "Respaldo inválido: ${res.exceptionOrNull()?.localizedMessage}", Toast.LENGTH_LONG).show()
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
-                        modifier = Modifier.testTag("btn_validar_backup_json")
-                    ) {
-                        Text("VALIDAR RESPALDO", fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                    }
-                } else {
-                    Button(
-                        onClick = {
-                            isRestoring = true
-                            viewModel.restoreDuenoBackupJson(restoreJsonText) { success, msg ->
-                                isRestoring = false
-                                if (success) {
-                                    showRestoreModal = false
-                                    Toast.makeText(context, "Datos restaurados con éxito.", Toast.LENGTH_LONG).show()
-                                } else {
-                                    Toast.makeText(context, "Error al restaurar: $msg", Toast.LENGTH_LONG).show()
-                                }
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
-                        modifier = Modifier.testTag("btn_confirmar_restaurar")
-                    ) {
-                        Text("CONFIRMAR Y RESTAURAR", fontWeight = FontWeight.Black, fontSize = 11.sp)
-                    }
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showRestoreModal = false }) {
-                    Text("Cancelar", fontWeight = FontWeight.Bold, color = Slate600)
-                }
-            },
-            containerColor = Color.White
         )
     }
 }

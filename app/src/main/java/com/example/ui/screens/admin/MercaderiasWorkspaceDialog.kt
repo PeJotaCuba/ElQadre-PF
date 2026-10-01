@@ -4023,8 +4023,31 @@ fun MercaderiaDetailDialog(
     onAgregadosClick: (Mercaderia, Product?) -> Unit
 ) {
     val currentProduct = uiState.products.find { it.id == mercaderia.productId }
-    val currentStock = viewModel.getMercaderiaCurrentStock(mercaderia.id, mercaderia.initialStock)
-    val costSheet = CostCalculationHelper.calculateMercaderiaCostSheet(mercaderia, uiState, viewModel)
+    val costSheet = remember(
+        mercaderia,
+        uiState.mercaderias,
+        uiState.products,
+        uiState.movimientosMercaderia,
+        uiState.gastosGenerales,
+        uiState.inversiones,
+        uiState.productosElaborados,
+        uiState.recetaIngredientes,
+        uiState.materiasPrimas,
+        uiState.tarifasPagoBebidas
+    ) {
+        CostCalculationHelper.calculateMercaderiaCostSheet(
+            mercaderia = mercaderia,
+            mercaderias = uiState.mercaderias,
+            products = uiState.products,
+            movimientos = uiState.movimientosMercaderia,
+            gastosGenerales = uiState.gastosGenerales,
+            inversiones = uiState.inversiones,
+            productosElaborados = uiState.productosElaborados,
+            recetaIngredientes = uiState.recetaIngredientes,
+            materiasPrimas = uiState.materiasPrimas,
+            tarifasPagoBebidas = uiState.tarifasPagoBebidas
+        )
+    }
     val isMercActive = mercaderia.isActive
 
     Dialog(
@@ -4045,441 +4068,280 @@ fun MercaderiaDetailDialog(
             Surface(
                 modifier = Modifier
                     .fillMaxWidth(0.92f)
-                    .fillMaxHeight(0.80f),
+                    .widthIn(max = 520.dp),
                 shape = RoundedCornerShape(20.dp),
-                color = Color(0xFFF8FAFC),
+                color = Color.White,
                 border = BorderStroke(1.5.dp, Slate200),
-                shadowElevation = 10.dp
+                shadowElevation = 12.dp
             ) {
                 Column(
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    // CABECERA SUPERIOR
-                    Surface(
-                        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
-                        color = Color.White,
-                        border = BorderStroke(1.5.dp, Slate200),
-                        shadowElevation = 3.dp,
-                        modifier = Modifier.fillMaxWidth()
+                    // 1. NOMBRE DEL PRODUCTO + CATEGORÍA Y PRESENTACIÓN
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Top
                     ) {
-                        Column(
+                        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                            Text(
+                                text = currentProduct?.name ?: "Mercadería #${mercaderia.id}",
+                                fontWeight = FontWeight.Black,
+                                color = ElQadreNavy,
+                                fontSize = 20.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text("Categoría:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Slate500)
+                                    Text(
+                                        text = currentProduct?.category?.ifBlank { "Barra" } ?: "Barra",
+                                        fontSize = 12.5.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = ElQadreNavy
+                                    )
+                                }
+                                Text("•", fontSize = 12.sp, color = Slate400)
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text("Presentación:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Slate500)
+                                    Text(
+                                        text = mercaderia.unitOfMeasure.ifBlank { "Unidad" },
+                                        fontSize = 12.5.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = ElQadreNavy
+                                    )
+                                }
+                            }
+                        }
+
+                        IconButton(
+                            onClick = onDismiss,
+                            colors = IconButtonDefaults.iconButtonColors(containerColor = Slate100),
+                            modifier = Modifier
+                                .size(36.dp)
+                                .testTag("close_mercaderia_detail_dialog")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Cerrar",
+                                tint = ElQadreNavy,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+
+                    HorizontalDivider(color = Slate200)
+
+                    // 2. CONTROL: ACTIVAR / DESACTIVAR
+                    Surface(
+                        onClick = {
+                            val newActive = !isMercActive
+                            val updatedMerc = mercaderia.copy(isActive = newActive)
+                            viewModel.updateMercaderia(updatedMerc)
+                            if (currentProduct != null) {
+                                viewModel.updateProduct(currentProduct.copy(isAvailable = newActive))
+                            }
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isMercActive) Emerald50 else Rose50,
+                        border = BorderStroke(1.5.dp, if (isMercActive) Emerald500 else Rose500),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("toggle_mercaderia_active_detail")
+                    ) {
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(14.dp)
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            // FILA 1: NOMBRE DEL PRODUCTO | X
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(
-                                            text = currentProduct?.name ?: "Mercadería #${mercaderia.id}",
-                                            fontWeight = FontWeight.Black,
-                                            color = ElQadreNavy,
-                                            fontSize = 19.sp,
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Surface(
-                                            shape = RoundedCornerShape(4.dp),
-                                            color = ElQadreGold.copy(alpha = 0.15f)
-                                        ) {
-                                            Text(
-                                                text = "BARRA",
-                                                fontSize = 9.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = ElQadreGoldDark,
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                            )
-                                        }
-                                    }
-                                }
-
-                                IconButton(
-                                    onClick = onDismiss,
-                                    colors = IconButtonDefaults.iconButtonColors(containerColor = Slate100),
+                                Box(
                                     modifier = Modifier
-                                        .size(40.dp)
-                                        .testTag("close_mercaderia_detail_dialog")
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Close,
-                                        contentDescription = "Cerrar",
-                                        tint = ElQadreNavy,
-                                        modifier = Modifier.size(22.dp)
+                                        .size(12.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isMercActive) Emerald600 else Rose600)
+                                )
+                                Column {
+                                    Text(
+                                        text = if (isMercActive) "ESTADO: ACTIVADO" else "ESTADO: DESACTIVADO",
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 13.5.sp,
+                                        color = if (isMercActive) Emerald700 else Rose700
+                                    )
+                                    Text(
+                                        text = if (isMercActive) "Visible en Catálogo y Cuadre de Caja" else "Oculto en Catálogo y Cuadre de Caja",
+                                        fontSize = 11.sp,
+                                        color = if (isMercActive) Emerald800 else Rose800
                                     )
                                 }
                             }
 
-                            // FILA 2: BOTÓN/CONTROL ACTIVAR / DESACTIVAR
                             Surface(
-                                onClick = {
-                                    val updated = mercaderia.copy(isActive = !isMercActive)
-                                    viewModel.updateMercaderia(updated)
-                                    if (currentProduct != null) {
-                                        viewModel.updateProduct(currentProduct.copy(isAvailable = updated.isActive))
-                                    }
-                                },
-                                shape = RoundedCornerShape(12.dp),
-                                color = if (isMercActive) Emerald50 else Rose50,
-                                border = BorderStroke(1.5.dp, if (isMercActive) Emerald500 else Rose500),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .testTag("toggle_mercaderia_active_detail")
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isMercActive) Emerald600 else Rose600
                             ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(12.dp)
-                                                .clip(CircleShape)
-                                                .background(if (isMercActive) Emerald600 else Rose600)
-                                        )
-                                        Text(
-                                            text = if (isMercActive) "ESTADO: ACTIVADO" else "ESTADO: DESACTIVADO",
-                                            fontWeight = FontWeight.Black,
-                                            fontSize = 13.sp,
-                                            color = if (isMercActive) Emerald700 else Rose700
-                                        )
-                                    }
-
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = if (isMercActive) Emerald600 else Rose600
-                                    ) {
-                                        Text(
-                                            text = if (isMercActive) "DESACTIVAR" else "ACTIVAR",
-                                            fontWeight = FontWeight.Black,
-                                            fontSize = 11.5.sp,
-                                            color = Color.White,
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                                        )
-                                    }
-                                }
-                            }
-
-                            // FILA 3: CATEGORÍA | CÓDIGO DEL PRODUCTO
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = Slate50,
-                                border = BorderStroke(1.dp, Slate200),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Text("CATEGORÍA: ", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Slate500)
-                                        Text(
-                                            text = currentProduct?.category?.ifBlank { "Barra" } ?: "Barra",
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Black,
-                                            color = ElQadreNavy
-                                        )
-                                    }
-
-                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Text("CÓDIGO: ", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Slate500)
-                                        Text(
-                                            text = currentProduct?.code?.ifBlank { "N/A" } ?: "N/A",
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Black,
-                                            color = ElQadreNavy
-                                        )
-                                    }
-                                }
+                                Text(
+                                    text = if (isMercActive) "DESACTIVAR" else "ACTIVAR",
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 12.sp,
+                                    color = Color.White,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                )
                             }
                         }
                     }
 
-                    // CUERPO SCROLLABLE
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                            .verticalScroll(rememberScrollState())
-                            .padding(horizontal = 20.dp, vertical = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        // TARJETA 1: EXISTENCIAS Y ADQUISICIÓN
-                        val stockColor = when {
-                            currentStock <= 0.0 -> Rose600
-                            currentStock <= 5.0 -> Amber600
-                            else -> Emerald600
-                        }
-                        val stockBg = when {
-                            currentStock <= 0.0 -> Rose50
-                            currentStock <= 5.0 -> Color(0xFFFFFBEB)
-                            else -> Emerald50
-                        }
-
-                        Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = Color.White,
-                            border = BorderStroke(1.5.dp, Slate200),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(18.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                Text(
-                                    text = "EXISTENCIAS Y COMPRA",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = ElQadreNavy,
-                                    letterSpacing = 0.5.sp
-                                )
-                                HorizontalDivider(color = Slate200)
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                ) {
-                                    Surface(
-                                        shape = RoundedCornerShape(12.dp),
-                                        color = stockBg,
-                                        border = BorderStroke(1.dp, stockColor.copy(alpha = 0.4f)),
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Column(modifier = Modifier.padding(12.dp)) {
-                                            Text("STOCK ACTUAL", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Slate500)
-                                            Text("${"%.0f".format(currentStock)} ${mercaderia.unitOfMeasure}", fontSize = 16.sp, fontWeight = FontWeight.Black, color = stockColor)
-                                            Text("Inicial: ${mercaderia.initialStock}", fontSize = 10.sp, color = Slate500)
-                                        }
-                                    }
-
-                                    Surface(
-                                        shape = RoundedCornerShape(12.dp),
-                                        color = Slate50,
-                                        border = BorderStroke(1.dp, Slate200),
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Column(modifier = Modifier.padding(12.dp)) {
-                                            Text("COSTO ADQUISICIÓN", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Slate500)
-                                            Text("$${"%.2f".format(mercaderia.acquisitionCost)} CUP", fontSize = 16.sp, fontWeight = FontWeight.Black, color = ElQadreNavy)
-                                            Text("Por ${mercaderia.unitOfMeasure}", fontSize = 10.sp, color = Slate500)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // TARJETA 2: COSTOS, RENDIMIENTO Y PRECIO DE VENTA
-                        Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = Color.White,
-                            border = BorderStroke(1.5.dp, Slate200),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(18.dp),
-                                verticalArrangement = Arrangement.spacedBy(14.dp)
-                            ) {
-                                Text(
-                                    text = "ANÁLISIS DE COSTO Y MARGEN UNITARIO",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = ElQadreNavy,
-                                    letterSpacing = 0.5.sp
-                                )
-
-                                HorizontalDivider(color = Slate200)
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                ) {
-                                    Surface(
-                                        shape = RoundedCornerShape(12.dp),
-                                        color = Slate50,
-                                        border = BorderStroke(1.dp, Slate200),
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Column(modifier = Modifier.padding(12.dp)) {
-                                            Text("PRECIO VENTA PÚBLICO", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Slate500)
-                                            Text("$${"%.2f".format(currentProduct?.price ?: 0.0)} CUP", fontSize = 16.sp, fontWeight = FontWeight.Black, color = ElQadreNavy)
-                                            Text("En Catálogo", fontSize = 10.sp, color = Slate500)
-                                        }
-                                    }
-
-                                    Surface(
-                                        shape = RoundedCornerShape(12.dp),
-                                        color = Color(0xFFFEF3C7),
-                                        border = BorderStroke(1.dp, ElQadreGold),
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Column(modifier = Modifier.padding(12.dp)) {
-                                            Text("COSTO REAL UNITARIO", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = ElQadreGoldDark)
-                                            Text("$${"%.2f".format(costSheet.costoRealUnitario)} CUP", fontSize = 16.sp, fontWeight = FontWeight.Black, color = ElQadreNavy)
-                                            Text("Adq + Gastos + Prorrateo", fontSize = 10.sp, color = Slate600)
-                                        }
-                                    }
-                                }
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                ) {
-                                    Surface(
-                                        shape = RoundedCornerShape(12.dp),
-                                        color = Slate50,
-                                        border = BorderStroke(1.dp, Slate200),
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Column(modifier = Modifier.padding(12.dp)) {
-                                            Text("PRECIO REFERENCIA", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Slate500)
-                                            Text("$${"%.2f".format(costSheet.precioReferencia)} CUP", fontSize = 16.sp, fontWeight = FontWeight.Black, color = ElQadreNavy)
-                                            Text("+30% sobre CRU", fontSize = 10.sp, color = Slate500)
-                                        }
-                                    }
-
-                                    Surface(
-                                        shape = RoundedCornerShape(12.dp),
-                                        color = if (costSheet.margenPorcentual >= 0) Color(0xFFECFDF5) else Color(0xFFFEF2F2),
-                                        border = BorderStroke(1.dp, if (costSheet.margenPorcentual >= 0) Emerald600 else Rose500),
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Column(modifier = Modifier.padding(12.dp)) {
-                                            Text("MARGEN ESTIMADO", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = if (costSheet.margenPorcentual >= 0) Emerald600 else Rose600)
-                                            Text("${"%.1f".format(costSheet.margenPorcentual)}%", fontSize = 16.sp, fontWeight = FontWeight.Black, color = if (costSheet.margenPorcentual >= 0) Emerald600 else Rose600)
-                                            Text("$${"%.2f".format(costSheet.utilidadUnitaria)} CUP / ud", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Slate600)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // TARJETA 3: AGREGADOS
-                        OutlinedButton(
-                            onClick = { onAgregadosClick(mercaderia, currentProduct) },
-                            shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(1.5.dp, Color(0xFF0284C7)),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF0284C7)),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(52.dp)
-                                .testTag("mercaderia_detail_btn_agregados")
-                        ) {
-                            Icon(Icons.Default.AddCircleOutline, contentDescription = null, modifier = Modifier.size(20.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("GESTIONAR AGREGADOS / EXTRAS", fontSize = 13.sp, fontWeight = FontWeight.Black)
-                        }
-                    }
-
-                    // BARRA INFERIOR DE ACCIONES: SUBIDA POR ENCIMA DE LA BARRA DE NAVEGACIÓN ANDROID (~2 CM)
+                    // 3. VALORES FINALES DE FICHA DE COSTO: COSTO, MARGEN Y PRECIO
                     Surface(
-                        color = Color.White,
-                        shadowElevation = 8.dp,
-                        shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        color = Slate50,
                         border = BorderStroke(1.dp, Slate200),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Column(
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 12.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                .padding(14.dp),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // FILA 1: FICHA DE COSTO | MOVIMIENTO
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            // COSTO (Resultado final Ficha de Costo)
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.weight(1f)
                             ) {
-                                Button(
-                                    onClick = { onShowFichaCostoClick(mercaderia) },
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = ElQadreGoldDark),
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(48.dp)
-                                        .testTag("mercaderia_detail_bottom_btn_ficha")
-                                ) {
-                                    Icon(Icons.Default.ReceiptLong, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("FICHA COSTO", fontSize = 13.sp, fontWeight = FontWeight.Black)
-                                }
-
-                                Button(
-                                    onClick = { onRegisterMovementClick(mercaderia.id) },
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(48.dp)
-                                        .testTag("mercaderia_detail_bottom_btn_movimiento")
-                                ) {
-                                    Icon(Icons.Default.SwapVert, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("MOVIMIENTO", fontSize = 13.sp, fontWeight = FontWeight.Black)
-                                }
+                                Text("COSTO", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Slate500)
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "$${"%.2f".format(costSheet.costoRealUnitario)}",
+                                    fontSize = 17.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = ElQadreNavy
+                                )
+                                Text("Ficha de Costo", fontSize = 9.5.sp, color = Slate500)
                             }
 
-                            // FILA 2: EDITAR | ELIMINAR | CERRAR
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            Box(modifier = Modifier.width(1.dp).height(36.dp).background(Slate200))
+
+                            // MARGEN (Resultado final Ficha de Costo)
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.weight(1f)
                             ) {
-                                OutlinedButton(
-                                    onClick = { onEditMercaderiaClick(mercaderia) },
-                                    shape = RoundedCornerShape(10.dp),
-                                    border = BorderStroke(1.5.dp, ElQadreNavy),
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = ElQadreNavy),
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(44.dp)
-                                        .testTag("mercaderia_detail_bottom_btn_editar")
-                                ) {
-                                    Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("EDITAR", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                }
-
-                                OutlinedButton(
-                                    onClick = { onDeleteMercaderiaClick(mercaderia) },
-                                    shape = RoundedCornerShape(10.dp),
-                                    border = BorderStroke(1.5.dp, Rose600),
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Rose600),
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(44.dp)
-                                        .testTag("mercaderia_detail_bottom_btn_eliminar")
-                                ) {
-                                    Icon(Icons.Default.DeleteOutline, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("ELIMINAR", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                }
-
-                                Button(
-                                    onClick = onDismiss,
-                                    shape = RoundedCornerShape(10.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Slate700),
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(44.dp)
-                                        .testTag("mercaderia_detail_bottom_btn_cerrar")
-                                ) {
-                                    Text("CERRAR", fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
-                                }
+                                Text("MARGEN", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Slate500)
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "${"%.1f".format(costSheet.margenPorcentual)}%",
+                                    fontSize = 17.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = if (costSheet.margenPorcentual >= 0) Emerald600 else Rose600
+                                )
+                                Text("Utilidad final", fontSize = 9.5.sp, color = Slate500)
                             }
+
+                            Box(modifier = Modifier.width(1.dp).height(36.dp).background(Slate200))
+
+                            // PRECIO (Ficha de Costo / Catálogo)
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("PRECIO", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Slate500)
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "$${"%.2f".format(currentProduct?.price ?: 0.0)}",
+                                    fontSize = 17.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = ElQadreNavy
+                                )
+                                Text("Catálogo", fontSize = 9.5.sp, color = Slate500)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(2.dp))
+
+                    // 4. ACCIONES (BOTONES)
+                    // FILA 1: [ ENTRADA ]  [ EDITAR ]
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Button(
+                            onClick = { onRegisterMovementClick(mercaderia.id) },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = ElQadreNavy),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(46.dp)
+                                .testTag("mercaderia_detail_btn_entrada")
+                        ) {
+                            Icon(Icons.Default.AddBox, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("ENTRADA", fontSize = 13.sp, fontWeight = FontWeight.Black)
+                        }
+
+                        OutlinedButton(
+                            onClick = { onEditMercaderiaClick(mercaderia) },
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.5.dp, ElQadreNavy),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = ElQadreNavy),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(46.dp)
+                                .testTag("mercaderia_detail_btn_editar")
+                        ) {
+                            Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("EDITAR", fontSize = 13.sp, fontWeight = FontWeight.Black)
+                        }
+                    }
+
+                    // FILA 2: [ FICHA DE COSTO ]  [ ELIMINAR ]
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Button(
+                            onClick = { onShowFichaCostoClick(mercaderia) },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = ElQadreGoldDark),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(46.dp)
+                                .testTag("mercaderia_detail_btn_ficha")
+                        ) {
+                            Icon(Icons.Default.ReceiptLong, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("FICHA DE COSTO", fontSize = 12.5.sp, fontWeight = FontWeight.Black)
+                        }
+
+                        OutlinedButton(
+                            onClick = { onDeleteMercaderiaClick(mercaderia) },
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.5.dp, Rose600),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Rose600),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(46.dp)
+                                .testTag("mercaderia_detail_btn_eliminar")
+                        ) {
+                            Icon(Icons.Default.DeleteOutline, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("ELIMINAR", fontSize = 12.5.sp, fontWeight = FontWeight.Black)
                         }
                     }
                 }
